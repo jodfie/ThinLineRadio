@@ -21,6 +21,7 @@ import { ChangeDetectorRef, Component, EventEmitter, OnDestroy, OnInit, Output, 
 import { FormBuilder, FormGroup } from '@angular/forms';
 import { MatInput } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { Title } from '@angular/platform-browser';
 import { Subscription, timer } from 'rxjs';
 import packageInfo from '../../../../../package.json';
 import {
@@ -39,6 +40,7 @@ import { AlertsService } from '../alerts/alerts.service';
 import { RdioScannerAlert } from '../rdio-scanner';
 import { SettingsService } from '../settings/settings.service';
 
+
 @Component({
     selector: 'rdio-scanner-main',
     styleUrls: [
@@ -55,6 +57,7 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
     avoided = false;
 
     branding = '';
+    
 
     version = packageInfo.version;
     showVersion = false;
@@ -267,6 +270,7 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
         private tagColorService: TagColorService,
         private alertsService: AlertsService,
         private settingsService: SettingsService,
+        private titleService: Title,
     ) {
         this.authForm = this.ngFormBuilder.group<{
             password: string | null;
@@ -1063,6 +1067,9 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
             this.config = event.config;
 
             this.branding = this.config?.branding ?? '';
+
+            const pageTitle = this.branding.trim() || 'ThinLine Radio';
+            this.titleService.setTitle(pageTitle);
 
             this.email = this.config?.email ?? '';
 
