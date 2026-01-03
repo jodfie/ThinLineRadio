@@ -21,7 +21,7 @@ on:
 
 env:
   # Change these to your Docker Hub username and image name
-  DOCKER_USERNAME: thinlinedynamic
+  DOCKER_USERNAME: thinlinedynamicsolutions
   IMAGE_NAME: thinline-radio
 
 jobs:
