@@ -301,8 +301,8 @@ EOF
     
     if [ "$PLATFORM" = "windows" ]; then
         cd "$DIST_DIR"
-        zip -r "../../$RELEASES_DIR/$ARCHIVE_NAME" . > /dev/null
-        cd ../..
+        zip -r "../$RELEASES_DIR/$ARCHIVE_NAME" . > /dev/null
+        cd ..
     else
         tar -czf "$RELEASES_DIR/$ARCHIVE_NAME" -C "$DIST_DIR" .
     fi
