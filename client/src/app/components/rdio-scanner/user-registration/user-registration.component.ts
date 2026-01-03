@@ -67,8 +67,7 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
       firstName: ['', [Validators.required]],
       lastName: ['', [Validators.required]],
       zipCode: ['', [Validators.required]],
-      registrationCode: [''],
-      invitationCode: ['']
+      accessCode: ['']  // Unified field for invitation and registration codes
     }, { validators: this.passwordMatchValidator });
   }
 
@@ -109,8 +108,8 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
             this.registrationForm.patchValue({ email: response.email });
           }
           
-          // Set invitation code (hidden field)
-          this.registrationForm.patchValue({ invitationCode: inviteCode });
+          // Set invitation code as accessCode (hidden field)
+          this.registrationForm.patchValue({ accessCode: inviteCode });
           this.invitationCode = inviteCode;
           this.invitationGroupName = response.groupName;
           
@@ -250,14 +249,9 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
         zipCode: this.registrationForm.value.zipCode
       } as any;
       
-      // Include registrationCode if provided
-      if (this.registrationForm.value.registrationCode && this.registrationForm.value.registrationCode.trim() !== '') {
-        formData.registrationCode = this.registrationForm.value.registrationCode;
-      }
-      
-      // Include invitationCode if provided
-      if (this.registrationForm.value.invitationCode && this.registrationForm.value.invitationCode.trim() !== '') {
-        formData.invitationCode = this.registrationForm.value.invitationCode;
+      // Include accessCode if provided (unified field for invitation and registration codes)
+      if (this.registrationForm.value.accessCode && this.registrationForm.value.accessCode.trim() !== '') {
+        formData.accessCode = this.registrationForm.value.accessCode;
       }
       
       this.http.post('/api/user/register', formData).subscribe({

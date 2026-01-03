@@ -1,0 +1,94 @@
+# Docker Compose Override for Production
+# This file extends docker-compose.yml with production-specific settings
+# 
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Or create a symbolic link:
+#   ln -s docker-compose.prod.yml docker-compose.override.yml
+#   docker-compose up -d
+
+version: '3.8'
+
+services:
+  postgres:
+    # Production PostgreSQL optimizations
+    environment:
+      # Increased connection limit for production
+      POSTGRES_MAX_CONNECTIONS: 400
+    
+    # Production resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    
+    # Don't expose PostgreSQL port in production (security)
+    ports: []
+    
+    # Restart policy for production
+    restart: always
+    
+    # Production logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  thinline-radio:
+    # Production resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 2G
+      
+      # Deployment strategy (for Docker Swarm)
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    
+    # Restart policy for production
+    restart: always
+    
+    # Production logging with rotation
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+    
+    # Additional production environment variables
+    environment:
+      # Enable production mode
+      ENVIRONMENT: production
+      
+      # Disable debug logging in production
+      DEBUG: "false"
+      
+      # Connection pool settings
+      DB_MAX_CONNECTIONS: 200
+      
+      # Security headers
+      SECURITY_HEADERS: "true"
+      
+      # Rate limiting
+      RATE_LIMIT_ENABLED: "true"
+      RATE_LIMIT_REQUESTS: 100
+      RATE_LIMIT_WINDOW: 60
+

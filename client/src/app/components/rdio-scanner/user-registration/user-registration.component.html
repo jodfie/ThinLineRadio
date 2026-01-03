@@ -136,13 +136,13 @@
       </mat-form-field>
 
       <mat-form-field appearance="outline" class="full-width" *ngIf="!invitationCode">
-        <mat-label>Registration Code (Optional)</mat-label>
-        <input matInput type="text" formControlName="registrationCode" placeholder="Enter registration code if you have one">
-        <mat-hint>If you have a registration code, enter it here. Otherwise, leave blank for public registration.</mat-hint>
+        <mat-label>Invite Code (Optional)</mat-label>
+        <input matInput type="text" formControlName="accessCode" placeholder="Enter invite code if you have one">
+        <mat-hint>If you have an invite code, enter it here. Otherwise, leave blank for public registration.</mat-hint>
       </mat-form-field>
       
-      <!-- Hidden field for invitation code -->
-      <input type="hidden" formControlName="invitationCode">
+      <!-- Hidden field for invitation code when using invitation link -->
+      <input type="hidden" formControlName="accessCode" *ngIf="invitationCode">
 
       <div class="error-message" *ngIf="error">
         {{ error }}

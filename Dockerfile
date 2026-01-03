@@ -1,0 +1,129 @@
+# ThinLine Radio - Multi-stage Docker Build
+# This Dockerfile builds both the Angular client and Go server in separate stages
+# and creates a minimal production image with only the necessary runtime dependencies
+
+# =============================================================================
+# Stage 1: Build Angular Client
+# =============================================================================
+FROM node:16-alpine AS client-builder
+
+WORKDIR /build/client
+
+# Copy package files first for better caching
+COPY client/package*.json ./
+
+# Install dependencies
+RUN npm ci --legacy-peer-deps
+
+# Copy client source code
+COPY client/ ./
+
+# Build production bundle
+RUN npm run build
+
+# Verify build output
+RUN ls -la /build/client/../server/webapp/ || echo "Webapp directory not found, checking alternatives..." && \
+    find /build -name "webapp" -o -name "dist" 2>/dev/null || true
+
+# =============================================================================
+# Stage 2: Build Go Server
+# =============================================================================
+FROM golang:1.24-alpine AS server-builder
+
+WORKDIR /build/server
+
+# Install build dependencies
+RUN apk add --no-cache git
+
+# Copy go mod files first for better caching
+COPY server/go.mod server/go.sum ./
+RUN go mod download
+
+# Copy server source code
+COPY server/ ./
+
+# Copy built Angular webapp from previous stage
+COPY --from=client-builder /build/server/webapp ./webapp/
+
+# Verify webapp was copied
+RUN ls -la ./webapp/ && echo "Webapp files:" && ls -la ./webapp/ | head -20
+
+# Build static binary with optimizations
+# CGO_ENABLED=0 creates a fully static binary that works in Alpine
+ENV CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=amd64
+
+RUN go build -ldflags="-s -w -extldflags '-static'" -o thinline-radio .
+
+# Verify binary was created
+RUN ls -lh thinline-radio && file thinline-radio
+
+# =============================================================================
+# Stage 3: Production Runtime Image
+# =============================================================================
+FROM alpine:3.19
+
+# Install runtime dependencies
+# - ffmpeg: Required for audio processing, transcription, tone detection
+# - ffprobe: Required for audio duration calculation
+# - ca-certificates: Required for HTTPS API calls (transcription services, etc.)
+# - tzdata: Required for proper timezone handling
+RUN apk add --no-cache \
+    ffmpeg \
+    ca-certificates \
+    tzdata \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user for security
+RUN addgroup -g 1000 thinline && \
+    adduser -D -u 1000 -G thinline thinline
+
+# Create application directories
+RUN mkdir -p /app/data /app/config /app/logs && \
+    chown -R thinline:thinline /app
+
+WORKDIR /app
+
+# Copy binary from builder stage
+COPY --from=server-builder /build/server/thinline-radio .
+
+# Copy documentation and examples
+COPY LICENSE ./
+COPY README.md ./
+COPY docs/setup-and-administration.md ./docs/
+COPY docs/examples/*.csv ./docs/examples/ 2>/dev/null || true
+COPY docs/examples/*.json ./docs/examples/ 2>/dev/null || true
+COPY docs/examples/*.PNG ./docs/examples/ 2>/dev/null || true
+
+# Ensure binary is executable
+RUN chmod +x thinline-radio && \
+    chown thinline:thinline thinline-radio
+
+# Switch to non-root user
+USER thinline
+
+# Expose ports
+# 3000: HTTP server (default)
+# 3443: HTTPS server (optional, if SSL configured)
+EXPOSE 3000 3443
+
+# Health check
+# Checks if the server is responding on the main port
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+
+# Default command
+# Can be overridden with docker run or docker-compose command
+ENTRYPOINT ["/app/thinline-radio"]
+
+# Default arguments (can be overridden)
+CMD ["-listen", "0.0.0.0:3000"]
+
+# Labels for image metadata
+LABEL maintainer="Thinline Dynamic Solutions" \
+      description="ThinLine Radio - Comprehensive radio scanner platform" \
+      version="7.0.0" \
+      org.opencontainers.image.source="https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio" \
+      org.opencontainers.image.licenses="GPL-3.0"
+

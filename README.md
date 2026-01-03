@@ -76,6 +76,34 @@ Here is a list of recorders known to work:
 
 # Quick start
 
+## Docker Deployment (Recommended)
+
+The easiest way to deploy ThinLine Radio is using Docker:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio.git
+cd ThinLineRadio
+
+# 2. Run the deployment helper
+./docker-deploy.sh
+
+# 3. Access the admin dashboard
+# Open http://localhost:3000/admin
+# Default password: admin (change immediately!)
+```
+
+**What's included:**
+- ✅ ThinLine Radio server with all dependencies
+- ✅ PostgreSQL database (automatically configured)
+- ✅ FFmpeg for audio processing
+- ✅ Health checks and automatic restarts
+- ✅ Volume persistence for data
+
+📖 **Full Docker documentation:** [DOCKER.md](DOCKER.md) | [docker/README.md](docker/README.md)
+
+## Manual Installation
+
 1. Download the latest precompiled version of ThinLine Radio from the [releases tab](https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio/releases).
 
    | Operating system | Architecture | Use package                           |

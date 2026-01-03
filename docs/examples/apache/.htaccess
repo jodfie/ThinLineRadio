@@ -7,9 +7,9 @@ RewriteEngine on
 
 # Set forwarding headers so the backend server knows the original protocol and host
 # This is critical for proper HTTPS detection when using SSL termination at the proxy
+# Note: If using ProxyPreserveHost On in your Apache VirtualHost config, you only need X-Forwarded-Proto
 RequestHeader set X-Forwarded-Proto "https" env=HTTPS
 RequestHeader set X-Forwarded-Proto "http" env=!HTTPS
-RequestHeader set X-Forwarded-Host "%{HTTP_HOST}e"
 
 RewriteCond %{HTTP:CONNECTION} ^upgrade$ [NC,OR]
 RewriteCond %{HTTP:UPGRADE} ^websocket$ [NC]

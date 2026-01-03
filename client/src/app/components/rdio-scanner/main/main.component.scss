@@ -133,6 +133,255 @@
   display: flex;
   gap: 16px;
   width: 100%;
+  justify-content: center; // Center the content
+  position: relative; // For layout controls positioning
+  flex-direction: row;
+  
+  // When alerts column is shown, align to start
+  &:has(.alerts-column) {
+    justify-content: flex-start;
+  }
+  
+  // Vertical layout mode
+  &.vertical-layout {
+    flex-direction: column !important;
+    align-items: center;
+    justify-content: flex-start !important;
+    
+    .scanner-column,
+    .alerts-column {
+      width: 100% !important;
+      max-width: 800px !important;
+      flex: 0 0 auto;
+    }
+    
+    .alerts-column {
+      margin-top: 16px;
+    }
+  }
+  
+  // Edit mode overlay
+  &.edit-mode {
+    .scanner-column,
+    .alerts-column {
+      opacity: 0.6;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+  }
+  
+  // When in preview mode within edit mode, restore opacity
+  &.edit-mode.preview-active {
+    .scanner-column,
+    .alerts-column {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
+
+  // Edit Mode Overlay
+  .edit-mode-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.92);
+    z-index: 1000;
+    padding: 20px;
+    overflow-y: auto;
+    transition: background 0.3s ease;
+    
+    // Preview mode - make background transparent and hide controls
+    &.preview-mode {
+      background: rgba(0, 0, 0, 0);
+      pointer-events: none;
+      
+      .edit-mode-top-bar {
+        pointer-events: auto; // Keep header interactive
+      }
+      
+      .layout-controls-panel {
+        display: none;
+      }
+    }
+    
+    .edit-mode-top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      background: linear-gradient(135deg, #1e3a5f 0%, #2d5f8d 100%);
+      border-radius: 8px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      
+      .edit-mode-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #fff;
+        font-size: 20px;
+        font-weight: 600;
+        
+        mat-icon {
+          font-size: 28px;
+          width: 28px;
+          height: 28px;
+          color: #64b5f6;
+        }
+      }
+      
+      .edit-mode-actions {
+        display: flex;
+        gap: 12px;
+        
+        button {
+          mat-icon {
+            margin-right: 4px;
+          }
+        }
+      }
+    }
+    
+    .layout-controls-panel {
+      max-width: 900px;
+      margin: 0 auto;
+      background: rgba(30, 30, 30, 0.98);
+      border-radius: 8px;
+      padding: 24px;
+      border: 2px solid rgba(100, 181, 246, 0.3);
+      
+      .layout-section {
+        margin-bottom: 32px;
+        padding-bottom: 24px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        
+        &:last-child {
+          border-bottom: none;
+        }
+        
+        h4 {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 0 0 16px 0;
+          color: #64b5f6;
+          font-size: 16px;
+          font-weight: 600;
+          
+          mat-icon {
+            color: #64b5f6;
+          }
+        }
+        
+        .layout-buttons {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          
+          button {
+            min-width: 150px;
+            
+            mat-icon {
+              margin-right: 8px;
+            }
+          }
+        }
+        
+        .slider-control {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 16px;
+          
+          label {
+            flex: 0 0 150px;
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
+          }
+          
+          mat-slider {
+            flex: 1;
+            min-width: 200px;
+          }
+          
+          .width-value {
+            flex: 0 0 70px;
+            text-align: right;
+            color: #64b5f6;
+            font-weight: 600;
+          }
+        }
+        
+        .button-reorder-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          max-height: 400px;
+          overflow-y: auto;
+          padding-right: 8px;
+          
+          &::-webkit-scrollbar {
+            width: 8px;
+          }
+          
+          &::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+          }
+          
+          &::-webkit-scrollbar-thumb {
+            background: rgba(100, 181, 246, 0.3);
+            border-radius: 4px;
+            
+            &:hover {
+              background: rgba(100, 181, 246, 0.5);
+            }
+          }
+          
+          .button-reorder-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(100, 181, 246, 0.08);
+            border: 1px solid rgba(100, 181, 246, 0.2);
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            
+            &:hover {
+              background: rgba(100, 181, 246, 0.15);
+              border-color: rgba(100, 181, 246, 0.4);
+            }
+            
+            .button-name {
+              display: flex;
+              align-items: center;
+              gap: 12px;
+              color: rgba(255, 255, 255, 0.9);
+              font-weight: 500;
+              
+              mat-icon {
+                color: #64b5f6;
+              }
+            }
+            
+            .button-reorder-actions {
+              display: flex;
+              gap: 4px;
+              
+              button {
+                &[disabled] {
+                  opacity: 0.3;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
   
   @media (max-width: 1200px) {
     flex-direction: column;
@@ -144,18 +393,20 @@
     .alerts-column {
       max-width: 100%;
     }
+
+    &.edit-mode {
+      padding-top: 200px; // More space on mobile
+    }
   }
   
   .scanner-column {
     flex: 0 0 auto;
     min-width: 0;
-    max-width: 640px;
   }
   
   .alerts-column {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-width: 300px;
-    max-width: 500px;
   }
 }
 
@@ -722,6 +973,71 @@
 // Control Panel - Grid Layout like Flutter
 .rdio-control {
   padding: 5px;
+  
+  // Edit mode styles
+  &.edit-mode {
+    border: 3px solid #64b5f6;
+    background: rgba(100, 181, 246, 0.12);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 0 20px rgba(100, 181, 246, 0.3);
+  }
+
+  .edit-mode-instructions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d5f8d 100%);
+    border-radius: 8px;
+    color: #fff;
+    font-weight: 600;
+    font-size: 14px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+    mat-icon {
+      color: #64b5f6;
+      font-size: 24px;
+      width: 24px;
+      height: 24px;
+    }
+  }
+
+  .edit-mode-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: rgba(255, 193, 7, 0.15);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+
+    .edit-mode-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: rgba(255, 255, 255, 0.9);
+      font-weight: 500;
+
+      mat-icon {
+        color: #ffc107;
+      }
+    }
+
+    .edit-mode-actions {
+      display: flex;
+      gap: 8px;
+
+      button {
+        mat-icon {
+          margin-right: 4px;
+        }
+      }
+    }
+  }
 
   .control-grid {
     display: grid;
@@ -744,6 +1060,28 @@
       transition: all 0.2s ease;
       min-height: 60px;
       gap: 3px;
+      position: relative;
+
+      // Edit mode hidden state
+      &.edit-hidden {
+        opacity: 0.4;
+        background: rgba(100, 100, 100, 0.15);
+        border: 2px dashed rgba(255, 255, 255, 0.3);
+
+        &:hover {
+          opacity: 0.6;
+          background: rgba(100, 100, 100, 0.25);
+          border-color: rgba(255, 255, 255, 0.5);
+        }
+      }
+
+      // Edit icon styling
+      .edit-icon {
+        color: #64b5f6 !important;
+        font-size: 32px;
+        width: 32px;
+        height: 32px;
+      }
 
       &:hover {
         background: rgba(255, 255, 255, 0.05);
@@ -964,6 +1302,38 @@
   }
 }
 
+// Customize Layout Button (floating)
+.customize-button {
+  position: absolute;
+  bottom: 140px;
+  right: 24px;
+  z-index: 100;
+
+  button {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    
+    &:hover {
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    }
+  }
+}
+
+// Show Alerts Button (floating)
+.show-alerts-button {
+  position: absolute;
+  bottom: 80px;
+  right: 24px;
+  z-index: 100;
+
+  button {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    
+    &:hover {
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    }
+  }
+}
+
 // Recent Alerts Panel
 .recent-alerts-panel {
   background: var(--scaffold-background, #1e1e1e);
@@ -988,6 +1358,11 @@
       font-size: 18px;
       font-weight: 600;
       color: rgba(255, 255, 255, 0.9);
+    }
+
+    .alerts-actions {
+      display: flex;
+      gap: 4px;
     }
 
     button {
@@ -1143,5 +1518,22 @@
         }
       }
     }
+  }
+}
+
+// Instruction text in edit mode
+.instruction-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+  padding: 12px 16px;
+  background: rgba(100, 181, 246, 0.1);
+  border-radius: 6px;
+  font-size: 14px;
+  
+  mat-icon {
+    color: #64b5f6;
   }
 }

@@ -239,6 +239,7 @@ func (client *Client) SendConfig(groups *Groups, options *Options, systems *Syst
 			"stripePublishableKey":    options.StripePublishableKey,
 			"pricingOptions":          pricingOptions,
 			"baseUrl":                 options.BaseUrl,
+			"transcriptionEnabled":    options.TranscriptionConfig.Enabled,
 		},
 		"playbackGoesLive":   options.PlaybackGoesLive,
 		"showListenersCount": options.ShowListenersCount,

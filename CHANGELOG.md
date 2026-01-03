@@ -1,6 +1,116 @@
 # Change log
 
+## Version 7.0 Beta 4 - January 2, 2025
+
+### Docker Support (UNTESTED)
+- **Complete Docker deployment solution added**
+  - Multi-stage Dockerfile for optimized builds (Node.js → Go → Alpine)
+  - docker-compose.yml with PostgreSQL 16 orchestration
+  - Automatic FFmpeg installation for audio processing
+  - Non-root user (UID 1000) for security
+  - Health checks and automatic restarts
+  - Volume persistence for data (postgres, audio files, logs)
+  - Environment variable configuration via .env file
+  - Support for all ThinLine Radio features (transcription, email, SSL, billing)
+
+- **Docker Compose variants**
+  - docker-compose.prod.yml: Production-optimized configuration
+  - docker-compose.dev.yml: Development configuration with Adminer
+
+- **Helper scripts**
+  - docker-deploy.sh: Interactive deployment wizard
+  - docker-test.sh: Automated test suite (15 tests)
+
+- **Comprehensive documentation**
+  - DOCKER.md: Quick start guide (5-minute setup)
+  - docker/README.md: Complete deployment guide (~50 KB)
+  - docker/TROUBLESHOOTING.md: Troubleshooting guide with 10+ scenarios
+  - docker/config/README.md: SSL, transcription, and secrets configuration
+  - docker/init-db/README.md: Database initialization guide
+  - DOCKER-IMPLEMENTATION.md: Technical implementation details
+  - DOCKER-CHECKLIST.md: Step-by-step deployment checklist
+
+- **CI/CD integration**
+  - GitHub Actions workflow for automated Docker Hub publishing
+  - Multi-platform builds (linux/amd64, linux/arm64)
+  - Security scanning with Trivy
+
+- **Database initialization**
+  - Example custom indexes for performance optimization
+  - Support for custom SQL scripts on first startup
+
+- **Updated files**
+  - .gitignore: Added Docker-specific exclusions
+  - README.md: Added Docker quick start section
+
+⚠️ **IMPORTANT NOTE**: This Docker implementation is **UNTESTED** and provided as-is. While comprehensive documentation and automated tests are included, the solution has not been tested in a live environment. Users should test thoroughly in development before deploying to production.
+
 ## Version 7.0 Beta 3 - January 2, 2025
+
+### Scanner Customization Mode
+- **New full-screen customization interface for scanner layout**
+  - Accessible via floating "Customize Layout" button (dashboard_customize icon)
+  - Modern blue color scheme (#64b5f6) with high contrast for better visibility
+  - Full-screen modal overlay with organized control sections
+  - All preferences automatically saved to localStorage
+
+- **Layout mode toggle**
+  - **Horizontal (Side-by-Side)**: Scanner and alerts panel displayed side-by-side
+  - **Vertical (Stacked)**: Scanner on top, alerts panel below, centered on screen
+  - Perfect for different screen sizes and user preferences
+
+- **Panel positioning controls**
+  - Swap panels button to change which side scanner/alerts appear on (horizontal mode)
+  - Improved button styling with accent color for better visibility
+
+- **Dynamic panel width adjustment**
+  - Scanner width: Adjustable from 400px to 800px with live slider
+  - Alerts width: Adjustable from 300px to 600px with live slider
+  - Fixed alerts width slider to actually apply changes
+  - In vertical mode, both panels use full width (up to 800px max)
+
+- **Button visibility customization**
+  - Click any control button in edit mode to show/hide it
+  - Hidden buttons display with dashed border and "eye-off" icon
+  - Visible buttons show with solid styling and "eye" icon
+  - All 12 control buttons customizable: Live Feed, Pause, Replay Last, Skip Next, Avoid, Favorite, Hold System, Hold Talkgroup, Playback, Alerts, Settings, Channel Select
+
+- **Live preview mode**
+  - Preview button in edit header to see changes in real-time
+  - Dark overlay completely disappears in preview mode
+  - Control panel hides, showing only the top bar with controls
+  - Smooth transitions between edit and preview states
+
+- **Persistent preferences**
+  - Layout mode (horizontal/vertical)
+  - Panel positions and widths
+  - Button visibility states
+  - All saved to localStorage for consistent experience
+  - Reset button to restore default settings
+
+### Alerts Panel Enhancements
+- **Conditional alerts display based on transcription settings**
+  - Alerts button and Recent Alerts panel automatically hidden when transcription is disabled in admin settings
+  - Server now sends `transcriptionEnabled` flag via WebSocket configuration
+  - Scanner layout automatically centers when alerts panel is hidden
+
+- **User-controlled alerts panel visibility**
+  - New hide/show button in alerts panel header (eyeball icon instead of X)
+  - Floating "Show Alerts" button appears when panel is hidden
+  - Preference saved to localStorage
+
+### User Registration & Authentication
+- **Unified invite/registration code experience**
+  - Merged separate "Invitation Code" and "Registration Code" fields into single "Invite Code" field
+  - Backend intelligently determines code type (invitation vs registration)
+  - Maintains backward compatibility with existing invitation and registration systems
+  - Clearer user experience with single field instead of confusing dual fields
+  - Icon changed from key to mail icon for better representation
+
+- **Fixed sign-up page scroll issue**
+  - Changed auth screen alignment from center to flex-start
+  - Added padding-top to allow scrolling when content exceeds viewport
+  - Improves accessibility on smaller screens
 
 ### Branding & UI Enhancements
 - **Browser tab titles now show branding**
@@ -28,10 +138,6 @@
   - Fixed same issue in talkgroup delay configuration section
   - Corrected property names (`systemRef` instead of `system.id`, `talkgroupRef` instead of `talkgroup.id`)
 
-- **Improved data format handling**
-  - Frontend now always uses talkgroup-enabled format for better flexibility
-  - Automatically converts legacy format (simple system ID arrays) to new format
-  - Backward compatible with existing group configurations
 
 ### Downstreams - Name Field
 - **Added optional name field to downstreams**

@@ -31,6 +31,18 @@ Thumbs.db
 *.log
 *.tmp
 
+# Docker
+.env
+docker/data/
+docker/logs/
+docker/config/*.pem
+docker/config/*.key
+docker/config/*.json
+docker/config/*.ini
+!docker/config/README.md
+!docker/init-db/README.md
+!.github/
+
 # Separate repositories (Git managed independently)
 relay-server/
 ThinlineRadio-Mobile/

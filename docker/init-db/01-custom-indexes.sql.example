@@ -1,0 +1,54 @@
+# Example Custom Indexes for Performance Optimization
+# Place this file in docker/init-db/ to automatically create indexes on first startup
+
+\c thinline_radio
+
+-- These indexes improve query performance for common operations
+-- Only run on first initialization of PostgreSQL container
+
+-- Index for faster call lookups by timestamp (most common query)
+CREATE INDEX IF NOT EXISTS idx_calls_timestamp 
+ON calls(timestamp DESC)
+WHERE deleted_at IS NULL;
+
+-- Index for faster talkgroup searches
+CREATE INDEX IF NOT EXISTS idx_calls_talkgroup_id 
+ON calls(talkgroup_id)
+WHERE deleted_at IS NULL;
+
+-- Index for faster system searches
+CREATE INDEX IF NOT EXISTS idx_calls_system_id 
+ON calls(system_id)
+WHERE deleted_at IS NULL;
+
+-- Composite index for common filtered queries
+CREATE INDEX IF NOT EXISTS idx_calls_system_talkgroup_timestamp 
+ON calls(system_id, talkgroup_id, timestamp DESC)
+WHERE deleted_at IS NULL;
+
+-- Index for user-specific queries
+CREATE INDEX IF NOT EXISTS idx_calls_user_id 
+ON calls(user_id)
+WHERE deleted_at IS NULL;
+
+-- Index for frequency searches
+CREATE INDEX IF NOT EXISTS idx_calls_frequency 
+ON calls(frequency)
+WHERE deleted_at IS NULL;
+
+-- Index for transcription searches (if using transcription)
+CREATE INDEX IF NOT EXISTS idx_calls_transcription 
+ON calls USING gin(to_tsvector('english', transcription))
+WHERE transcription IS NOT NULL;
+
+-- Index for alert searches
+CREATE INDEX IF NOT EXISTS idx_calls_has_alert 
+ON calls(has_alert, timestamp DESC)
+WHERE has_alert = true;
+
+-- Print completion message
+DO $$
+BEGIN
+  RAISE NOTICE 'Custom indexes created successfully';
+END $$;
+

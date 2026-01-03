@@ -1,0 +1,83 @@
+# Docker Compose Override for Development
+# This file extends docker-compose.yml with development-specific settings
+# 
+# Usage:
+#   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Or create a symbolic link:
+#   ln -s docker-compose.dev.yml docker-compose.override.yml
+#   docker-compose up
+
+version: '3.8'
+
+services:
+  postgres:
+    # Expose PostgreSQL port for development tools
+    ports:
+      - "5432:5432"
+    
+    # Lower resource limits for development
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  thinline-radio:
+    # Development-specific settings
+    
+    # Mount source code for live development (optional)
+    # Uncomment if you want to develop with hot reload
+    # volumes:
+    #   - ./server:/app/server:ro
+    #   - ./client:/app/client:ro
+    
+    # Development environment variables
+    environment:
+      # Enable debug logging
+      DEBUG: "true"
+      ENABLE_DEBUG_LOG: "true"
+      
+      # Development mode
+      ENVIRONMENT: development
+      
+      # Disable rate limiting
+      RATE_LIMIT_ENABLED: "false"
+    
+    # Lower resource limits for development
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Simple restart policy for development
+    restart: "no"
+    
+    # Verbose logging for development
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # Optional: Add development tools
+  adminer:
+    image: adminer:latest
+    container_name: thinline-adminer
+    restart: "no"
+    ports:
+      - "8080:8080"
+    networks:
+      - thinline_network
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+

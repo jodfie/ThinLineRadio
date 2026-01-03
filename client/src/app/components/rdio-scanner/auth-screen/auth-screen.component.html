@@ -332,39 +332,32 @@
           </mat-error>
         </mat-form-field>
 
-        <!-- Invitation Code field (visible when invitation is detected) -->
-        <mat-form-field appearance="outline" class="full-width" *ngIf="registerForm.get('invitationCode')?.value">
-          <mat-label>Invitation Code</mat-label>
-          <input matInput type="text" formControlName="invitationCode" [readonly]="true">
+        <!-- Invite Code field (unified for invitation and registration codes) -->
+        <mat-form-field appearance="outline" class="full-width" *ngIf="registerForm.get('accessCode')?.value">
+          <mat-label>Invite Code</mat-label>
+          <input matInput type="text" formControlName="accessCode" [readonly]="true">
           <mat-icon matPrefix style="color: #4CAF50;">mail</mat-icon>
-          <mat-hint style="color: #4CAF50;">Using invitation code from email link</mat-hint>
+          <mat-hint style="color: #4CAF50;">Using invite code from invitation link</mat-hint>
         </mat-form-field>
 
-        <!-- OR: Manual invitation code entry (when no invitation detected) -->
-        <mat-form-field appearance="outline" class="full-width" *ngIf="!registerForm.get('invitationCode')?.value">
-          <mat-label>Invitation Code (Optional)</mat-label>
-          <input matInput type="text" formControlName="invitationCode" placeholder="Enter invitation code if you have one">
-          <mat-hint>If you received an invitation code, enter it here.</mat-hint>
-        </mat-form-field>
-
-        <!-- Registration Code (separate from invitation) -->
-        <mat-form-field appearance="outline" class="full-width" *ngIf="!registerForm.get('invitationCode')?.value">
-          <mat-label>Registration Code (Optional)</mat-label>
-          <input matInput type="text" formControlName="registrationCode" placeholder="Enter registration code if you have one">
-          <mat-hint>Public registration codes provided by the administrator.</mat-hint>
+        <!-- OR: Manual invite code entry (when no code detected) -->
+        <mat-form-field appearance="outline" class="full-width" *ngIf="!registerForm.get('accessCode')?.value">
+          <mat-label>Invite Code (Optional)</mat-label>
+          <input matInput type="text" formControlName="accessCode" placeholder="Enter invite code if you have one">
+          <mat-hint>If you received an invite code, enter it here.</mat-hint>
         </mat-form-field>
 
         <div class="error-message" *ngIf="error">
           {{ error }}
         </div>
 
-        <!-- Cloudflare Turnstile Widget (not shown for invitation-based registrations) -->
-        <div *ngIf="turnstileEnabled && turnstileSiteKey && !registerForm.get('invitationCode')?.value" style="margin: 20px 0; display: flex; justify-content: center;">
+        <!-- Cloudflare Turnstile Widget (hidden when using invitation code) -->
+        <div *ngIf="turnstileEnabled && turnstileSiteKey && shouldShowTurnstile()" style="margin: 20px 0; display: flex; justify-content: center;">
           <div id="turnstile-widget-auth"></div>
         </div>
         
         <!-- Info message when Turnstile is skipped for invitations -->
-        <div *ngIf="turnstileEnabled && registerForm.get('invitationCode')?.value" style="margin: 20px 0; padding: 12px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 4px;">
+        <div *ngIf="turnstileEnabled && !shouldShowTurnstile()" style="margin: 20px 0; padding: 12px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 4px;">
           <div style="display: flex; align-items: center; gap: 8px; color: #2e7d32;">
             <mat-icon style="font-size: 20px; width: 20px; height: 20px;">shield</mat-icon>
             <span style="font-size: 14px;">CAPTCHA verification skipped - using validated invitation code</span>

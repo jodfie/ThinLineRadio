@@ -140,8 +140,7 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
       email: ['', [Validators.required, Validators.email]],
       password: ['', [Validators.required, Validators.minLength(8), this.passwordStrengthValidator]],
       confirmPassword: ['', [Validators.required]],
-      registrationCode: [''],
-      invitationCode: ['']
+      accessCode: ['']  // Unified field for invitation and registration codes
     }, { validators: this.passwordMatchValidator });
 
     this.groupAdminForm = this.fb.group({
@@ -314,9 +313,9 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
             this.registerForm.patchValue({ email: response.email });
           }
           
-          // Set invitation code
-          this.registerForm.patchValue({ invitationCode: inviteCode });
-          console.log('Invitation code set in form:', this.registerForm.get('invitationCode')?.value);
+          // Set invitation code as accessCode
+          this.registerForm.patchValue({ accessCode: inviteCode });
+          console.log('Invitation code set in form as accessCode:', this.registerForm.get('accessCode')?.value);
           
           // Show success message
           this.snackBar.open(`You've been invited to join ${response.groupName}! Please complete your registration.`, 'Close', {
@@ -675,23 +674,19 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
         zipCode: this.registerForm.get('zipCode')?.value
       };
       
-      // Include registrationCode if provided
-      const registrationCode = this.registerForm.get('registrationCode')?.value;
-      if (registrationCode && registrationCode.trim() !== '') {
-        formData.registrationCode = registrationCode;
-      }
-      
-      // Include invitationCode if provided
-      const invitationCode = this.registerForm.get('invitationCode')?.value;
-      if (invitationCode && invitationCode.trim() !== '') {
-        formData.invitationCode = invitationCode;
+      // Include accessCode if provided (unified field for invitation and registration codes)
+      const accessCode = this.registerForm.get('accessCode')?.value;
+      const hasAccessCode = accessCode && accessCode.trim() !== '';
+      if (hasAccessCode) {
+        formData.accessCode = accessCode;
       }
       
       console.log('Registration form data being sent:', formData);
       
-      // Check Turnstile if enabled (but skip if using invitation code - it's already validated via email)
-      const hasInvitationCode = invitationCode && invitationCode.trim() !== '';
-      if (this.turnstileEnabled && !this.turnstileToken && !hasInvitationCode) {
+      // Check Turnstile if enabled (but skip if using access code that looks like invitation - it's already validated via email)
+      // Invitation codes are 16 chars and alphanumeric, registration codes are 12 chars with special chars
+      const isLikelyInvitation = hasAccessCode && accessCode.length === 16 && /^[A-Z0-9]+$/.test(accessCode);
+      if (this.turnstileEnabled && !this.turnstileToken && !isLikelyInvitation) {
         this.error = 'Please complete the CAPTCHA verification';
         this.loading = false;
         return;
@@ -759,6 +754,16 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
 
   hasSupportEmail(): boolean {
     return !!(this.config?.email);
+  }
+
+  shouldShowTurnstile(): boolean {
+    // Don't show Turnstile if user has an access code that looks like an invitation
+    // Invitation codes are 16 chars and alphanumeric only
+    const accessCode = this.registerForm.get('accessCode')?.value;
+    if (accessCode && accessCode.length === 16 && /^[A-Z0-9]+$/.test(accessCode)) {
+      return false; // Likely an invitation code, skip Turnstile
+    }
+    return true; // Show Turnstile for registration codes or no code
   }
 
   handleSubscriptionRequired(): void {

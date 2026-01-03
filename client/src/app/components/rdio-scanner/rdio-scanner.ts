@@ -217,6 +217,7 @@ export interface RdioScannerConfig {
         baseUrl?: string;
         turnstileEnabled?: boolean;
         turnstileSiteKey?: string;
+        transcriptionEnabled?: boolean;
     };
     playbackGoesLive: boolean;
     showListenersCount: boolean;

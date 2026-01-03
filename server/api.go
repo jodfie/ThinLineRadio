@@ -402,14 +402,34 @@ func (api *Api) UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		FirstName        string `json:"firstName"`
 		LastName         string `json:"lastName"`
 		ZipCode          string `json:"zipCode"`
-		RegistrationCode string `json:"registrationCode"`
-		InvitationCode   string `json:"invitationCode"`
+		RegistrationCode string `json:"registrationCode"` // Deprecated: use accessCode
+		InvitationCode   string `json:"invitationCode"`   // Deprecated: use accessCode
+		AccessCode       string `json:"accessCode"`       // Unified field for both invitation and registration codes
 		TurnstileToken   string `json:"turnstile_token"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		api.exitWithError(w, http.StatusBadRequest, "Invalid JSON")
 		return
+	}
+
+	// Backward compatibility: if accessCode is provided, it takes precedence
+	// Otherwise, use the old separate fields
+	if request.AccessCode != "" {
+		// Try to determine if it's an invitation code or registration code
+		// First check if it's an invitation code (they take precedence)
+		var invitationExists bool
+		err := api.Controller.Database.Sql.QueryRow(
+			`SELECT EXISTS(SELECT 1 FROM "userInvitations" WHERE "code" = $1)`,
+			request.AccessCode,
+		).Scan(&invitationExists)
+		
+		if err == nil && invitationExists {
+			request.InvitationCode = request.AccessCode
+		} else {
+			// Otherwise, treat it as a registration code
+			request.RegistrationCode = request.AccessCode
+		}
 	}
 
 	// Validate input

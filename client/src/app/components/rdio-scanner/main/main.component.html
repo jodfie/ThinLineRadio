@@ -28,9 +28,107 @@
         </button>
     </div>
     
-    <div class="scanner-layout" [class.disabled]="!subscriptionActive && subscriptionChecked">
-        <!-- Left Column: Scanner -->
-        <div class="scanner-column">
+    <div class="scanner-layout" 
+         [class.disabled]="!subscriptionActive && subscriptionChecked" 
+         [class.edit-mode]="editMode"
+         [class.preview-active]="previewMode"
+         [class.vertical-layout]="layoutPreferences.layoutMode === 'vertical'">
+        
+        <!-- Edit Mode Overlay (Top Controls) -->
+        <div class="edit-mode-overlay" *ngIf="editMode" [class.preview-mode]="previewMode">
+            <div class="edit-mode-top-bar">
+                <div class="edit-mode-title">
+                    <mat-icon>dashboard_customize</mat-icon>
+                    <span>Customize Layout</span>
+                </div>
+                <div class="edit-mode-actions">
+                    <button mat-stroked-button 
+                            [color]="previewMode ? 'primary' : ''"
+                            (click)="togglePreviewMode()"
+                            title="Hold to preview your changes">
+                        <mat-icon>{{ previewMode ? 'visibility' : 'visibility_off' }}</mat-icon>
+                        {{ previewMode ? 'Previewing' : 'Preview' }}
+                    </button>
+                    <button mat-stroked-button (click)="resetButtonPreferences()">
+                        <mat-icon>restart_alt</mat-icon>
+                        Reset
+                    </button>
+                    <button mat-raised-button color="primary" (click)="toggleEditMode()">
+                        <mat-icon>check</mat-icon>
+                        Done
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Layout Controls -->
+            <div class="layout-controls-panel">
+                <div class="layout-section">
+                    <h4><mat-icon>view_week</mat-icon> Layout Mode</h4>
+                    <div class="layout-buttons">
+                        <button mat-raised-button 
+                                [color]="layoutPreferences.layoutMode === 'horizontal' ? 'primary' : ''"
+                                (click)="layoutPreferences.layoutMode = 'horizontal'">
+                            <mat-icon>view_column</mat-icon>
+                            Side by Side
+                        </button>
+                        <button mat-raised-button 
+                                [color]="layoutPreferences.layoutMode === 'vertical' ? 'primary' : ''"
+                                (click)="layoutPreferences.layoutMode = 'vertical'">
+                            <mat-icon>view_stream</mat-icon>
+                            Stacked
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="layout-section" *ngIf="isTranscriptionEnabled && layoutPreferences.layoutMode === 'horizontal'">
+                    <h4><mat-icon>swap_horiz</mat-icon> Panel Position</h4>
+                    <button mat-raised-button color="accent" (click)="swapPanels()">
+                        <mat-icon>swap_horiz</mat-icon>
+                        Swap Panels
+                    </button>
+                </div>
+                
+                <div class="layout-section">
+                    <h4><mat-icon>straighten</mat-icon> Panel Widths</h4>
+                    <div class="slider-control">
+                        <label>Scanner Width:</label>
+                        <mat-slider 
+                            [min]="400" 
+                            [max]="800" 
+                            [step]="20"
+                            [discrete]="true">
+                            <input matSliderThumb [(ngModel)]="layoutPreferences.scannerWidth">
+                        </mat-slider>
+                        <span class="width-value">{{layoutPreferences.scannerWidth}}px</span>
+                    </div>
+                    <div class="slider-control" *ngIf="isTranscriptionEnabled">
+                        <label>Alerts Width:</label>
+                        <mat-slider 
+                            [min]="300" 
+                            [max]="600" 
+                            [step]="20"
+                            [discrete]="true">
+                            <input matSliderThumb [(ngModel)]="layoutPreferences.alertsWidth">
+                        </mat-slider>
+                        <span class="width-value">{{layoutPreferences.alertsWidth}}px</span>
+                    </div>
+                </div>
+                
+                <div class="layout-section">
+                    <h4><mat-icon>visibility</mat-icon> Button Visibility</h4>
+                    <p class="instruction-text">
+                        <mat-icon>touch_app</mat-icon>
+                        Click the control buttons below to show or hide them.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scanner Column -->
+        <div class="scanner-column" 
+             [style.max-width]="getScannerMaxWidth()"
+             [style.width]="layoutPreferences.layoutMode === 'vertical' ? '100%' : 'auto'"
+             [style.order]="getScannerOrder()">
 <div class="rdio-status">
     <div class="left-led-container">
         <div class="led" [ngClass]="getLeftLedStyle()"></div>
@@ -180,80 +278,28 @@
 </div>
 
 <!-- Control Panel - Grid Layout like Flutter -->
-<div class="rdio-control">
-    <div class="control-grid">
-        <!-- Row 1: Live Feed, Pause, Replay Last, Skip Next -->
-        <button class="rdio-button live-feed" 
-                [ngClass]="{ active: livefeedOnline, inactive: livefeedOffline && !playbackMode }"
-                (click)="livefeed()">
-            <mat-icon>{{ livefeedOnline ? 'radio' : 'radio_button_unchecked' }}</mat-icon>
-            <span>LIVE<br>FEED</span>
-        </button>
+<div class="rdio-control" [ngClass]="{ 'edit-mode': editMode }">
+    <!-- Edit Mode Instructions -->
+    <div class="edit-mode-instructions" *ngIf="editMode">
+        <mat-icon>touch_app</mat-icon>
+        <span>Click buttons to show/hide them</span>
+    </div>
 
-        <button class="rdio-button pause" 
-                [ngClass]="{ active: livefeedPaused }"
-                (click)="pause()">
-            <mat-icon>{{ livefeedPaused ? 'play_arrow' : 'pause' }}</mat-icon>
-            <span>{{ livefeedPaused ? 'RESUME' : 'PAUSE' }}</span>
-        </button>
-
-        <button class="rdio-button replay" (click)="replay()">
-            <mat-icon>replay</mat-icon>
-            <span>REPLAY<br>LAST</span>
-        </button>
-
-        <button class="rdio-button skip-next" (click)="skip()">
-            <mat-icon>skip_next</mat-icon>
-            <span>SKIP<br>NEXT</span>
-        </button>
-
-        <!-- Row 2: Avoid Talkgroup, Add Favorite, Hold System, Hold Talkgroup -->
-        <button class="rdio-button avoid" (click)="avoid()">
-            <mat-icon>block</mat-icon>
-            <span>AVOID<br>TALKGROUP</span>
-        </button>
-
-        <button class="rdio-button favorite" 
-                [ngClass]="{ active: isFavorite }"
-                (click)="toggleFavorite()">
-            <mat-icon>{{ isFavorite ? 'star' : 'star_border' }}</mat-icon>
-            <span>{{ isFavorite ? 'REMOVE' : 'ADD' }}<br>FAVORITE</span>
-        </button>
-
-        <button class="rdio-button hold-sys" 
-                [ngClass]="{ active: holdSys }"
-                (click)="holdSystem()">
-            <mat-icon>keyboard_arrow_down</mat-icon>
-            <span>HOLD<br>SYSTEM</span>
-        </button>
-
-        <button class="rdio-button hold-tg" 
-                [ngClass]="{ active: holdTg }"
-                (click)="holdTalkgroup()">
-            <mat-icon>keyboard_double_arrow_down</mat-icon>
-            <span>HOLD<br>TALKGROUP</span>
-        </button>
-
-        <!-- Row 3: Playback, Alerts, Settings, Channel Select -->
-        <button class="rdio-button playback" (click)="showSearchPanel()">
-            <mat-icon>play_circle</mat-icon>
-            <span>PLAYBACK</span>
-        </button>
-
-        <button class="rdio-button alerts" (click)="showAlertsPanel()">
-            <mat-icon>notifications</mat-icon>
-            <span>ALERTS</span>
-        </button>
-
-        <button class="rdio-button settings" (click)="showSettingsPanel()">
-            <mat-icon>settings</mat-icon>
-            <span>SETTINGS</span>
-        </button>
-
-        <button class="rdio-button channel-select" (click)="showSelectPanel()">
-            <mat-icon>tune</mat-icon>
-            <span>CHANNEL<br>SELECT</span>
-        </button>
+    <div class="control-grid" [class.edit-mode-grid]="editMode">
+        
+        <ng-container *ngFor="let buttonKey of buttonOrder; let i = index">
+            <button *ngIf="shouldShowButton(buttonKey)"
+                    class="rdio-button"
+                    [ngClass]="getButtonClasses(buttonKey)"
+                    [attr.data-button-key]="buttonKey"
+                    (click)="onButtonClick(buttonKey)">
+                
+                <!-- Button content -->
+                <mat-icon *ngIf="!editMode">{{ getButtonIcon(buttonKey) }}</mat-icon>
+                <mat-icon *ngIf="editMode" class="edit-icon">{{ getButtonVisibility(buttonKey) ? 'visibility' : 'visibility_off' }}</mat-icon>
+                <span [innerHTML]="getButtonText(buttonKey)"></span>
+            </button>
+        </ng-container>
     </div>
     
     <!-- Volume Control -->
@@ -277,16 +323,40 @@
         <mat-icon>help_center</mat-icon>
     </button>
 </div>
+
+<!-- Customize Layout Button -->
+<div class="customize-button" *ngIf="!editMode">
+    <button mat-mini-fab color="accent" (click)="toggleEditMode()" title="Customize layout">
+        <mat-icon>dashboard_customize</mat-icon>
+    </button>
+</div>
+
+<!-- Show Alerts Button (floating) - only when transcription is enabled and panel is hidden -->
+<div class="show-alerts-button" *ngIf="isTranscriptionEnabled && !showRecentAlertsPanel">
+    <button mat-mini-fab color="primary" (click)="toggleRecentAlertsPanel()" title="Show alerts panel">
+        <mat-icon>notifications</mat-icon>
+    </button>
+</div>
         </div>
         
-        <!-- Right Column: Recent Alerts -->
-        <div class="alerts-column">
+        <!-- Right Column: Recent Alerts (only show if transcription is enabled) -->
+        <div class="alerts-column" 
+             *ngIf="isTranscriptionEnabled && showRecentAlertsPanel"
+             [style.width]="getAlertsWidth()"
+             [style.max-width]="getAlertsMaxWidth()"
+             [style.min-width]="layoutPreferences.layoutMode === 'vertical' ? '100%' : '300px'"
+             [style.order]="getAlertsOrder()">
             <div class="recent-alerts-panel">
                 <div class="alerts-header">
                     <h3>Recent Alerts</h3>
-                    <button mat-icon-button (click)="loadRecentAlerts()" [disabled]="loadingAlerts" title="Refresh">
-                        <mat-icon>refresh</mat-icon>
-                    </button>
+                    <div class="alerts-actions">
+                        <button mat-icon-button (click)="loadRecentAlerts()" [disabled]="loadingAlerts" title="Refresh">
+                            <mat-icon>refresh</mat-icon>
+                        </button>
+                        <button mat-icon-button (click)="toggleRecentAlertsPanel()" title="Hide alerts panel">
+                            <mat-icon>visibility_off</mat-icon>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="alerts-content">

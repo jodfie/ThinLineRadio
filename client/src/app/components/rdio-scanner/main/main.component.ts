@@ -41,6 +41,21 @@ import { RdioScannerAlert } from '../rdio-scanner';
 import { SettingsService } from '../settings/settings.service';
 
 
+interface ButtonVisibility {
+    liveFeed: boolean;
+    pause: boolean;
+    replayLast: boolean;
+    skipNext: boolean;
+    avoid: boolean;
+    favorite: boolean;
+    holdSystem: boolean;
+    holdTalkgroup: boolean;
+    playback: boolean;
+    alerts: boolean;
+    settings: boolean;
+    channelSelect: boolean;
+}
+
 @Component({
     selector: 'rdio-scanner-main',
     styleUrls: [
@@ -137,6 +152,11 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
 
     get showListenersCount(): boolean {
         return this.config?.showListenersCount || false;
+    }
+
+    get isTranscriptionEnabled(): boolean {
+        // Check if transcriptions are enabled in the config
+        return this.config?.options?.transcriptionEnabled || false;
     }
 
     get showScanningAnimation(): boolean {
@@ -251,7 +271,41 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
     // Recent alerts
     recentAlerts: RdioScannerAlert[] = [];
     loadingAlerts = false;
+    showRecentAlertsPanel = true; // User preference to show/hide the alerts panel
     private alertsSubscription: Subscription | undefined;
+
+    // Customization / Edit mode
+    editMode = false;
+    previewMode = false; // For previewing layout changes
+    buttonVisibility: ButtonVisibility = {
+        liveFeed: true,
+        pause: true,
+        replayLast: true,
+        skipNext: true,
+        avoid: true,
+        favorite: true,
+        holdSystem: true,
+        holdTalkgroup: true,
+        playback: true,
+        alerts: true,
+        settings: true,
+        channelSelect: true
+    };
+    
+    // Layout preferences
+    layoutPreferences = {
+        layoutMode: 'horizontal' as 'horizontal' | 'vertical', // horizontal = side-by-side, vertical = stacked
+        scannerOnLeft: true, // true = scanner left, alerts right (horizontal mode only)
+        scannerWidth: 640, // pixels
+        alertsWidth: 400, // pixels
+    };
+    
+    // Button order (for drag and drop reordering)
+    buttonOrder = [
+        'liveFeed', 'pause', 'replayLast', 'skipNext',
+        'avoid', 'favorite', 'holdSystem', 'holdTalkgroup',
+        'playback', 'alerts', 'settings', 'channelSelect'
+    ];
 
     // Subscription management
     showCheckout = false;
@@ -632,6 +686,42 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
 
     ngOnInit(): void {
         this.syncClock();
+        
+        // Load user preference for showing alerts panel
+        const savedPref = localStorage.getItem('showRecentAlertsPanel');
+        if (savedPref !== null) {
+            this.showRecentAlertsPanel = savedPref === 'true';
+        }
+
+        // Load button visibility preferences
+        const savedVisibility = localStorage.getItem('buttonVisibility');
+        if (savedVisibility) {
+            try {
+                this.buttonVisibility = { ...this.buttonVisibility, ...JSON.parse(savedVisibility) };
+            } catch (e) {
+                console.error('Failed to parse button visibility preferences:', e);
+            }
+        }
+
+        // Load layout preferences
+        const savedLayout = localStorage.getItem('layoutPreferences');
+        if (savedLayout) {
+            try {
+                this.layoutPreferences = { ...this.layoutPreferences, ...JSON.parse(savedLayout) };
+            } catch (e) {
+                console.error('Failed to parse layout preferences:', e);
+            }
+        }
+
+        // Load button order
+        const savedOrder = localStorage.getItem('buttonOrder');
+        if (savedOrder) {
+            try {
+                this.buttonOrder = JSON.parse(savedOrder);
+            } catch (e) {
+                console.error('Failed to parse button order:', e);
+            }
+        }
         
         // Initial load - fetch new alerts incrementally
         this.loadRecentAlerts();
@@ -1470,6 +1560,238 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
     formatTimestamp(timestamp: number): string {
         const date = new Date(timestamp);
         return date.toLocaleString();
+    }
+
+    toggleRecentAlertsPanel(): void {
+        this.showRecentAlertsPanel = !this.showRecentAlertsPanel;
+        // Save preference to localStorage
+        localStorage.setItem('showRecentAlertsPanel', this.showRecentAlertsPanel.toString());
+    }
+
+    toggleEditMode(): void {
+        this.editMode = !this.editMode;
+        if (!this.editMode) {
+            // Save preferences when exiting edit mode
+            this.saveButtonPreferences();
+        }
+    }
+
+    toggleButtonVisibility(button: keyof typeof this.buttonVisibility): void {
+        this.buttonVisibility[button] = !this.buttonVisibility[button];
+    }
+
+    saveButtonPreferences(): void {
+        localStorage.setItem('buttonVisibility', JSON.stringify(this.buttonVisibility));
+        localStorage.setItem('layoutPreferences', JSON.stringify(this.layoutPreferences));
+        localStorage.setItem('buttonOrder', JSON.stringify(this.buttonOrder));
+        this.matSnackBar.open('Layout preferences saved!', 'Close', {
+            duration: 2000,
+        });
+    }
+
+    resetButtonPreferences(): void {
+        // Reset to all visible
+        Object.keys(this.buttonVisibility).forEach(key => {
+            this.buttonVisibility[key as keyof typeof this.buttonVisibility] = true;
+        });
+        // Reset layout
+        this.layoutPreferences = {
+            layoutMode: 'horizontal',
+            scannerOnLeft: true,
+            scannerWidth: 640,
+            alertsWidth: 400,
+        };
+        localStorage.removeItem('buttonVisibility');
+        localStorage.removeItem('layoutPreferences');
+        localStorage.removeItem('buttonOrder');
+        this.matSnackBar.open('Layout reset to default!', 'Close', {
+            duration: 2000,
+        });
+    }
+
+    swapPanels(): void {
+        if (this.layoutPreferences.layoutMode === 'horizontal') {
+            this.layoutPreferences.scannerOnLeft = !this.layoutPreferences.scannerOnLeft;
+        }
+    }
+
+    getButtonVisibility(buttonKey: string): boolean {
+        return this.buttonVisibility[buttonKey as keyof ButtonVisibility] ?? true;
+    }
+
+    shouldShowButton(buttonKey: string): boolean {
+        // In edit mode, show all buttons always (including alerts even if transcription is off)
+        if (this.editMode) {
+            return true;
+        }
+        
+        // In normal mode, check visibility and special conditions
+        const isVisible = this.getButtonVisibility(buttonKey);
+        
+        // Alerts button only shows if transcription is enabled
+        if (buttonKey === 'alerts') {
+            return isVisible && this.isTranscriptionEnabled;
+        }
+        
+        return isVisible;
+    }
+
+    togglePreviewMode(): void {
+        this.previewMode = !this.previewMode;
+    }
+
+    onButtonClick(buttonKey: string): void {
+        if (this.editMode) {
+            this.toggleButtonVisibility(buttonKey as keyof ButtonVisibility);
+        } else {
+            this.executeButtonAction(buttonKey);
+        }
+    }
+
+    executeButtonAction(buttonKey: string): void {
+        switch (buttonKey) {
+            case 'liveFeed':
+                this.livefeed();
+                break;
+            case 'pause':
+                this.pause();
+                break;
+            case 'replayLast':
+                this.replay();
+                break;
+            case 'skipNext':
+                this.skip();
+                break;
+            case 'avoid':
+                this.avoid();
+                break;
+            case 'favorite':
+                this.toggleFavorite();
+                break;
+            case 'holdSystem':
+                this.holdSystem();
+                break;
+            case 'holdTalkgroup':
+                this.holdTalkgroup();
+                break;
+            case 'playback':
+                this.showSearchPanel();
+                break;
+            case 'alerts':
+                this.showAlertsPanel();
+                break;
+            case 'settings':
+                this.showSettingsPanel();
+                break;
+            case 'channelSelect':
+                this.showSelectPanel();
+                break;
+        }
+    }
+
+    getButtonClasses(buttonKey: string): any {
+        const classes: any = {};
+        
+        // Add specific button class
+        classes[buttonKey] = true;
+        
+        // Add edit-hidden class if in edit mode and button is hidden
+        if (this.editMode && !this.getButtonVisibility(buttonKey)) {
+            classes['edit-hidden'] = true;
+        }
+        
+        // Add active/inactive states
+        switch (buttonKey) {
+            case 'liveFeed':
+                if (this.livefeedOnline) classes['active'] = true;
+                if (this.livefeedOffline && !this.playbackMode) classes['inactive'] = true;
+                break;
+            case 'pause':
+                if (this.livefeedPaused) classes['active'] = true;
+                break;
+            case 'favorite':
+                if (this.isFavorite) classes['active'] = true;
+                break;
+            case 'holdSystem':
+                if (this.holdSys) classes['active'] = true;
+                break;
+            case 'holdTalkgroup':
+                if (this.holdTg) classes['active'] = true;
+                break;
+        }
+        
+        return classes;
+    }
+
+    getButtonIcon(buttonKey: string): string {
+        const icons: any = {
+            liveFeed: this.livefeedOnline ? 'radio' : 'radio_button_unchecked',
+            pause: this.livefeedPaused ? 'play_arrow' : 'pause',
+            replayLast: 'replay',
+            skipNext: 'skip_next',
+            avoid: 'block',
+            favorite: this.isFavorite ? 'star' : 'star_border',
+            holdSystem: 'keyboard_arrow_down',
+            holdTalkgroup: 'keyboard_double_arrow_down',
+            playback: 'play_circle',
+            alerts: 'notifications',
+            settings: 'settings',
+            channelSelect: 'tune'
+        };
+        return icons[buttonKey] || 'help';
+    }
+
+    getButtonText(buttonKey: string): string {
+        const texts: any = {
+            liveFeed: 'LIVE<br>FEED',
+            pause: this.livefeedPaused ? 'RESUME' : 'PAUSE',
+            replayLast: 'REPLAY<br>LAST',
+            skipNext: 'SKIP<br>NEXT',
+            avoid: 'AVOID<br>TALKGROUP',
+            favorite: this.isFavorite ? 'REMOVE<br>FAVORITE' : 'ADD<br>FAVORITE',
+            holdSystem: 'HOLD<br>SYSTEM',
+            holdTalkgroup: 'HOLD<br>TALKGROUP',
+            playback: 'PLAYBACK',
+            alerts: 'ALERTS',
+            settings: 'SETTINGS',
+            channelSelect: 'CHANNEL<br>SELECT'
+        };
+        return texts[buttonKey] || buttonKey;
+    }
+
+    getScannerMaxWidth(): string {
+        if (this.layoutPreferences.layoutMode === 'vertical') {
+            return '100%'; // Full width in vertical mode
+        }
+        return `${this.layoutPreferences.scannerWidth}px`;
+    }
+
+    getAlertsMaxWidth(): string {
+        if (this.layoutPreferences.layoutMode === 'vertical') {
+            return '100%'; // Full width in vertical mode
+        }
+        return `${this.layoutPreferences.alertsWidth}px`;
+    }
+
+    getAlertsWidth(): string {
+        if (this.layoutPreferences.layoutMode === 'vertical') {
+            return '100%'; // Full width in vertical mode
+        }
+        return `${this.layoutPreferences.alertsWidth}px`;
+    }
+
+    getScannerOrder(): number {
+        if (this.layoutPreferences.layoutMode === 'vertical') {
+            return 1; // Scanner always on top in vertical mode
+        }
+        return this.layoutPreferences.scannerOnLeft ? 1 : 2;
+    }
+
+    getAlertsOrder(): number {
+        if (this.layoutPreferences.layoutMode === 'vertical') {
+            return 2; // Alerts always below in vertical mode
+        }
+        return this.layoutPreferences.scannerOnLeft ? 2 : 1;
     }
 
     playCall(callId: number): void {
