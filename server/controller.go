@@ -2471,6 +2471,9 @@ func (controller *Controller) readAllData() error {
 		}
 	}
 
+	// Check for duplicate emails and log them
+	controller.checkDuplicateEmails()
+
 	return nil
 }
 

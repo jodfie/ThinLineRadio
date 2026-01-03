@@ -477,13 +477,16 @@ func (api *Api) UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize email to lowercase
+	request.Email = NormalizeEmail(request.Email)
+
 	// Validate password strength
 	if err := ValidatePassword(request.Password); err != nil {
 		api.exitWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Check if user already exists
+	// Check if user already exists (case-insensitive)
 	if existingUser := api.Controller.Users.GetUserByEmail(request.Email); existingUser != nil {
 		api.exitWithError(w, http.StatusConflict, "User already exists")
 		return
@@ -804,6 +807,9 @@ func (api *Api) UserLoginHandler(w http.ResponseWriter, r *http.Request) {
 		api.exitWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	// Normalize email to lowercase for case-insensitive login
+	request.Email = NormalizeEmail(request.Email)
 
 	// Get client IP for login attempt tracking
 	clientIP := GetRemoteAddr(r)
@@ -4127,6 +4133,9 @@ func (api *Api) GroupAdminLoginHandler(w http.ResponseWriter, r *http.Request) {
 		api.exitWithError(w, http.StatusBadRequest, "Email and password are required")
 		return
 	}
+
+	// Normalize email to lowercase for case-insensitive login
+	request.Email = NormalizeEmail(request.Email)
 
 	// Get client IP for login attempt tracking
 	clientIP := GetRemoteAddr(r)

@@ -16,19 +16,19 @@ var (
 )
 
 // ValidateEmail validates email format and length
-// Returns error message if invalid, nil if valid
+// Returns normalized (lowercase) email if valid, error if invalid
 func ValidateEmail(email string) error {
 	if email == "" {
 		return fmt.Errorf("email is required")
 	}
 	
+	// Trim whitespace
+	email = strings.TrimSpace(email)
+	
 	// Check length
 	if len(email) > maxEmailLength {
 		return fmt.Errorf("email must be 254 characters or less")
 	}
-	
-	// Trim whitespace
-	email = strings.TrimSpace(email)
 	
 	// Check format
 	if !emailRegex.MatchString(email) {
@@ -56,6 +56,11 @@ func ValidateEmail(email string) error {
 	}
 	
 	return nil
+}
+
+// NormalizeEmail converts email to lowercase for case-insensitive comparisons
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
 // PasswordStrength represents password strength requirements

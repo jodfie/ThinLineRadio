@@ -4175,7 +4175,10 @@ func (admin *Admin) UserCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if email is already registered
+	// Normalize email to lowercase
+	request.Email = NormalizeEmail(request.Email)
+
+	// Check if email is already registered (case-insensitive)
 	if admin.Controller.Users.GetUserByEmail(request.Email) != nil {
 		w.WriteHeader(http.StatusConflict)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Email is already registered"})

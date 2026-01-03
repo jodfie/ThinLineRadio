@@ -830,8 +830,11 @@ func (users *Users) GetUserByEmail(email string) *User {
 	users.mutex.RLock()
 	defer users.mutex.RUnlock()
 
+	// Normalize email to lowercase for case-insensitive comparison
+	normalizedEmail := NormalizeEmail(email)
+	
 	for _, user := range users.users {
-		if user.Email == email {
+		if NormalizeEmail(user.Email) == normalizedEmail {
 			return user
 		}
 	}
@@ -878,6 +881,31 @@ func (users *Users) GetAllUsers() []*User {
 		userList = append(userList, user)
 	}
 	return userList
+}
+
+// CheckDuplicateEmails finds users with duplicate emails (case-insensitive)
+// Returns a map of normalized email -> list of users with that email
+func (users *Users) CheckDuplicateEmails() map[string][]*User {
+	users.mutex.RLock()
+	defer users.mutex.RUnlock()
+
+	emailMap := make(map[string][]*User)
+	
+	// Group users by normalized email
+	for _, user := range users.users {
+		normalizedEmail := NormalizeEmail(user.Email)
+		emailMap[normalizedEmail] = append(emailMap[normalizedEmail], user)
+	}
+	
+	// Filter to only duplicates
+	duplicates := make(map[string][]*User)
+	for email, userList := range emailMap {
+		if len(userList) > 1 {
+			duplicates[email] = userList
+		}
+	}
+	
+	return duplicates
 }
 
 func (users *Users) SaveNewUser(user *User, db *Database) error {
