@@ -191,9 +191,11 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
   }
   
   handleInvitation(inviteCode: string): void {
+    console.log('handleInvitation called with code:', inviteCode);
     // Validate invitation code
     this.http.get(`/api/user/validate-invitation?code=${inviteCode}`).subscribe({
       next: (response: any) => {
+        console.log('Invitation validation response:', response);
         if (response.valid) {
           // Pre-fill email if provided in invitation
           if (response.email) {
@@ -206,6 +208,8 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
           this.invitationGroupName = response.groupName;
           this.codeValidated = true; // Mark as validated so form shows
           
+          console.log('Invitation validated - codeValidated:', this.codeValidated, 'invitationCode:', this.invitationCode, 'invitationGroupName:', this.invitationGroupName);
+          
           // Show success message
           this.snackBar.open(`You've been invited to join ${response.groupName}! Please complete your registration.`, 'Close', {
             duration: 5000,
@@ -214,6 +218,7 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
         }
       },
       error: (error) => {
+        console.error('Invitation validation error:', error);
         this.snackBar.open(error.error?.message || 'Invalid or expired invitation', 'Close', {
           duration: 5000,
           panelClass: ['error-snackbar']

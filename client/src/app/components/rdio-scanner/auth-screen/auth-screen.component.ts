@@ -312,6 +312,9 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
           // Switch to registration tab
           this.authMode = 'register';
           
+          // Mark code as validated so form shows
+          this.codeValidated = true;
+          
           // Pre-fill email if provided in invitation
           if (response.email) {
             this.registerForm.patchValue({ email: response.email });

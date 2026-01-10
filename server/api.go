@@ -527,6 +527,7 @@ func (api *Api) UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Check if invitation is already used
 		if invitation.UsedAt.Valid && invitation.UsedAt.Int64 > 0 {
+			log.Printf("Registration - Invitation already used - code: %s, email: %s, status: %s, usedAt: %d, UsedAt.Valid: %v", request.InvitationCode, invitation.Email, invitation.Status, invitation.UsedAt.Int64, invitation.UsedAt.Valid)
 			api.exitWithError(w, http.StatusBadRequest, "Invitation has already been used")
 			return
 		}
@@ -539,6 +540,7 @@ func (api *Api) UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Check if invitation status is valid
 		if invitation.Status != "pending" {
+			log.Printf("Registration - Invitation status invalid - code: %s, email: %s, status: %s (expected: pending)", request.InvitationCode, invitation.Email, invitation.Status)
 			api.exitWithError(w, http.StatusBadRequest, "Invitation is not valid")
 			return
 		}
@@ -759,6 +761,8 @@ func (api *Api) UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		)
 		if err != nil {
 			log.Printf("Warning: Failed to mark invitation as used: %v", err)
+		} else {
+			log.Printf("Marked invitation as used - invitationId: %d, usedAt: %d", invitationId, usedAt)
 		}
 	}
 
@@ -6794,6 +6798,7 @@ func (api *Api) ValidateInvitationHandler(w http.ResponseWriter, r *http.Request
 
 	// Check if invitation is already used
 	if invitation.UsedAt.Valid && invitation.UsedAt.Int64 > 0 {
+		log.Printf("Invitation validation failed - code: %s, email: %s, status: %s, usedAt: %d, UsedAt.Valid: %v", code, invitation.Email, invitation.Status, invitation.UsedAt.Int64, invitation.UsedAt.Valid)
 		api.exitWithError(w, http.StatusBadRequest, "Invitation has already been used")
 		return
 	}
@@ -6816,6 +6821,8 @@ func (api *Api) ValidateInvitationHandler(w http.ResponseWriter, r *http.Request
 		api.exitWithError(w, http.StatusNotFound, "Group not found")
 		return
 	}
+
+	log.Printf("Invitation validated successfully - code: %s, email: %s, status: %s, groupName: %s", code, invitation.Email, invitation.Status, group.Name)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -7910,12 +7917,14 @@ func (api *Api) ValidateAccessCodeHandler(w http.ResponseWriter, r *http.Request
 
 	if err == nil {
 		// Check if invitation is valid
-		if invitation.Status != "active" {
+		if invitation.Status != "pending" {
+			log.Printf("ValidateAccessCode - Invitation status check failed - code: %s, email: %s, status: %s (expected: pending)", request.Code, invitation.Email, invitation.Status)
 			api.exitWithError(w, http.StatusBadRequest, "Invitation has been revoked or is inactive")
 			return
 		}
 
-		if invitation.UsedAt.Valid {
+		if invitation.UsedAt.Valid && invitation.UsedAt.Int64 > 0 {
+			log.Printf("ValidateAccessCode - Invitation already used - code: %s, email: %s, status: %s, usedAt: %d, UsedAt.Valid: %v", request.Code, invitation.Email, invitation.Status, invitation.UsedAt.Int64, invitation.UsedAt.Valid)
 			api.exitWithError(w, http.StatusBadRequest, "Invitation code has already been used")
 			return
 		}

@@ -1,5 +1,18 @@
 # Change log
 
+## Version 7.0 Beta 6 - Released January 10, 2026
+
+### Bug Fixes
+
+- **Fixed invitation codes not working for user registration**
+  - Fixed `ValidateAccessCodeHandler` checking for incorrect status: was checking for "active" but invitations are created with "pending" status
+  - Fixed `ValidateAccessCodeHandler` incorrectly treating unused invitations as used: database stores usedAt as 0 (not NULL), so added check for > 0
+  - Fixed registration form not appearing when clicking email invitation link: auth-screen component wasn't setting `codeValidated = true` after successful validation
+  - Users can now successfully register using invitation codes sent via email
+  - Added comprehensive logging throughout invitation validation flow for easier debugging
+  - Files modified: server/api.go, client/src/app/components/rdio-scanner/auth-screen/auth-screen.component.ts, client/src/app/components/rdio-scanner/user-registration/user-registration.component.ts
+  - Addresses issue where fresh invitation codes were incorrectly reported as "already used"
+
 ## Version 7.0 Beta 5 - Released January 10, 2026
 
 ### New Features
