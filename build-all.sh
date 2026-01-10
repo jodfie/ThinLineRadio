@@ -300,9 +300,7 @@ EOF
     echo "  Creating archive: $ARCHIVE_NAME"
     
     if [ "$PLATFORM" = "windows" ]; then
-        cd "$DIST_DIR"
-        zip -r "../$RELEASES_DIR/$ARCHIVE_NAME" . > /dev/null
-        cd ..
+        (cd "$DIST_DIR" && zip -r "../$ARCHIVE_NAME" . > /dev/null)
     else
         tar -czf "$RELEASES_DIR/$ARCHIVE_NAME" -C "$DIST_DIR" .
     fi
