@@ -413,6 +413,41 @@ func (calls *Calls) Prune(db *Database, pruneDays uint) error {
 	return nil
 }
 
+func (calls *Calls) PurgeAll(db *Database) error {
+	query := `DELETE FROM "calls"`
+
+	if _, err := db.Sql.Exec(query); err != nil {
+		return fmt.Errorf("%s in %s", err, query)
+	}
+
+	return nil
+}
+
+func (calls *Calls) DeleteByIDs(db *Database, ids []uint64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	var placeholders []string
+	var args []interface{}
+	for i, id := range ids {
+		if db.Config.DbType == DbTypePostgresql {
+			placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+		} else {
+			placeholders = append(placeholders, "?")
+		}
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`DELETE FROM "calls" WHERE "callId" IN (%s)`, strings.Join(placeholders, ", "))
+
+	if _, err := db.Sql.Exec(query, args...); err != nil {
+		return fmt.Errorf("%s in %s", err, query)
+	}
+
+	return nil
+}
+
 func (calls *Calls) Search(searchOptions *CallsSearchOptions, client *Client) (*CallsSearchResults, error) {
 	const (
 		ascOrder  = "ASC"
@@ -546,13 +581,9 @@ func (calls *Calls) Search(searchOptions *CallsSearchOptions, client *Client) (*
 	switch v := searchOptions.Date.(type) {
 	case time.Time:
 		selectedDateMs := v.UnixMilli()
-		if order == descOrder {
-			// Newest first: show calls from selected date backwards (older calls)
-			where = append(where, fmt.Sprintf(`c."timestamp" <= %d`, selectedDateMs))
-		} else {
-			// Oldest first: show calls from selected date forward (newer calls)
-			where = append(where, fmt.Sprintf(`c."timestamp" >= %d`, selectedDateMs))
-		}
+		// When a date is selected, always show calls from that date forward (>=)
+		// The sort order (ASC/DESC) controls whether oldest or newest are shown first
+		where = append(where, fmt.Sprintf(`c."timestamp" >= %d`, selectedDateMs))
 	default:
 		// No date selected - no time filter applied
 	}

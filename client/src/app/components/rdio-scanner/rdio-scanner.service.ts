@@ -114,6 +114,7 @@ export class RdioScannerService implements OnDestroy {
     private livefeedMapPriorToHoldSystem: RdioScannerLivefeedMap | undefined;
     private livefeedMapPriorToHoldTalkgroup: RdioScannerLivefeedMap | undefined;
     private livefeedMode = RdioScannerLivefeedMode.Offline;
+    private livefeedModePriorToPlayback: RdioScannerLivefeedMode | undefined;
     private livefeedPaused = false;
 
     private oscillatorContext: AudioContext | undefined;
@@ -497,6 +498,8 @@ export class RdioScannerService implements OnDestroy {
         }
         
         if (this.livefeedMode === RdioScannerLivefeedMode.Offline) {
+            // Store previous mode before entering playback (should be Offline in this case)
+            this.livefeedModePriorToPlayback = this.livefeedMode;
             this.livefeedMode = RdioScannerLivefeedMode.Playback;
             // Clear any existing playbackList when switching to playback mode for a one-off call
             if (this.isOneOffPlayback) {
@@ -509,6 +512,15 @@ export class RdioScannerService implements OnDestroy {
 
             if (this.livefeedMapPriorToHoldTalkgroup) {
                 this.holdTalkgroup({ resubscribe: false });
+            }
+
+            this.event.emit({ livefeedMode: this.livefeedMode, playbackPending: id, queue: this.isOneOffPlayback ? 0 : undefined });
+        } else if (this.livefeedMode === RdioScannerLivefeedMode.Online) {
+            // Keep live feed on - don't switch to Playback mode if live feed is already running
+            // Just play the call while live feed continues in the background
+            // Clear any existing playbackList when switching to playback mode for a one-off call
+            if (this.isOneOffPlayback) {
+                this.playbackList = undefined;
             }
 
             this.event.emit({ livefeedMode: this.livefeedMode, playbackPending: id, queue: this.isOneOffPlayback ? 0 : undefined });
@@ -748,7 +760,27 @@ export class RdioScannerService implements OnDestroy {
     }
 
     stopPlaybackMode(): void {
-        this.livefeedMode = RdioScannerLivefeedMode.Offline;
+        // Only stop playback mode if we're actually in playback mode
+        // This prevents disabling live feed when search panel closes if we were never in playback mode
+        if (this.livefeedMode !== RdioScannerLivefeedMode.Playback) {
+            // Clear playback list even if not in playback mode (in case it exists)
+            this.playbackList = undefined;
+            return;
+        }
+
+        // Restore previous livefeed mode if it was saved (e.g., was Online before entering playback)
+        if (this.livefeedModePriorToPlayback !== undefined) {
+            this.livefeedMode = this.livefeedModePriorToPlayback;
+            this.livefeedModePriorToPlayback = undefined;
+            
+            // If restoring to Online mode, restart livefeed
+            if (this.livefeedMode === RdioScannerLivefeedMode.Online) {
+                this.startLivefeed();
+            }
+        } else {
+            // No previous mode saved, set to Offline (default)
+            this.livefeedMode = RdioScannerLivefeedMode.Offline;
+        }
 
         this.playbackRefreshing = false;
         this.isOneOffPlayback = false; // Reset one-off flag when stopping playback mode

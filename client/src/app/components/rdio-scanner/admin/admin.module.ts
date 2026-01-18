@@ -24,6 +24,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatPaginatorModule } from '@angular/material/paginator';
+import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { AppSharedModule } from '../../../shared/shared.module';
 import { RdioScannerAdminComponent } from './admin.component';
 import { RdioScannerAdminService } from './admin.service';
@@ -60,6 +61,7 @@ import { RdioScannerAdminPasswordComponent } from './tools/password/password.com
 import { RdioScannerAdminRadioReferenceImportComponent } from './tools/radio-reference-import/radio-reference-import.component';
 import { RdioScannerAdminConfigSyncComponent } from './tools/config-sync/config-sync.component';
 import { RdioScannerAdminStripeSyncComponent } from './tools/stripe-sync/stripe-sync.component';
+import { RdioScannerAdminPurgeDataComponent } from './tools/purge-data/purge-data.component';
 import { RdioScannerAdminSystemHealthComponent } from './system-health/system-health.component';
 
 @NgModule({
@@ -100,11 +102,12 @@ import { RdioScannerAdminSystemHealthComponent } from './system-health/system-he
         RdioScannerAdminKeywordListsComponent,
         RdioScannerAdminConfigSyncComponent,
         RdioScannerAdminStripeSyncComponent,
+        RdioScannerAdminPurgeDataComponent,
         RdioScannerAdminSystemHealthComponent,
     ],
     entryComponents: [RdioScannerAdminSystemsSelectComponent],
     exports: [RdioScannerAdminComponent],
-    imports: [AppSharedModule, HttpClientModule, FormsModule, MatProgressSpinnerModule, MatProgressBarModule, MatChipsModule, MatPaginatorModule],
+    imports: [AppSharedModule, HttpClientModule, FormsModule, MatProgressSpinnerModule, MatProgressBarModule, MatChipsModule, MatPaginatorModule, MatSnackBarModule],
     providers: [RdioScannerAdminService, AlertsService],
 })
 export class RdioScannerAdminModule { }

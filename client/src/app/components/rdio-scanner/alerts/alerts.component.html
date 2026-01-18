@@ -119,8 +119,48 @@
     </div>
     
     <div class="transcripts-content" *ngIf="activeTab === 'transcripts'">
+        <!-- Filter Controls -->
+        <div class="transcript-filters">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>System</label>
+                    <select [ngModel]="filterSystemId" (ngModelChange)="onSystemFilterChange($event)" class="filter-select">
+                        <option [ngValue]="undefined">All Systems</option>
+                        <option *ngFor="let system of availableSystems" [ngValue]="system.id">{{ system.label }}</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label>Talkgroup</label>
+                    <select [ngModel]="filterTalkgroupId" (ngModelChange)="onTalkgroupFilterChange($event)" class="filter-select" [disabled]="!filterSystemId">
+                        <option [ngValue]="undefined">All Talkgroups</option>
+                        <option *ngFor="let tg of getFilteredTalkgroups()" [ngValue]="tg.id">{{ tg.label }}</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label>Date From</label>
+                    <input type="date" [(ngModel)]="filterDateFrom" (change)="applyFilters()" class="filter-input">
+                </div>
+                
+                <div class="filter-group">
+                    <label>Date To</label>
+                    <input type="date" [(ngModel)]="filterDateTo" (change)="applyFilters()" class="filter-input">
+                </div>
+                
+                <div class="filter-group filter-search">
+                    <label>Search</label>
+                    <input type="text" [(ngModel)]="filterSearch" (input)="applyFilters()" placeholder="Search transcripts..." class="filter-input search-input">
+                </div>
+                
+                <div class="filter-group filter-actions">
+                    <button (click)="clearFilters()" class="btn-clear-filters">Clear Filters</button>
+                </div>
+            </div>
+        </div>
+        
         <div *ngIf="transcripts.length === 0 && !loadingTranscripts" class="no-alerts">
-            <p>No transcripts yet</p>
+            <p>No transcripts found</p>
         </div>
         <div *ngIf="loadingTranscripts" class="loading">
             <p>Loading transcripts...</p>
@@ -141,7 +181,7 @@
                     </div>
                 </div>
                 <div class="transcript-body">
-                    <p>{{ transcript.transcript }}</p>
+                    <p [innerHTML]="highlightSearchText(transcript.transcript, filterSearch)"></p>
                 </div>
                 <div class="transcript-footer">
                     <span>{{ transcript.timestamp ? (transcript.timestamp | date:'short') : '' }}</span>

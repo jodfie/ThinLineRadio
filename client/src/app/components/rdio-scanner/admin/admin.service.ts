@@ -197,6 +197,36 @@ export interface LogsQueryOptions {
     sort: number;
 }
 
+export interface CallSearchResult {
+    id: number;
+    dateTime: Date;
+    system: number;
+    talkgroup: number;
+    frequency?: number;
+    source?: number;
+    site?: number;
+}
+
+export interface CallsQuery {
+    count: number;
+    hasMore: boolean;
+    dateStart: Date;
+    dateStop: Date;
+    options: CallsQueryOptions;
+    results: CallSearchResult[];
+}
+
+export interface CallsQueryOptions {
+    date?: string | Date;
+    group?: string;
+    limit: number;
+    offset: number;
+    sort: number;
+    system?: number;
+    tag?: string;
+    talkgroup?: number;
+}
+
 export interface Options {
 	audioConversion?: 0 | 1 | 2 | 3;
 	autoPopulate?: boolean;
@@ -237,6 +267,7 @@ export interface Options {
     emailSmtpSkipVerify?: boolean;
     emailLogoFilename?: string;
     emailLogoBorderRadius?: string;
+    faviconFilename?: string;
     stripePublishableKey?: string;
     stripeSecretKey?: string;
     stripeWebhookSecret?: string;
@@ -258,6 +289,7 @@ export interface Options {
         googleAPIKey?: string;
         googleCredentials?: string;
         assemblyAIKey?: string;
+        assemblyAIWordBoost?: string[];
         hallucinationPatterns?: string[];
         hallucinationDetectionMode?: string;
         hallucinationMinOccurrences?: number;
@@ -343,13 +375,19 @@ export interface Unit {
 enum url {
     alerts = 'alerts',
     alertRetentionDays = 'alert-retention-days',
+    calls = 'calls',
     config = 'config',
     login = 'login',
     logout = 'logout',
     logs = 'logs',
     password = 'password',
+    purge = 'purge',
     systemhealth = 'systemhealth',
     toneDetectionIssueThreshold = 'tone-detection-issue-threshold',
+    noAudioThresholdMinutes = 'no-audio-threshold-minutes',
+    noAudioMultiplier = 'no-audio-multiplier',
+    systemHealthAlertsEnabled = 'system-health-alerts-enabled',
+    systemHealthAlertSettings = 'system-health-alert-settings',
 }
 
 const SESSION_STORAGE_KEY = 'rdio-scanner-admin-token';
@@ -485,6 +523,37 @@ export class RdioScannerAdminService implements OnDestroy {
         }
     }
 
+    async getCalls(options: CallsQueryOptions): Promise<CallsQuery | undefined> {
+        try {
+            // Convert Date to ISO string if present
+            const payload: any = { ...options };
+            if (payload.date instanceof Date) {
+                payload.date = payload.date.toISOString();
+            }
+
+            const res = await firstValueFrom(this.ngHttpClient.post<CallsQuery>(
+                this.getUrl(url.calls),
+                payload,
+                { headers: this.getHeaders(), responseType: 'json' },
+            ));
+
+            // Convert dateTime strings to Date objects
+            if (res && res.results) {
+                res.results = res.results.map(result => ({
+                    ...result,
+                    dateTime: new Date(result.dateTime)
+                }));
+            }
+
+            return res;
+
+        } catch (error) {
+            this.errorHandler(error);
+
+            return undefined;
+        }
+    }
+
     async loadAlerts(): Promise<void> {
         try {
             this.Alerts = await firstValueFrom(this.ngHttpClient.get<Alerts>(
@@ -505,6 +574,20 @@ export class RdioScannerAdminService implements OnDestroy {
                 { headers: this.getHeaders(), responseType: 'json' },
             ));
             return res;
+        } catch (error) {
+            this.errorHandler(error);
+            throw error;
+        }
+    }
+
+    async dismissSystemAlert(alertId: number): Promise<void> {
+        try {
+            // Use admin endpoint for dismissing alerts (uses admin token authentication)
+            await firstValueFrom(this.ngHttpClient.post(
+                this.getUrl(url.systemhealth),
+                { alertId },
+                { headers: this.getHeaders(), responseType: 'json' },
+            ));
         } catch (error) {
             this.errorHandler(error);
             throw error;
@@ -607,6 +690,110 @@ export class RdioScannerAdminService implements OnDestroy {
             await firstValueFrom(this.ngHttpClient.post(
                 this.getUrl(url.toneDetectionIssueThreshold),
                 { threshold },
+                { headers: this.getHeaders(), responseType: 'json' },
+            ));
+        } catch (error) {
+            this.errorHandler(error);
+            throw error;
+        }
+    }
+
+    async getNoAudioThresholdMinutes(): Promise<number> {
+        try {
+            const res = await firstValueFrom(this.ngHttpClient.get<{ threshold: number }>(
+                this.getUrl(url.noAudioThresholdMinutes),
+                { headers: this.getHeaders(), responseType: 'json' },
+            ));
+            return res.threshold || 30;
+        } catch (error) {
+            this.errorHandler(error);
+            throw error;
+        }
+    }
+
+    async setNoAudioThresholdMinutes(threshold: number): Promise<void> {
+        try {
+            await firstValueFrom(this.ngHttpClient.post(
+                this.getUrl(url.noAudioThresholdMinutes),
+                { threshold },
+                { headers: this.getHeaders(), responseType: 'json' },
+            ));
+        } catch (error) {
+            this.errorHandler(error);
+            throw error;
+        }
+    }
+
+    async getNoAudioMultiplier(): Promise<number> {
+        try {
+            const res = await firstValueFrom(this.ngHttpClient.get<{ multiplier: number }>(
+                this.getUrl(url.noAudioMultiplier),
+                { headers: this.getHeaders(), responseType: 'json' },
+            ));
+            return res.multiplier || 1.5;
+        } catch (error) {
+            this.errorHandler(error);
+            throw error;
+        }
+    }
+
+    async setNoAudioMultiplier(multiplier: number): Promise<void> {
+        try {
+            await firstValueFrom(this.ngHttpClient.post(
+                this.getUrl(url.noAudioMultiplier),
+                { multiplier },
+                { headers: this.getHeaders(), responseType: 'json' },
+            ));
+        } catch (error) {
+            this.errorHandler(error);
+            throw error;
+        }
+    }
+
+    async getSystemHealthAlertsEnabled(): Promise<boolean> {
+        try {
+            const res = await firstValueFrom(this.ngHttpClient.get<{ enabled: boolean }>(
+                this.getUrl(url.systemHealthAlertsEnabled),
+                { headers: this.getHeaders(), responseType: 'json' },
+            ));
+            return res.enabled !== false; // Default to true if not set
+        } catch (error) {
+            this.errorHandler(error);
+            throw error;
+        }
+    }
+
+    async setSystemHealthAlertsEnabled(enabled: boolean): Promise<void> {
+        try {
+            await firstValueFrom(this.ngHttpClient.post(
+                this.getUrl(url.systemHealthAlertsEnabled),
+                { enabled },
+                { headers: this.getHeaders(), responseType: 'json' },
+            ));
+        } catch (error) {
+            this.errorHandler(error);
+            throw error;
+        }
+    }
+
+    async getSystemHealthAlertSettings(): Promise<any> {
+        try {
+            const res = await firstValueFrom(this.ngHttpClient.get<any>(
+                this.getUrl(url.systemHealthAlertSettings),
+                { headers: this.getHeaders(), responseType: 'json' },
+            ));
+            return res;
+        } catch (error) {
+            this.errorHandler(error);
+            throw error;
+        }
+    }
+
+    async updateSystemHealthAlertSettings(settings: any): Promise<void> {
+        try {
+            await firstValueFrom(this.ngHttpClient.post(
+                this.getUrl(url.systemHealthAlertSettings),
+                settings,
                 { headers: this.getHeaders(), responseType: 'json' },
             ));
         } catch (error) {
@@ -880,7 +1067,7 @@ export class RdioScannerAdminService implements OnDestroy {
             provider: 'whisper-api',
             language: 'en',
             prompt: '',
-            workerPoolSize: 3, // Conservative default
+            workerPoolSize: 1, // Whisper works best with 1 worker
             minCallDuration: 0, // 0 = transcribe all calls
             whisperAPIURL: 'http://localhost:8000',
             whisperAPIKey: '',
@@ -889,6 +1076,7 @@ export class RdioScannerAdminService implements OnDestroy {
             googleAPIKey: '',
             googleCredentials: '',
             assemblyAIKey: '',
+            assemblyAIWordBoost: [],
         };
         
 		return this.ngFormBuilder.group({
@@ -933,6 +1121,7 @@ export class RdioScannerAdminService implements OnDestroy {
             emailSmtpSkipVerify: this.ngFormBuilder.control(options?.emailSmtpSkipVerify || false),
             emailLogoFilename: this.ngFormBuilder.control(options?.emailLogoFilename || ''),
             emailLogoBorderRadius: this.ngFormBuilder.control(options?.emailLogoBorderRadius || '0px'),
+            faviconFilename: this.ngFormBuilder.control(options?.faviconFilename || ''),
             stripePublishableKey: this.ngFormBuilder.control(options?.stripePublishableKey),
             stripeSecretKey: this.ngFormBuilder.control(options?.stripeSecretKey),
             stripeWebhookSecret: this.ngFormBuilder.control(options?.stripeWebhookSecret),
@@ -946,7 +1135,7 @@ export class RdioScannerAdminService implements OnDestroy {
                 provider: this.ngFormBuilder.control(transcriptionConfig?.provider || 'whisper-api'),
                 language: this.ngFormBuilder.control(transcriptionConfig?.language || 'en'),
                 prompt: this.ngFormBuilder.control(transcriptionConfig?.prompt || ''),
-                workerPoolSize: this.ngFormBuilder.control(transcriptionConfig?.workerPoolSize || 3),
+                workerPoolSize: this.ngFormBuilder.control(transcriptionConfig?.workerPoolSize || 1), // Whisper uses 1, other providers can override
                 minCallDuration: this.ngFormBuilder.control(transcriptionConfig?.minCallDuration || 0, [Validators.min(0)]),
                 whisperAPIURL: this.ngFormBuilder.control(transcriptionConfig?.whisperAPIURL || 'http://localhost:8000'),
                 whisperAPIKey: this.ngFormBuilder.control(transcriptionConfig?.whisperAPIKey || ''),
@@ -955,6 +1144,9 @@ export class RdioScannerAdminService implements OnDestroy {
                 googleAPIKey: this.ngFormBuilder.control(transcriptionConfig?.googleAPIKey || ''),
                 googleCredentials: this.ngFormBuilder.control(transcriptionConfig?.googleCredentials || ''),
                 assemblyAIKey: this.ngFormBuilder.control(transcriptionConfig?.assemblyAIKey || ''),
+                assemblyAIWordBoost: this.ngFormBuilder.control(
+                    (transcriptionConfig?.assemblyAIWordBoost || []).join('\n')
+                ),
                 hallucinationPatterns: this.ngFormBuilder.control(
                     (transcriptionConfig?.hallucinationPatterns || []).join('\n')
                 ),
@@ -1701,6 +1893,24 @@ export class RdioScannerAdminService implements OnDestroy {
       return response;
     } catch (error: any) {
       console.error('Failed to sync with Stripe:', error);
+      throw error;
+    }
+  }
+
+  async purgeData(type: 'calls' | 'logs', ids?: number[]): Promise<any> {
+    try {
+      const payload: any = { type };
+      if (ids && ids.length > 0) {
+        payload.ids = ids;
+      }
+      const response = await firstValueFrom(this.ngHttpClient.post<any>(
+        this.getUrl(url.purge),
+        payload,
+        { headers: this.getHeaders(), responseType: 'json' }
+      ));
+      return response;
+    } catch (error: any) {
+      this.errorHandler(error);
       throw error;
     }
   }

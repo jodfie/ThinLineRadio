@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strings"
 	"sync"
 	"time"
 )
@@ -95,6 +96,47 @@ func (logs *Logs) Prune(db *Database, pruneDays uint) error {
 	query := fmt.Sprintf(`DELETE FROM "logs" WHERE "timestamp" < %d`, timestamp)
 
 	if _, err := db.Sql.Exec(query); err != nil {
+		return fmt.Errorf("%s in %s", err, query)
+	}
+
+	return nil
+}
+
+func (logs *Logs) PurgeAll(db *Database) error {
+	logs.mutex.Lock()
+	defer logs.mutex.Unlock()
+
+	query := `DELETE FROM "logs"`
+
+	if _, err := db.Sql.Exec(query); err != nil {
+		return fmt.Errorf("%s in %s", err, query)
+	}
+
+	return nil
+}
+
+func (logs *Logs) DeleteByIDs(db *Database, ids []uint64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	logs.mutex.Lock()
+	defer logs.mutex.Unlock()
+
+	var placeholders []string
+	var args []interface{}
+	for i, id := range ids {
+		if db.Config.DbType == DbTypePostgresql {
+			placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+		} else {
+			placeholders = append(placeholders, "?")
+		}
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`DELETE FROM "logs" WHERE "logId" IN (%s)`, strings.Join(placeholders, ", "))
+
+	if _, err := db.Sql.Exec(query, args...); err != nil {
 		return fmt.Errorf("%s in %s", err, query)
 	}
 

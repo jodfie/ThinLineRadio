@@ -173,16 +173,25 @@ export class AlertsService {
         this.alertsSubject.next([]);
     }
 
-    getTranscripts(limit: number = 50, offset: number = 0, pin?: string, systemId?: number, talkgroupId?: number): Observable<any[]> {
+    getTranscripts(limit: number = 50, offset: number = 0, pin?: string, systemId?: number, talkgroupId?: number, dateFrom?: number, dateTo?: number, search?: string): Observable<any[]> {
         let url = `${this.transcriptsUrl}?limit=${limit}&offset=${offset}`;
         if (pin) {
             url += `&pin=${encodeURIComponent(pin)}`;
-    }
-        if (systemId) {
+        }
+        if (systemId !== undefined && systemId !== null) {
             url += `&systemId=${systemId}`;
         }
-        if (talkgroupId) {
+        if (talkgroupId !== undefined && talkgroupId !== null) {
             url += `&talkgroupId=${talkgroupId}`;
+        }
+        if (dateFrom) {
+            url += `&dateFrom=${dateFrom}`;
+        }
+        if (dateTo) {
+            url += `&dateTo=${dateTo}`;
+        }
+        if (search && search.trim()) {
+            url += `&search=${encodeURIComponent(search.trim())}`;
         }
         const headers = pin ? new HttpHeaders().set('Authorization', `Bearer ${pin}`) : undefined;
         return this.http.get<any[]>(url, { headers });

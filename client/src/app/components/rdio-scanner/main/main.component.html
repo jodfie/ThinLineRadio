@@ -143,38 +143,58 @@
     <!-- Stats Row -->
     <div class="row three">
         <div>
-            <span>Time {{ clock | date:timeFormat }}</span>
+            <span [attr.style]="getTextGlowStyle()">Time {{ clock | date:timeFormat }}</span>
         </div>
         <div>
-            <span *ngIf="!linked">NO LINK</span>
-            <span *ngIf="linked && showListenersCount">Listeners {{ listeners }}</span>
-            <span *ngIf="linked && !showListenersCount">Listeners --</span>
+            <span *ngIf="!linked" [attr.style]="getTextGlowStyle()">NO LINK</span>
+            <span *ngIf="linked && showListenersCount" [attr.style]="getTextGlowStyle()">Listeners {{ listeners }}</span>
+            <span *ngIf="linked && !showListenersCount" [attr.style]="getTextGlowStyle()">Listeners --</span>
         </div>
         <div>
-            <span>Queue {{ callQueue }}</span>
+            <span [attr.style]="getTextGlowStyle()">Queue {{ callQueue }}</span>
         </div>
     </div>
     <div class="row small"></div>
 
-    <!-- System/TGID Row -->
-    <div class="row">
+    <!-- System/Talkgroup Row (Left) and TGID (Right) -->
+    <div class="row tgid-row">
         <div>
-            <span>{{ callSystem }}</span>
+            <span [attr.style]="getTextGlowStyle()">{{ callSystem }}</span>
         </div>
         <div></div>
         <div>
-            <span>TGID {{ callTalkgroupId || 0 }}</span>
+            <span [attr.style]="getTextGlowStyle()">TGID {{ callTalkgroupId || 0 }}</span>
         </div>
     </div>
+    
+    <div class="row small"></div>
+
+    <!-- Talkgroup Container - Flutter Style -->
+    <div class="talkgroup-container" *ngIf="!showScanningAnimation">
+        <div class="talkgroup-box" 
+             [ngClass]="getTalkgroupBoxColor()" 
+             [style.box-shadow]="callPrevious && dimmer ? '0 0 15px ' + getTalkgroupTextColor() + ', 0 0 25px ' + getTalkgroupTextColor() + '80' : '0 2px 4px rgba(0, 0, 0, 0.2)'">
+            <div class="talkgroup-name" 
+                 [style.color]="getTalkgroupTextColor()"
+                 [style.text-shadow]="callPrevious && dimmer ? '0 0 10px ' + getTalkgroupTextColor() + ', 0 0 15px ' + getTalkgroupTextColor() + '80, 0 0 20px ' + getTalkgroupTextColor() + '60' : 'none'">
+                {{ callTalkgroup || callTalkgroupName }}
+            </div>
+            <div class="favorite-star" *ngIf="callSystem && callTalkgroup">
+                <mat-icon [style.color]="getTalkgroupTextColor()">{{ isFavorite ? 'star' : 'star_border' }}</mat-icon>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row small"></div>
 
     <!-- Tag/ID Row -->
     <div class="row">
         <div>
-            <span>{{ callTag }}</span>
+            <span [attr.style]="getTextGlowStyle()">{{ callTag }}</span>
         </div>
         <div></div>
         <div>
-            <span>ID {{ callUnit || '0' }}</span>
+            <span [attr.style]="getTextGlowStyle()">ID {{ callUnit || '0' }}</span>
         </div>
     </div>
 
@@ -197,25 +217,14 @@
         </div>
     </div>
 
-    <!-- Talkgroup Container - Flutter Style -->
-    <div class="talkgroup-container" *ngIf="!showScanningAnimation">
-        <div class="talkgroup-label">Talkgroup</div>
-        <div class="talkgroup-box" [ngClass]="getTalkgroupBoxColor()" [style.color]="getTalkgroupTextColor()">
-            <div class="talkgroup-name" [style.color]="getTalkgroupTextColor()">{{ callTalkgroup || callTalkgroupName }}</div>
-            <div class="favorite-star" *ngIf="callSystem && callTalkgroup">
-                <mat-icon [style.color]="getTalkgroupTextColor()">{{ isFavorite ? 'star' : 'star_border' }}</mat-icon>
-            </div>
-        </div>
-    </div>
-
     <!-- Frequency/Time Row -->
     <div class="row">
         <div>
-            <span>F {{ formatFrequencyMHz(call?.frequency) }}</span>
+            <span [attr.style]="getTextGlowStyle()">F {{ formatFrequencyMHz(call?.frequency) }}</span>
         </div>
         <div></div>
         <div>
-            <span>{{ call?.dateTime | date:timeFormat }}</span>
+            <span [attr.style]="getTextGlowStyle()">{{ call?.dateTime | date:timeFormat }}</span>
         </div>
     </div>
 
@@ -254,7 +263,11 @@
                 </thead>
                 <tbody>
                     <tr *ngFor="let previousCall of callHistory"
-                        [ngClass]="{ 'replaying': previousCall?.id !== null && previousCall?.id === call?.id} ">
+                        [ngClass]="{ 'replaying': previousCall?.id !== null && previousCall?.id === call?.id} "
+                        [style.background-color]="getTransmissionHistoryBackgroundColor(previousCall)"
+                        [style.border]="previousCall?.id !== null && previousCall?.id === call?.id ? '2px solid ' + getTransmissionHistoryTagColor(previousCall) : 'none'"
+                        [style.border-radius]="previousCall?.id !== null && previousCall?.id === call?.id ? '4px' : '0'"
+                        [style.box-shadow]="previousCall?.id !== null && previousCall?.id === call?.id ? '0 0 8px 1px ' + getTransmissionHistoryTagColor(previousCall) + '60' : 'none'">
                         <td>
                             <span>{{ previousCall?.dateTime | date:timeFormat }}</span>
                         </td>
@@ -262,7 +275,7 @@
                             <span>{{ previousCall?.systemData?.label || previousCall?.system}}</span>
                         </td>
                         <td>
-                            <span>{{ previousCall?.talkgroupData?.label || previousCall?.talkgroup }}</span>
+                            <span>{{ previousCall?.talkgroupData?.label || previousCall?.talkgroup || '0' }}</span>
                         </td>
                         <td>
                             <span>{{ previousCall?.talkgroup || '0' }}</span>

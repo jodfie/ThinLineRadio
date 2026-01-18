@@ -280,6 +280,11 @@ func (db *Database) migrate() error {
 		return formatError(err, "")
 	}
 
+	// Fix orphaned keyword list IDs in user alert preferences
+	if err := migrateFixKeywordListIds(db); err != nil {
+		return formatError(err, "")
+	}
+
 	return nil
 }
 

@@ -44,6 +44,15 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
     isPWA: boolean = false;
     alertSound: string = 'alert';
     availableAlertSounds: AlertSound[] = [];
+    
+    // Font selection
+    appFont: string = 'Roboto';
+    availableFonts: Array<{name: string, value: string, displayName: string}> = [
+        { name: 'Roboto', value: 'Roboto, sans-serif', displayName: 'Roboto (Default)' },
+        { name: 'Rajdhani', value: 'Rajdhani, sans-serif', displayName: 'Rajdhani (Modern Technical)' },
+        { name: 'ShareTechMono', value: '"Share Tech Mono", monospace', displayName: 'Share Tech Mono (Terminal)' },
+        { name: 'Audiowide', value: 'Audiowide, cursive', displayName: 'Audiowide (Digital Display)' },
+    ];
 
     // Account info
     accountInfo: any = null;
@@ -159,6 +168,10 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
                 this.autoLivefeed = this.settings.autoLivefeed || false;
                 // Load alert sound setting
                 this.alertSound = this.settings.alertSound || 'alert';
+                // Load font setting
+                this.appFont = this.settings.appFont || 'Roboto';
+                // Apply font
+                this.applyFont(this.appFont);
             },
             error: (error) => {
                 console.error('Error loading settings:', error);
@@ -166,6 +179,7 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
                 this.livefeedBacklogMinutes = 0;
                 this.autoLivefeed = false;
                 this.alertSound = 'alert';
+                this.appFont = 'Roboto';
             },
         });
     }
@@ -232,6 +246,7 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
         this.settings.livefeedBacklogMinutes = this.livefeedBacklogMinutes;
         this.settings.autoLivefeed = this.autoLivefeed;
         this.settings.alertSound = this.alertSound;
+        this.settings.appFont = this.appFont;
         this.settingsService.saveSettings(this.settings).subscribe({
             next: () => {
                 console.log('Settings saved successfully');
@@ -265,6 +280,27 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
 
     previewAlertSound(soundName: string): void {
         this.alertSoundService.previewSound(soundName);
+    }
+    
+    onFontChange(): void {
+        // Apply font and auto-save
+        this.applyFont(this.appFont);
+        this.saveSettings();
+    }
+    
+    applyFont(fontName: string): void {
+        const font = this.availableFonts.find(f => f.name === fontName);
+        if (font) {
+            // Apply font to body element
+            document.body.style.fontFamily = font.value;
+            
+            // Adjust font size for Audiowide (15% smaller)
+            if (fontName === 'Audiowide') {
+                document.documentElement.style.fontSize = '14.45px'; // 85% of 17px (default)
+            } else {
+                document.documentElement.style.fontSize = ''; // Reset to default
+            }
+        }
     }
 
     private getAuthHeaders(): HttpHeaders {

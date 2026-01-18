@@ -207,6 +207,40 @@ func (admin *Admin) SystemHealthHandler(w http.ResponseWriter, r *http.Request) 
 			})
 		}
 
+	case http.MethodPost:
+		// Handle dismissing alerts via admin API
+		t := admin.GetAuthorization(r)
+		if !admin.ValidateToken(t) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		var request struct {
+			AlertId uint64 `json:"alertId"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "invalid request body",
+			})
+			return
+		}
+
+		if err := admin.Controller.DismissSystemAlert(request.AlertId); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("failed to dismiss alert: %v", err),
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "alert dismissed successfully",
+		})
+
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -552,6 +586,342 @@ func (admin *Admin) TranscriptionFailureThresholdHandler(w http.ResponseWriter, 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"threshold": request.Threshold,
+		})
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (admin *Admin) NoAudioThresholdMinutesHandler(w http.ResponseWriter, r *http.Request) {
+	t := admin.GetAuthorization(r)
+	if !admin.ValidateToken(t) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		// Get current threshold
+		threshold := admin.Controller.Options.NoAudioThresholdMinutes
+		if threshold == 0 {
+			threshold = 30 // Default
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"threshold": threshold,
+		})
+
+	case http.MethodPost:
+		// Set threshold
+		var request struct {
+			Threshold uint `json:"threshold"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "invalid request body",
+			})
+			return
+		}
+
+		if request.Threshold == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "threshold must be greater than 0",
+			})
+			return
+		}
+
+		admin.Controller.Options.NoAudioThresholdMinutes = request.Threshold
+
+		if err := admin.Controller.Options.Write(admin.Controller.Database); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("failed to save threshold: %v", err),
+			})
+			return
+		}
+
+		// Reload options to ensure consistency
+		if err := admin.Controller.Options.Read(admin.Controller.Database); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("failed to reload options: %v", err),
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":   true,
+			"threshold": request.Threshold,
+		})
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (admin *Admin) NoAudioMultiplierHandler(w http.ResponseWriter, r *http.Request) {
+	t := admin.GetAuthorization(r)
+	if !admin.ValidateToken(t) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		// Get current multiplier
+		multiplier := admin.Controller.Options.NoAudioMultiplier
+		if multiplier == 0 {
+			multiplier = 1.5 // Default
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"multiplier": multiplier,
+		})
+
+	case http.MethodPost:
+		// Set multiplier
+		var request struct {
+			Multiplier float64 `json:"multiplier"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "invalid request body",
+			})
+			return
+		}
+
+		if request.Multiplier <= 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "multiplier must be greater than 0",
+			})
+			return
+		}
+
+		admin.Controller.Options.NoAudioMultiplier = request.Multiplier
+
+		if err := admin.Controller.Options.Write(admin.Controller.Database); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("failed to save multiplier: %v", err),
+			})
+			return
+		}
+
+		// Reload options to ensure consistency
+		if err := admin.Controller.Options.Read(admin.Controller.Database); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("failed to reload options: %v", err),
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":   true,
+			"multiplier": request.Multiplier,
+		})
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (admin *Admin) SystemHealthAlertsEnabledHandler(w http.ResponseWriter, r *http.Request) {
+	t := admin.GetAuthorization(r)
+	if !admin.ValidateToken(t) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		// Get current enabled status
+		enabled := admin.Controller.Options.SystemHealthAlertsEnabled
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"enabled": enabled,
+		})
+
+	case http.MethodPost:
+		// Set enabled status
+		var request struct {
+			Enabled bool `json:"enabled"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "invalid request body",
+			})
+			return
+		}
+
+		admin.Controller.Options.SystemHealthAlertsEnabled = request.Enabled
+
+		if err := admin.Controller.Options.Write(admin.Controller.Database); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("failed to save setting: %v", err),
+			})
+			return
+		}
+
+		// Reload options to ensure consistency
+		if err := admin.Controller.Options.Read(admin.Controller.Database); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("failed to reload options: %v", err),
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"enabled": request.Enabled,
+		})
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (admin *Admin) SystemHealthAlertSettingsHandler(w http.ResponseWriter, r *http.Request) {
+	t := admin.GetAuthorization(r)
+	if !admin.ValidateToken(t) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		// Get all system health alert settings
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"transcriptionFailureAlertsEnabled": admin.Controller.Options.TranscriptionFailureAlertsEnabled,
+			"toneDetectionAlertsEnabled":        admin.Controller.Options.ToneDetectionAlertsEnabled,
+			"noAudioAlertsEnabled":              admin.Controller.Options.NoAudioAlertsEnabled,
+			"transcriptionFailureThreshold":     admin.Controller.Options.TranscriptionFailureThreshold,
+			"transcriptionFailureTimeWindow":    admin.Controller.Options.TranscriptionFailureTimeWindow,
+			"toneDetectionIssueThreshold":       admin.Controller.Options.ToneDetectionIssueThreshold,
+			"toneDetectionTimeWindow":           admin.Controller.Options.ToneDetectionTimeWindow,
+			"noAudioThresholdMinutes":           admin.Controller.Options.NoAudioThresholdMinutes,
+			"noAudioMultiplier":                 admin.Controller.Options.NoAudioMultiplier,
+			"noAudioTimeWindow":                 admin.Controller.Options.NoAudioTimeWindow,
+			"noAudioHistoricalDataDays":         admin.Controller.Options.NoAudioHistoricalDataDays,
+			"transcriptionFailureRepeatMinutes": admin.Controller.Options.TranscriptionFailureRepeatMinutes,
+			"toneDetectionRepeatMinutes":        admin.Controller.Options.ToneDetectionRepeatMinutes,
+			"noAudioRepeatMinutes":              admin.Controller.Options.NoAudioRepeatMinutes,
+			"alertRetentionDays":                 admin.Controller.Options.AlertRetentionDays,
+		})
+
+	case http.MethodPost:
+		// Update settings
+		var request struct {
+			TranscriptionFailureAlertsEnabled *bool    `json:"transcriptionFailureAlertsEnabled"`
+			ToneDetectionAlertsEnabled        *bool    `json:"toneDetectionAlertsEnabled"`
+			NoAudioAlertsEnabled              *bool    `json:"noAudioAlertsEnabled"`
+			TranscriptionFailureThreshold     *uint    `json:"transcriptionFailureThreshold"`
+			TranscriptionFailureTimeWindow    *uint    `json:"transcriptionFailureTimeWindow"`
+			ToneDetectionIssueThreshold       *uint    `json:"toneDetectionIssueThreshold"`
+			ToneDetectionTimeWindow           *uint    `json:"toneDetectionTimeWindow"`
+			NoAudioThresholdMinutes           *uint    `json:"noAudioThresholdMinutes"`
+			NoAudioMultiplier                 *float64 `json:"noAudioMultiplier"`
+			NoAudioTimeWindow                 *uint    `json:"noAudioTimeWindow"`
+			NoAudioHistoricalDataDays         *uint    `json:"noAudioHistoricalDataDays"`
+			TranscriptionFailureRepeatMinutes *uint    `json:"transcriptionFailureRepeatMinutes"`
+			ToneDetectionRepeatMinutes        *uint    `json:"toneDetectionRepeatMinutes"`
+			NoAudioRepeatMinutes              *uint    `json:"noAudioRepeatMinutes"`
+			AlertRetentionDays                *uint    `json:"alertRetentionDays"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "invalid request body",
+			})
+			return
+		}
+
+		// Update only provided fields
+		if request.TranscriptionFailureAlertsEnabled != nil {
+			admin.Controller.Options.TranscriptionFailureAlertsEnabled = *request.TranscriptionFailureAlertsEnabled
+		}
+		if request.ToneDetectionAlertsEnabled != nil {
+			admin.Controller.Options.ToneDetectionAlertsEnabled = *request.ToneDetectionAlertsEnabled
+		}
+		if request.NoAudioAlertsEnabled != nil {
+			admin.Controller.Options.NoAudioAlertsEnabled = *request.NoAudioAlertsEnabled
+		}
+		if request.TranscriptionFailureThreshold != nil && *request.TranscriptionFailureThreshold > 0 {
+			admin.Controller.Options.TranscriptionFailureThreshold = *request.TranscriptionFailureThreshold
+		}
+		if request.TranscriptionFailureTimeWindow != nil && *request.TranscriptionFailureTimeWindow > 0 {
+			admin.Controller.Options.TranscriptionFailureTimeWindow = *request.TranscriptionFailureTimeWindow
+		}
+		if request.ToneDetectionIssueThreshold != nil && *request.ToneDetectionIssueThreshold > 0 {
+			admin.Controller.Options.ToneDetectionIssueThreshold = *request.ToneDetectionIssueThreshold
+		}
+		if request.ToneDetectionTimeWindow != nil && *request.ToneDetectionTimeWindow > 0 {
+			admin.Controller.Options.ToneDetectionTimeWindow = *request.ToneDetectionTimeWindow
+		}
+		if request.NoAudioThresholdMinutes != nil && *request.NoAudioThresholdMinutes > 0 {
+			admin.Controller.Options.NoAudioThresholdMinutes = *request.NoAudioThresholdMinutes
+		}
+		if request.NoAudioMultiplier != nil && *request.NoAudioMultiplier > 0 {
+			admin.Controller.Options.NoAudioMultiplier = *request.NoAudioMultiplier
+		}
+		if request.NoAudioTimeWindow != nil && *request.NoAudioTimeWindow > 0 {
+			admin.Controller.Options.NoAudioTimeWindow = *request.NoAudioTimeWindow
+		}
+		if request.NoAudioHistoricalDataDays != nil && *request.NoAudioHistoricalDataDays > 0 {
+			admin.Controller.Options.NoAudioHistoricalDataDays = *request.NoAudioHistoricalDataDays
+		}
+		if request.TranscriptionFailureRepeatMinutes != nil && *request.TranscriptionFailureRepeatMinutes > 0 {
+			admin.Controller.Options.TranscriptionFailureRepeatMinutes = *request.TranscriptionFailureRepeatMinutes
+		}
+		if request.ToneDetectionRepeatMinutes != nil && *request.ToneDetectionRepeatMinutes > 0 {
+			admin.Controller.Options.ToneDetectionRepeatMinutes = *request.ToneDetectionRepeatMinutes
+		}
+		if request.NoAudioRepeatMinutes != nil && *request.NoAudioRepeatMinutes > 0 {
+			admin.Controller.Options.NoAudioRepeatMinutes = *request.NoAudioRepeatMinutes
+		}
+		if request.AlertRetentionDays != nil && *request.AlertRetentionDays > 0 {
+			admin.Controller.Options.AlertRetentionDays = *request.AlertRetentionDays
+		}
+
+		if err := admin.Controller.Options.Write(admin.Controller.Database); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("failed to save settings: %v", err),
+			})
+			return
+		}
+
+		// Reload options to ensure consistency
+		if err := admin.Controller.Options.Read(admin.Controller.Database); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("failed to reload options: %v", err),
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
 		})
 
 	default:
@@ -1242,9 +1612,11 @@ func (admin *Admin) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Handle keyword lists import
-			switch v := m["keywordLists"].(type) {
-			case []any:
+		// Handle keyword lists import
+		switch v := m["keywordLists"].(type) {
+		case []any:
+			// Only delete ALL existing keyword lists for full imports, not regular saves
+			if isFullImport {
 				// Delete ALL existing keyword lists first to ensure a clean import
 				_, err := admin.Controller.Database.Sql.Exec(`DELETE FROM "keywordLists"`)
 				if err != nil {
@@ -1297,10 +1669,13 @@ func (admin *Admin) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+		}
 
-			// Handle user alert preferences import
-			switch v := m["userAlertPreferences"].(type) {
-			case []any:
+		// Handle user alert preferences import
+		switch v := m["userAlertPreferences"].(type) {
+		case []any:
+			// Only delete ALL existing user alert preferences for full imports, not regular saves
+			if isFullImport {
 				// Delete ALL existing user alert preferences first to ensure a clean import
 				_, err := admin.Controller.Database.Sql.Exec(`DELETE FROM "userAlertPreferences"`)
 				if err != nil {
@@ -1375,6 +1750,7 @@ func (admin *Admin) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+		}
 
 			// Emit config asynchronously to avoid blocking
 			go admin.Controller.EmitConfig()
@@ -1741,6 +2117,175 @@ func (admin *Admin) LogsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Write(b)
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (admin *Admin) CallsHandler(w http.ResponseWriter, r *http.Request) {
+	t := admin.GetAuthorization(r)
+	if !admin.ValidateToken(t) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPost:
+		m := map[string]any{}
+		err := json.NewDecoder(r.Body).Decode(&m)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		callOptions := NewCallSearchOptions().fromMap(m)
+
+		// Create a minimal client for admin search (bypasses user restrictions)
+		adminClient := &Client{
+			Controller: admin.Controller,
+			User:       nil, // Admin has no user restrictions
+		}
+
+		results, err := admin.Controller.Calls.Search(callOptions, adminClient)
+		if err != nil {
+			admin.Controller.Logs.LogEvent(LogLevelError, err.Error())
+			w.WriteHeader(http.StatusExpectationFailed)
+			return
+		}
+
+		b, err := json.Marshal(results)
+		if err != nil {
+			admin.Controller.Logs.LogEvent(LogLevelError, err.Error())
+			w.WriteHeader(http.StatusExpectationFailed)
+			return
+		}
+
+		w.Write(b)
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (admin *Admin) PurgeHandler(w http.ResponseWriter, r *http.Request) {
+	t := admin.GetAuthorization(r)
+	if !admin.ValidateToken(t) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPost:
+		m := map[string]any{}
+		err := json.NewDecoder(r.Body).Decode(&m)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		var purgeType string
+		if v, ok := m["type"].(string); ok {
+			purgeType = v
+		} else {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "type parameter is required",
+			})
+			return
+		}
+
+			// Check if IDs are provided for selective deletion
+		var ids []uint64
+		if idsInterface, ok := m["ids"].([]interface{}); ok {
+			for _, idInterface := range idsInterface {
+				switch v := idInterface.(type) {
+				case float64:
+					ids = append(ids, uint64(v))
+				case uint64:
+					ids = append(ids, v)
+				case int:
+					ids = append(ids, uint64(v))
+				}
+			}
+		}
+
+		switch purgeType {
+		case "calls":
+			if len(ids) > 0 {
+				// Delete specific calls by IDs
+				err = admin.Controller.Calls.DeleteByIDs(admin.Controller.Database, ids)
+				if err != nil {
+					admin.Controller.Logs.LogEvent(LogLevelError, err.Error())
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{
+						"error": err.Error(),
+					})
+					return
+				}
+				admin.Controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("%d calls deleted by admin", len(ids)))
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"message": fmt.Sprintf("%d calls deleted successfully", len(ids)),
+					"deleted": len(ids),
+				})
+			} else {
+				// Delete all calls
+				err = admin.Controller.Calls.PurgeAll(admin.Controller.Database)
+				if err != nil {
+					admin.Controller.Logs.LogEvent(LogLevelError, err.Error())
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{
+						"error": err.Error(),
+					})
+					return
+				}
+				admin.Controller.Logs.LogEvent(LogLevelInfo, "All calls purged by admin")
+				json.NewEncoder(w).Encode(map[string]string{
+					"message": "All calls purged successfully",
+				})
+			}
+
+		case "logs":
+			if len(ids) > 0 {
+				// Delete specific logs by IDs
+				err = admin.Controller.Logs.DeleteByIDs(admin.Controller.Database, ids)
+				if err != nil {
+					admin.Controller.Logs.LogEvent(LogLevelError, err.Error())
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{
+						"error": err.Error(),
+					})
+					return
+				}
+				// Note: Can't log to logs table after deleting logs, so we just write response
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"message": fmt.Sprintf("%d logs deleted successfully", len(ids)),
+					"deleted": len(ids),
+				})
+			} else {
+				// Delete all logs
+				err = admin.Controller.Logs.PurgeAll(admin.Controller.Database)
+				if err != nil {
+					admin.Controller.Logs.LogEvent(LogLevelError, err.Error())
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{
+						"error": err.Error(),
+					})
+					return
+				}
+				// Note: Can't log to logs table after purging logs, so we just write response
+				json.NewEncoder(w).Encode(map[string]string{
+					"message": "All logs purged successfully",
+				})
+			}
+
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Invalid type. Must be 'calls' or 'logs'",
+			})
+			return
+		}
 
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -3459,6 +4004,158 @@ func (admin *Admin) EmailLogoDeleteHandler(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Logo deleted successfully",
+	})
+}
+
+// FaviconUploadHandler handles favicon file upload
+func (admin *Admin) FaviconUploadHandler(w http.ResponseWriter, r *http.Request) {
+	t := admin.GetAuthorization(r)
+	if !admin.ValidateToken(t) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse multipart form (max 10MB)
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		log.Printf("Failed to parse multipart form: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to parse form"})
+		return
+	}
+
+	file, handler, err := r.FormFile("favicon")
+	if err != nil {
+		log.Printf("Failed to get file from form: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "No file provided"})
+		return
+	}
+	defer file.Close()
+
+	// Validate file type
+	contentType := handler.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "File must be an image"})
+		return
+	}
+
+	// Determine file extension
+	ext := filepath.Ext(handler.Filename)
+	if ext == "" {
+		// Try to determine from content type
+		switch contentType {
+		case "image/png":
+			ext = ".png"
+		case "image/jpeg", "image/jpg":
+			ext = ".jpg"
+		case "image/svg+xml":
+			ext = ".svg"
+		case "image/x-icon", "image/vnd.microsoft.icon":
+			ext = ".ico"
+		default:
+			ext = ".png"
+		}
+	}
+
+	// Generate filename
+	filename := "favicon" + ext
+	faviconPath := filepath.Join(admin.Controller.Config.BaseDir, filename)
+
+	// Delete old favicon if exists
+	if admin.Controller.Options.FaviconFilename != "" {
+		oldPath := filepath.Join(admin.Controller.Config.BaseDir, admin.Controller.Options.FaviconFilename)
+		os.Remove(oldPath)
+	}
+
+	// Create file
+	dst, err := os.Create(faviconPath)
+	if err != nil {
+		log.Printf("Failed to create favicon file: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save file"})
+		return
+	}
+	defer dst.Close()
+
+	// Copy file content
+	_, err = io.Copy(dst, file)
+	if err != nil {
+		log.Printf("Failed to copy file: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save file"})
+		return
+	}
+
+	// Update options with filename
+	admin.Controller.Options.FaviconFilename = filename
+	err = admin.Controller.Options.Write(admin.Controller.Database)
+	if err != nil {
+		log.Printf("Failed to save favicon filename to database: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save configuration"})
+		return
+	}
+
+	// Reload options
+	err = admin.Controller.Options.Read(admin.Controller.Database)
+	if err != nil {
+		log.Printf("Failed to reload options: %v", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"filename": filename,
+		"message":  "Favicon uploaded successfully",
+	})
+}
+
+// FaviconDeleteHandler deletes the favicon
+func (admin *Admin) FaviconDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	t := admin.GetAuthorization(r)
+	if !admin.ValidateToken(t) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Delete favicon file if exists
+	if admin.Controller.Options.FaviconFilename != "" {
+		faviconPath := filepath.Join(admin.Controller.Config.BaseDir, admin.Controller.Options.FaviconFilename)
+		os.Remove(faviconPath)
+	}
+
+	// Clear filename from options
+	admin.Controller.Options.FaviconFilename = ""
+	err := admin.Controller.Options.Write(admin.Controller.Database)
+	if err != nil {
+		log.Printf("Failed to save favicon filename to database: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to save configuration"})
+		return
+	}
+
+	// Reload options
+	err = admin.Controller.Options.Read(admin.Controller.Database)
+	if err != nil {
+		log.Printf("Failed to reload options: %v", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Favicon deleted successfully",
 	})
 }
 

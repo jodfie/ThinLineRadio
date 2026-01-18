@@ -17,11 +17,12 @@
  * ****************************************************************************
  */
 
-import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, ChangeDetectorRef } from '@angular/core';
 import { FormGroup, Validators } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { RequestAPIKeyDialogComponent } from './request-api-key-dialog.component';
 import { RecoverAPIKeyDialogComponent } from './recover-api-key-dialog.component';
 import { LocationDataService } from 'src/app/services/location-data.service';
@@ -37,11 +38,15 @@ export class RdioScannerAdminOptionsComponent implements OnInit, OnDestroy, OnCh
     public isEditingRadioReference = false;
     private originalRadioReferenceUsername = '';
     private originalRadioReferencePassword = '';
+    faviconUrl: string = '';
+    window = window;
 
     constructor(
         private snackBar: MatSnackBar,
         private dialog: MatDialog,
-        private locationService: LocationDataService
+        private locationService: LocationDataService,
+        private http: HttpClient,
+        private cdr: ChangeDetectorRef
     ) {}
 
     get isRadioReferenceLoggedIn(): boolean {
@@ -59,6 +64,8 @@ export class RdioScannerAdminOptionsComponent implements OnInit, OnDestroy, OnCh
         this.setupRelayServerFormListeners();
         // Ensure hardcoded relay server URL is set
         this.setHardcodedRelayServerURL();
+        // Initialize favicon URL
+        this.updateFaviconUrl();
         // Mark initial load as complete after a brief delay to allow form to populate
         setTimeout(() => {
             this.initialLoadComplete = true;
@@ -299,5 +306,127 @@ export class RdioScannerAdminOptionsComponent implements OnInit, OnDestroy, OnCh
                 this.snackBar.open('API key recovered! Make sure to save your configuration.', 'Close', { duration: 5000 });
             }
         });
+    }
+
+    // Favicon upload methods
+    hasFavicon(): boolean {
+        return !!(this.form?.get('faviconFilename')?.value);
+    }
+
+    getFaviconPreview(): string {
+        if (this.faviconUrl) {
+            return this.faviconUrl;
+        }
+        return `${window.location.origin}/favicon?t=${Date.now()}`;
+    }
+
+    onFaviconSelected(event: Event): void {
+        const input = event.target as HTMLInputElement;
+        if (input.files && input.files.length > 0) {
+            const file = input.files[0];
+            
+            // Validate file size (max 2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                alert('File is too large. Maximum size is 2MB.');
+                return;
+            }
+
+            // Validate file type
+            if (!file.type.startsWith('image/')) {
+                alert('Please select an image file.');
+                return;
+            }
+
+            this.uploadFavicon(file);
+        }
+    }
+
+    private uploadFavicon(file: File): void {
+        const formData = new FormData();
+        formData.append('favicon', file);
+
+        // Get auth token from session storage (admin service sends token without "Bearer" prefix)
+        const token = sessionStorage.getItem('rdio-scanner-admin-token');
+        if (!token) {
+            alert('Not authenticated. Please log in again.');
+            return;
+        }
+
+        // HttpHeaders is immutable, so create with headers already set
+        const headers = new HttpHeaders({
+            'Authorization': token
+        });
+
+        console.log('Uploading favicon with token:', token ? 'Token present (' + token.substring(0, 20) + '...)' : 'No token');
+
+        this.http.post(`${window.location.origin}/api/admin/favicon`, formData, { headers })
+            .subscribe({
+                next: (response: any) => {
+                    if (response.success && response.filename) {
+                        this.form?.get('faviconFilename')?.setValue(response.filename, { emitEvent: false });
+                        this.faviconUrl = `${window.location.origin}/favicon?t=${Date.now()}`;
+                        this.cdr.detectChanges();
+                        this.snackBar.open('Favicon uploaded successfully', 'Close', { duration: 3000 });
+                        // Mark form as dirty so user knows to save
+                        this.form?.markAsDirty();
+                    } else {
+                        alert('Failed to upload favicon: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: (error) => {
+                    console.error('Favicon upload error:', error);
+                    let errorMsg = 'Failed to upload favicon.';
+                    if (error.status === 0) {
+                        errorMsg += ' The file may be too large or the connection timed out.';
+                    } else if (error.status === 413) {
+                        errorMsg += ' The file is too large.';
+                    } else if (error.error && error.error.error) {
+                        errorMsg += ' ' + error.error.error;
+                    }
+                    alert(errorMsg);
+                }
+            });
+    }
+
+    removeFavicon(): void {
+        // Get auth token from session storage (admin service sends token without "Bearer" prefix)
+        const token = sessionStorage.getItem('rdio-scanner-admin-token');
+        if (!token) {
+            alert('Not authenticated. Please log in again.');
+            return;
+        }
+
+        // HttpHeaders is immutable, so create with headers already set
+        const headers = new HttpHeaders({
+            'Authorization': token
+        });
+
+        this.http.delete(`${window.location.origin}/api/admin/favicon/delete`, { headers })
+            .subscribe({
+                next: (response: any) => {
+                    if (response.success) {
+                        this.form?.get('faviconFilename')?.setValue('', { emitEvent: false });
+                        this.faviconUrl = '';
+                        this.cdr.detectChanges();
+                        this.snackBar.open('Favicon removed successfully', 'Close', { duration: 3000 });
+                        // Mark form as dirty so user knows to save
+                        this.form?.markAsDirty();
+                    } else {
+                        alert('Failed to remove favicon: ' + (response.error || 'Unknown error'));
+                    }
+                },
+                error: (error) => {
+                    console.error('Favicon removal error:', error);
+                    alert('Failed to remove favicon: ' + (error.error?.error || error.message || 'Unknown error'));
+                }
+            });
+    }
+
+    private updateFaviconUrl(): void {
+        if (this.hasFavicon()) {
+            this.faviconUrl = `${window.location.origin}/favicon?t=${Date.now()}`;
+        } else {
+            this.faviconUrl = '';
+        }
     }
 }

@@ -72,6 +72,34 @@
             </div>
         </div>
 
+        <div class="section display-section">
+            <h3>Display Settings</h3>
+            <p class="section-description">
+                Customize the appearance of the app.
+            </p>
+            
+            <div class="font-setting">
+                <h4>App Font</h4>
+                <p class="setting-description">
+                    Choose a font for the entire app interface.
+                </p>
+                
+                <div class="font-selector">
+                    <mat-form-field appearance="outline" class="font-field">
+                        <mat-label>Font</mat-label>
+                        <mat-select 
+                            [(ngModel)]="appFont"
+                            (selectionChange)="onFontChange()">
+                            <mat-option *ngFor="let font of availableFonts" [value]="font.name">
+                                <span [style.font-family]="font.value">{{ font.displayName }}</span>
+                            </mat-option>
+                        </mat-select>
+                        <mat-hint>Changes apply immediately to all text in the app</mat-hint>
+                    </mat-form-field>
+                </div>
+            </div>
+        </div>
+
         <div class="section tag-colors-section">
             <h3>Tag Colors</h3>
             <p class="section-description">

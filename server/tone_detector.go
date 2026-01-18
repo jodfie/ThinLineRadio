@@ -1167,3 +1167,311 @@ func calculateTotalToneDuration(tones []Tone) float64 {
 	}
 	return total
 }
+
+// DetectAllTonesForTranscription detects ALL sustained tones in audio (200-5000Hz range)
+// regardless of whether they match configured tone sets. This is used to remove dispatch tones
+// before transcription to prevent Whisper hallucinations.
+// Returns all detected tones that meet minimum duration requirements.
+func (detector *ToneDetector) DetectAllTonesForTranscription(audio []byte, audioMime string) ([]Tone, error) {
+	if len(audio) < 1000 {
+		return []Tone{}, nil
+	}
+
+	// Convert audio to WAV PCM format using ffmpeg
+	tempDir := os.TempDir()
+	srcFile := filepath.Join(tempDir, fmt.Sprintf("tone_detect_trans_%d.m4a", time.Now().UnixNano()))
+	wavFile := filepath.Join(tempDir, fmt.Sprintf("tone_detect_trans_%d.wav", time.Now().UnixNano()))
+
+	// Write source audio to temp file
+	if err := os.WriteFile(srcFile, audio, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write temp audio file: %v", err)
+	}
+	defer os.Remove(srcFile)
+	defer os.Remove(wavFile)
+
+	// Convert to WAV 16kHz mono with bandpass filter for tone detection
+	ffArgs := []string{
+		"-y", "-loglevel", "error",
+		"-i", srcFile,
+		"-ar", "16000", // 16kHz sample rate
+		"-ac", "1",     // Mono
+		"-af", "highpass=f=200,lowpass=f=5000,dynaudnorm", // Detect tones in dispatch range
+		"-f", "wav",
+		wavFile,
+	}
+	ffCmd := exec.Command("ffmpeg", ffArgs...)
+	var ffErr bytes.Buffer
+	ffCmd.Stderr = &ffErr
+	if err := ffCmd.Run(); err != nil {
+		return nil, fmt.Errorf("ffmpeg conversion failed: %v, stderr: %s", err, ffErr.String())
+	}
+
+	// Read WAV file
+	wavData, err := os.ReadFile(wavFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read WAV file: %v", err)
+	}
+
+	// Parse WAV and extract PCM samples
+	samples, sampleRate, err := detector.parseWAV(wavData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse WAV: %v", err)
+	}
+
+	if len(samples) < 100 {
+		return []Tone{}, nil
+	}
+
+	// Perform FFT analysis to detect ALL tones (no tone set matching)
+	// Use aggressive detection parameters to catch all dispatch tones
+	detectedTones := detector.detectAllSustainedTones(samples, sampleRate)
+
+	fmt.Printf("transcription tone detection: found %d sustained tones to remove before transcription\n", len(detectedTones))
+
+	return detectedTones, nil
+}
+
+// detectAllSustainedTones detects all sustained tones in audio without matching against tone sets
+// This is specifically for transcription pre-processing to remove ALL dispatch tones
+func (detector *ToneDetector) detectAllSustainedTones(samples []float64, sampleRate int) []Tone {
+	windowSize := 2048
+	hopSize := 512
+	minToneDuration := 0.5 // Minimum 500ms (slightly less aggressive than 600ms for tone matching)
+
+	// Track detected frequencies over time
+	type freqDetection struct {
+		frequency float64
+		startTime float64
+		endTime   float64
+		magnitude float64
+	}
+
+	detections := make(map[int][]freqDetection)
+
+	// Perform dynamic noise floor estimation (same as main detector)
+	var framePeaks []float64
+	numWindows := (len(samples) - windowSize) / hopSize
+
+	// First pass: collect frame peaks
+	for win := 0; win < numWindows; win++ {
+		start := win * hopSize
+		end := start + windowSize
+		if end > len(samples) {
+			break
+		}
+
+		window := samples[start:end]
+		windowed := make([]float64, len(window))
+		for i := range window {
+			hann := 0.5 * (1.0 - math.Cos(2.0*math.Pi*float64(i)/float64(len(window)-1)))
+			windowed[i] = window[i] * hann
+		}
+
+		magnitudes := detector.dft(windowed, sampleRate)
+
+		var framePeak float64
+		for bin, mag := range magnitudes {
+			freq := float64(bin) * float64(sampleRate) / float64(windowSize)
+			if freq >= 200.0 && freq <= 5000.0 && mag > framePeak {
+				framePeak = mag
+			}
+		}
+		framePeaks = append(framePeaks, framePeak)
+	}
+
+	if len(framePeaks) == 0 {
+		return []Tone{}
+	}
+
+	// Calculate noise floor
+	globalPeak := 0.0
+	for _, peak := range framePeaks {
+		if peak > globalPeak {
+			globalPeak = peak
+		}
+	}
+
+	if globalPeak < 1e-20 {
+		return []Tone{}
+	}
+
+	relativeDB := make([]float64, len(framePeaks))
+	for i, peak := range framePeaks {
+		relativeDB[i] = 20.0 * math.Log10(math.Max(peak, 1e-20)/globalPeak)
+	}
+
+	sortedDB := make([]float64, len(relativeDB))
+	copy(sortedDB, relativeDB)
+	sort.Float64s(sortedDB)
+	q20Index := int(float64(len(sortedDB)) * 0.20)
+	q20 := sortedDB[q20Index]
+
+	var belowQ20 []float64
+	for _, db := range relativeDB {
+		if db <= q20 {
+			belowQ20 = append(belowQ20, db)
+		}
+	}
+
+	noiseFloorDB := -60.0
+	if len(belowQ20) > 0 {
+		sort.Float64s(belowQ20)
+		noiseFloorDB = belowQ20[len(belowQ20)/2]
+	}
+
+	silenceBelowGlobalDB := -28.0
+	snrAboveNoiseDB := 6.0
+
+	// Second pass: detect tones
+	for win := 0; win < numWindows; win++ {
+		start := win * hopSize
+		end := start + windowSize
+		if end > len(samples) {
+			break
+		}
+
+		window := samples[start:end]
+		windowStartTime := float64(start) / float64(sampleRate)
+		windowEndTime := float64(end) / float64(sampleRate)
+
+		frameDB := relativeDB[win]
+		isSilent := frameDB < silenceBelowGlobalDB || frameDB < (noiseFloorDB+snrAboveNoiseDB)
+		if isSilent {
+			continue
+		}
+
+		windowed := make([]float64, len(window))
+		for i := range window {
+			hann := 0.5 * (1.0 - math.Cos(2.0*math.Pi*float64(i)/float64(len(window)-1)))
+			windowed[i] = window[i] * hann
+		}
+
+		magnitudes := detector.dft(windowed, sampleRate)
+
+		for bin, mag := range magnitudes {
+			freq := float64(bin) * float64(sampleRate) / float64(windowSize)
+
+			// Detect tones in dispatch range (200-5000Hz)
+			if freq >= 200.0 && freq <= 5000.0 && mag > 0.02 {
+				// Parabolic interpolation
+				binMinus := bin - 1
+				binPlus := bin + 1
+				if binMinus >= 0 && binPlus < len(magnitudes) {
+					magMinus := magnitudes[binMinus]
+					magPlus := magnitudes[binPlus]
+					delta := parabolicInterpolate(magMinus, mag, magPlus)
+					delta = math.Max(-0.5, math.Min(0.5, delta))
+					binWidth := float64(sampleRate) / float64(windowSize)
+					freq += delta * binWidth
+				}
+
+				// Check if this extends an existing detection
+				found := false
+				for freqBin, detectionList := range detections {
+					binFreq := float64(freqBin * 10)
+					if math.Abs(freq-binFreq) <= 20.0 {
+						for i := range detectionList {
+							if windowStartTime <= detectionList[i].endTime && windowEndTime >= detectionList[i].startTime {
+								if windowEndTime > detectionList[i].endTime {
+									detectionList[i].endTime = windowEndTime
+								}
+								if windowStartTime < detectionList[i].startTime {
+									detectionList[i].startTime = windowStartTime
+								}
+								if mag > detectionList[i].magnitude {
+									detectionList[i].magnitude = mag
+									detectionList[i].frequency = freq
+								}
+								found = true
+								break
+							}
+						}
+						if found {
+							break
+						}
+					}
+				}
+
+				if !found {
+					freqBin := int(freq / 10.0)
+					if detections[freqBin] == nil {
+						detections[freqBin] = []freqDetection{}
+					}
+					detections[freqBin] = append(detections[freqBin], freqDetection{
+						frequency: freq,
+						startTime: windowStartTime,
+						endTime:   windowEndTime,
+						magnitude: mag,
+					})
+				}
+			}
+		}
+	}
+
+	// Merge nearby detections
+	type mergedDetection struct {
+		frequency float64
+		startTime float64
+		endTime   float64
+		magnitude float64
+	}
+
+	var mergedDetections []mergedDetection
+
+	for _, detectionList := range detections {
+		for _, det := range detectionList {
+			duration := det.endTime - det.startTime
+			if duration >= minToneDuration {
+				merged := false
+				for i := range mergedDetections {
+					md := &mergedDetections[i]
+					freqDiff := math.Abs(det.frequency - md.frequency)
+					timeOverlap := (det.startTime <= md.endTime+0.1 && det.endTime >= md.startTime-0.1)
+
+					if freqDiff <= 25.0 && timeOverlap {
+						md.frequency = (md.frequency + det.frequency) / 2.0
+						if det.startTime < md.startTime {
+							md.startTime = det.startTime
+						}
+						if det.endTime > md.endTime {
+							md.endTime = det.endTime
+						}
+						if det.magnitude > md.magnitude {
+							md.magnitude = det.magnitude
+						}
+						merged = true
+						break
+					}
+				}
+
+				if !merged {
+					mergedDetections = append(mergedDetections, mergedDetection{
+						frequency: det.frequency,
+						startTime: det.startTime,
+						endTime:   det.endTime,
+						magnitude: det.magnitude,
+					})
+				}
+			}
+		}
+	}
+
+	// Convert to Tone objects
+	var tones []Tone
+	for _, md := range mergedDetections {
+		duration := md.endTime - md.startTime
+		if duration >= minToneDuration {
+			tones = append(tones, Tone{
+				Frequency: md.frequency,
+				StartTime: md.startTime,
+				EndTime:   md.endTime,
+				Duration:  duration,
+				ToneType:  "", // Not matched to any tone set
+			})
+			fmt.Printf("detected tone for removal: %.1f Hz for %.2fs (%.2f-%.2fs)\n",
+				md.frequency, duration, md.startTime, md.endTime)
+		}
+	}
+
+	return tones
+}

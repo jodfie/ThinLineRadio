@@ -21,73 +21,301 @@
     <!-- Settings Section -->
     <mat-card class="settings-section">
         <mat-card-header>
-            <mat-card-title>Settings</mat-card-title>
+            <mat-card-title>System Health Alert Settings</mat-card-title>
         </mat-card-header>
         <mat-card-content>
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <label>Transcription Failure Alert Threshold:</label>
-                    <div class="setting-control">
-                        <span *ngIf="!editingThreshold" class="setting-value">{{ transcriptionFailureThreshold }} failures</span>
-                        <div *ngIf="editingThreshold" class="setting-edit">
-                            <mat-form-field appearance="outline" class="threshold-input">
-                                <input matInput type="number" [(ngModel)]="newThreshold" min="1">
-                            </mat-form-field>
-                            <button mat-icon-button color="primary" (click)="saveThreshold()" title="Save">
-                                <mat-icon>check</mat-icon>
-                            </button>
-                            <button mat-icon-button (click)="cancelEditThreshold()" title="Cancel">
-                                <mat-icon>close</mat-icon>
-                            </button>
+            <!-- Help Information -->
+            <div class="help-info-box">
+                <h4><mat-icon>info</mat-icon> Understanding the Settings</h4>
+                <div class="help-content">
+                    <div class="help-item notification-info">
+                        <mat-icon class="notification-icon">notifications_active</mat-icon>
+                        <div>
+                            <strong>Push Notifications:</strong> To receive push notifications for system alerts, set user accounts as System Admin in the user management section.
                         </div>
-                        <button *ngIf="!editingThreshold" mat-icon-button (click)="editingThreshold = true; newThreshold = transcriptionFailureThreshold" title="Edit threshold">
-                            <mat-icon>edit</mat-icon>
-                        </button>
                     </div>
-                    <span class="setting-description">Alert will be triggered when this many transcription failures occur in 24 hours</span>
-                </div>
-                <div class="setting-item">
-                    <label>Tone Detection Issue Threshold:</label>
-                    <div class="setting-control">
-                        <span *ngIf="!editingToneThreshold" class="setting-value">{{ toneDetectionIssueThreshold }} calls</span>
-                        <div *ngIf="editingToneThreshold" class="setting-edit">
-                            <mat-form-field appearance="outline" class="threshold-input">
-                                <input matInput type="number" [(ngModel)]="newToneThreshold" min="1">
-                            </mat-form-field>
-                            <button mat-icon-button color="primary" (click)="saveToneDetectionThreshold()" title="Save">
-                                <mat-icon>check</mat-icon>
-                            </button>
-                            <button mat-icon-button (click)="cancelEditToneThreshold()" title="Cancel">
-                                <mat-icon>close</mat-icon>
-                            </button>
-                        </div>
-                        <button *ngIf="!editingToneThreshold" mat-icon-button (click)="editingToneThreshold = true; newToneThreshold = toneDetectionIssueThreshold" title="Edit threshold">
-                            <mat-icon>edit</mat-icon>
-                        </button>
+                    <div class="help-item">
+                        <strong>Time Window:</strong> How far back in time to check for issues. For example, "24 hours" means the system only looks at data from the last 24 hours.
                     </div>
-                    <span class="setting-description">Alert will be triggered when a talkgroup with tone detection enabled has this many calls with no tones detected in 24 hours</span>
-                </div>
-                <div class="setting-item">
-                    <label>Alert Retention Days:</label>
-                    <div class="setting-control">
-                        <span *ngIf="!editingRetentionDays" class="setting-value">{{ alertRetentionDays }} days</span>
-                        <div *ngIf="editingRetentionDays" class="setting-edit">
-                            <mat-form-field appearance="outline" class="threshold-input">
-                                <input matInput type="number" [(ngModel)]="newRetentionDays" min="1">
-                            </mat-form-field>
-                            <button mat-icon-button color="primary" (click)="saveRetentionDays()" title="Save">
-                                <mat-icon>check</mat-icon>
-                            </button>
-                            <button mat-icon-button (click)="cancelEditRetentionDays()" title="Cancel">
-                                <mat-icon>close</mat-icon>
-                            </button>
-                        </div>
-                        <button *ngIf="!editingRetentionDays" mat-icon-button (click)="editingRetentionDays = true; newRetentionDays = alertRetentionDays" title="Edit retention days">
-                            <mat-icon>edit</mat-icon>
-                        </button>
+                    <div class="help-item">
+                        <strong>Threshold:</strong> The minimum number of failures/calls needed to trigger an alert. For "No Audio", this is the base threshold in minutes.
                     </div>
-                    <span class="setting-description">System alerts and logs will be automatically deleted after this many days</span>
+                    <div class="help-item">
+                        <strong>Multiplier (No Audio only):</strong> Used for adaptive threshold calculation. The system learns patterns and adjusts the alert threshold based on historical data. 
+                        <br><em>Formula: threshold = max(base threshold, historical average × multiplier)</em>
+                        <br>Higher values = less sensitive (fewer alerts during quiet times). Lower values = more sensitive.
+                    </div>
+                    <div class="help-item">
+                        <strong>Historical Days (No Audio only):</strong> How many days of past data to analyze when calculating adaptive thresholds. The system looks at the same hour of day over the last N days to learn patterns (e.g., "2 AM is usually quiet, but 3 PM is busy").
+                    </div>
                 </div>
+            </div>
+            
+            <mat-divider style="margin: 20px 0;"></mat-divider>
+            <!-- Global Toggle -->
+            <div class="setting-item toggle-setting">
+                <div class="setting-label-group">
+                    <label>System Health Alerts</label>
+                    <span class="setting-description">Master toggle for all system health monitoring alerts</span>
+                </div>
+                <mat-slide-toggle 
+                    [(ngModel)]="systemHealthAlertsEnabled" 
+                    (change)="toggleSystemHealthAlertsEnabled()"
+                    [class.mat-checked]="systemHealthAlertsEnabled">
+                </mat-slide-toggle>
+            </div>
+            
+            <mat-divider style="margin: 24px 0;"></mat-divider>
+
+            <!-- Alert Settings Table -->
+            <div class="alert-settings-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Alert Type</th>
+                            <th>Enabled</th>
+                            <th>Threshold</th>
+                            <th>Time Window</th>
+                            <th>Additional Settings</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Transcription Failure Alerts -->
+                        <tr>
+                            <td>
+                                <div class="alert-type-cell">
+                                    <strong>Transcription Failures</strong>
+                                    <span class="alert-description">Monitor transcription service failures</span>
+                                </div>
+                            </td>
+                            <td>
+                                <mat-slide-toggle 
+                                    [(ngModel)]="settings.transcriptionFailureAlertsEnabled"
+                                    (change)="saveSetting('transcriptionFailureAlertsEnabled', settings.transcriptionFailureAlertsEnabled)"
+                                    [disabled]="!systemHealthAlertsEnabled"
+                                    [class.mat-checked]="settings.transcriptionFailureAlertsEnabled">
+                                </mat-slide-toggle>
+                            </td>
+                            <td>
+                                <mat-form-field appearance="outline" class="compact-field">
+                                    <mat-select 
+                                        [(ngModel)]="settings.transcriptionFailureThreshold"
+                                        (ngModelChange)="saveSetting('transcriptionFailureThreshold', $event)"
+                                        [disabled]="!systemHealthAlertsEnabled || !settings.transcriptionFailureAlertsEnabled">
+                                        <mat-option *ngFor="let opt of thresholdOptions" [value]="opt">
+                                            {{ opt }} failures
+                                        </mat-option>
+                                    </mat-select>
+                                    <mat-hint>Alert when this many failures occur</mat-hint>
+                                    <mat-icon *ngIf="hasSaveFeedback('transcriptionFailureThreshold')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                </mat-form-field>
+                            </td>
+                            <td>
+                                <mat-form-field appearance="outline" class="compact-field">
+                                    <mat-select 
+                                        [(ngModel)]="settings.transcriptionFailureTimeWindow"
+                                        (ngModelChange)="saveSetting('transcriptionFailureTimeWindow', $event)"
+                                        [disabled]="!systemHealthAlertsEnabled || !settings.transcriptionFailureAlertsEnabled">
+                                        <mat-option *ngFor="let opt of timeWindowOptions" [value]="opt">
+                                            {{ opt }} hour{{ opt !== 1 ? 's' : '' }}
+                                        </mat-option>
+                                    </mat-select>
+                                    <mat-hint>How far back to check for failures</mat-hint>
+                                    <mat-icon *ngIf="hasSaveFeedback('transcriptionFailureTimeWindow')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                </mat-form-field>
+                            </td>
+                            <td>
+                                <mat-form-field appearance="outline" class="compact-field" style="width: 160px;">
+                                    <mat-label>Repeat Interval</mat-label>
+                                    <mat-select 
+                                        [(ngModel)]="settings.transcriptionFailureRepeatMinutes"
+                                        (ngModelChange)="saveSetting('transcriptionFailureRepeatMinutes', $event)"
+                                        [disabled]="!systemHealthAlertsEnabled || !settings.transcriptionFailureAlertsEnabled">
+                                        <mat-option *ngFor="let opt of repeatMinutesOptions" [value]="opt">
+                                            {{ opt }} min
+                                        </mat-option>
+                                    </mat-select>
+                                    <mat-hint>Minutes between repeat alerts</mat-hint>
+                                    <mat-icon *ngIf="hasSaveFeedback('transcriptionFailureRepeatMinutes')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                </mat-form-field>
+                            </td>
+                        </tr>
+
+                        <!-- Tone Detection Alerts -->
+                        <tr>
+                            <td>
+                                <div class="alert-type-cell">
+                                    <strong>Tone Detection Issues</strong>
+                                    <span class="alert-description">Monitor talkgroups with tone detection enabled</span>
+                                </div>
+                            </td>
+                            <td>
+                                <mat-slide-toggle 
+                                    [(ngModel)]="settings.toneDetectionAlertsEnabled"
+                                    (change)="saveSetting('toneDetectionAlertsEnabled', settings.toneDetectionAlertsEnabled)"
+                                    [disabled]="!systemHealthAlertsEnabled"
+                                    [class.mat-checked]="settings.toneDetectionAlertsEnabled">
+                                </mat-slide-toggle>
+                            </td>
+                            <td>
+                                <mat-form-field appearance="outline" class="compact-field">
+                                    <mat-select 
+                                        [(ngModel)]="settings.toneDetectionIssueThreshold"
+                                        (ngModelChange)="saveSetting('toneDetectionIssueThreshold', $event)"
+                                        [disabled]="!systemHealthAlertsEnabled || !settings.toneDetectionAlertsEnabled">
+                                        <mat-option *ngFor="let opt of thresholdOptions" [value]="opt">
+                                            {{ opt }} calls
+                                        </mat-option>
+                                    </mat-select>
+                                    <mat-hint>Alert when this many calls have no tones</mat-hint>
+                                    <mat-icon *ngIf="hasSaveFeedback('toneDetectionIssueThreshold')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                </mat-form-field>
+                            </td>
+                            <td>
+                                <mat-form-field appearance="outline" class="compact-field">
+                                    <mat-select 
+                                        [(ngModel)]="settings.toneDetectionTimeWindow"
+                                        (ngModelChange)="saveSetting('toneDetectionTimeWindow', $event)"
+                                        [disabled]="!systemHealthAlertsEnabled || !settings.toneDetectionAlertsEnabled">
+                                        <mat-option *ngFor="let opt of timeWindowOptions" [value]="opt">
+                                            {{ opt }} hour{{ opt !== 1 ? 's' : '' }}
+                                        </mat-option>
+                                    </mat-select>
+                                    <mat-hint>How far back to check for calls</mat-hint>
+                                    <mat-icon *ngIf="hasSaveFeedback('toneDetectionTimeWindow')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                </mat-form-field>
+                            </td>
+                            <td>
+                                <mat-form-field appearance="outline" class="compact-field" style="width: 160px;">
+                                    <mat-label>Repeat Interval</mat-label>
+                                    <mat-select 
+                                        [(ngModel)]="settings.toneDetectionRepeatMinutes"
+                                        (ngModelChange)="saveSetting('toneDetectionRepeatMinutes', $event)"
+                                        [disabled]="!systemHealthAlertsEnabled || !settings.toneDetectionAlertsEnabled">
+                                        <mat-option *ngFor="let opt of repeatMinutesOptions" [value]="opt">
+                                            {{ opt }} min
+                                        </mat-option>
+                                    </mat-select>
+                                    <mat-hint>Minutes between repeat alerts</mat-hint>
+                                    <mat-icon *ngIf="hasSaveFeedback('toneDetectionRepeatMinutes')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                </mat-form-field>
+                            </td>
+                        </tr>
+
+                        <!-- No Audio Alerts -->
+                        <tr>
+                            <td>
+                                <div class="alert-type-cell">
+                                    <strong>No Audio Received</strong>
+                                    <span class="alert-description">Intelligent adaptive monitoring: Continuously analyzes historical audio patterns by time of day, learns normal activity baselines, and dynamically adjusts alert thresholds to reduce false positives while maintaining sensitivity to genuine issues</span>
+                                </div>
+                            </td>
+                            <td>
+                                <mat-slide-toggle 
+                                    [(ngModel)]="settings.noAudioAlertsEnabled"
+                                    (change)="saveSetting('noAudioAlertsEnabled', settings.noAudioAlertsEnabled)"
+                                    [disabled]="!systemHealthAlertsEnabled"
+                                    [class.mat-checked]="settings.noAudioAlertsEnabled">
+                                </mat-slide-toggle>
+                            </td>
+                            <td>
+                                <mat-form-field appearance="outline" class="compact-field">
+                                    <mat-select 
+                                        [(ngModel)]="settings.noAudioThresholdMinutes"
+                                        (ngModelChange)="saveSetting('noAudioThresholdMinutes', $event)"
+                                        [disabled]="!systemHealthAlertsEnabled || !settings.noAudioAlertsEnabled">
+                                        <mat-option *ngFor="let opt of thresholdOptions" [value]="opt">
+                                            {{ opt }} min
+                                        </mat-option>
+                                    </mat-select>
+                                    <mat-hint>Base threshold (minutes)</mat-hint>
+                                    <mat-icon *ngIf="hasSaveFeedback('noAudioThresholdMinutes')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                </mat-form-field>
+                            </td>
+                            <td>
+                                <mat-form-field appearance="outline" class="compact-field">
+                                    <mat-select 
+                                        [(ngModel)]="settings.noAudioTimeWindow"
+                                        (ngModelChange)="saveSetting('noAudioTimeWindow', $event)"
+                                        [disabled]="!systemHealthAlertsEnabled || !settings.noAudioAlertsEnabled">
+                                        <mat-option *ngFor="let opt of timeWindowOptions" [value]="opt">
+                                            {{ opt }} hour{{ opt !== 1 ? 's' : '' }}
+                                        </mat-option>
+                                    </mat-select>
+                                    <mat-hint>How far back to check</mat-hint>
+                                    <mat-icon *ngIf="hasSaveFeedback('noAudioTimeWindow')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                </mat-form-field>
+                            </td>
+                            <td>
+                                <div class="additional-settings">
+                                    <mat-form-field appearance="outline" class="compact-field">
+                                        <mat-label>Multiplier</mat-label>
+                                        <mat-select 
+                                            [(ngModel)]="settings.noAudioMultiplier"
+                                            (ngModelChange)="saveSetting('noAudioMultiplier', $event)"
+                                            [disabled]="!systemHealthAlertsEnabled || !settings.noAudioAlertsEnabled">
+                                            <mat-option *ngFor="let opt of multiplierOptions" [value]="opt">
+                                                {{ opt }}x
+                                            </mat-option>
+                                        </mat-select>
+                                        <mat-hint>Higher = less sensitive</mat-hint>
+                                        <mat-icon *ngIf="hasSaveFeedback('noAudioMultiplier')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                    </mat-form-field>
+                                    <mat-form-field appearance="outline" class="compact-field">
+                                        <mat-label>Historical Days</mat-label>
+                                        <mat-select 
+                                            [(ngModel)]="settings.noAudioHistoricalDataDays"
+                                            (ngModelChange)="saveSetting('noAudioHistoricalDataDays', $event)"
+                                            [disabled]="!systemHealthAlertsEnabled || !settings.noAudioAlertsEnabled">
+                                            <mat-option *ngFor="let opt of historicalDaysOptions" [value]="opt">
+                                                {{ opt }} days
+                                            </mat-option>
+                                        </mat-select>
+                                        <mat-hint>Days to analyze</mat-hint>
+                                        <mat-icon *ngIf="hasSaveFeedback('noAudioHistoricalDataDays')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                    </mat-form-field>
+                                    <mat-form-field appearance="outline" class="compact-field">
+                                        <mat-label>Repeat Interval</mat-label>
+                                        <mat-select 
+                                            [(ngModel)]="settings.noAudioRepeatMinutes"
+                                            (ngModelChange)="saveSetting('noAudioRepeatMinutes', $event)"
+                                            [disabled]="!systemHealthAlertsEnabled || !settings.noAudioAlertsEnabled">
+                                            <mat-option *ngFor="let opt of repeatMinutesOptions" [value]="opt">
+                                                {{ opt }} min
+                                            </mat-option>
+                                        </mat-select>
+                                        <mat-hint>Minutes between repeat alerts</mat-hint>
+                                        <mat-icon *ngIf="hasSaveFeedback('noAudioRepeatMinutes')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                    </mat-form-field>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Alert Retention -->
+                        <tr>
+                            <td>
+                                <div class="alert-type-cell">
+                                    <strong>Alert Retention</strong>
+                                    <span class="alert-description">How long to keep system alerts before deletion</span>
+                                </div>
+                            </td>
+                            <td>-</td>
+                            <td colspan="2">
+                                <mat-form-field appearance="outline" class="compact-field">
+                                    <mat-select 
+                                        [(ngModel)]="settings.alertRetentionDays"
+                                        (ngModelChange)="saveSetting('alertRetentionDays', $event)">
+                                        <mat-option *ngFor="let opt of retentionDaysOptions" [value]="opt">
+                                            {{ opt }} day{{ opt !== 1 ? 's' : '' }}
+                                        </mat-option>
+                                    </mat-select>
+                                    <mat-icon *ngIf="hasSaveFeedback('alertRetentionDays')" class="save-feedback-icon" matSuffix>check_circle</mat-icon>
+                                </mat-form-field>
+                            </td>
+                            <td>-</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </mat-card-content>
     </mat-card>
@@ -117,27 +345,36 @@
         </div>
 
         <div *ngIf="!loading && !error && alerts.length > 0" class="alerts-list">
-            <div *ngFor="let alert of alerts" class="alert-item" [ngClass]="alert.severity">
-                <div class="alert-header">
-                    <div class="alert-title-section">
-                        <div class="alert-title">
-                            <span class="alert-icon">{{ getSeverityIcon(alert.severity) }}</span>
-                            {{ alert.title }}
+            <div *ngFor="let groupType of getGroupedAlertKeys()" class="alert-group">
+                <div class="alert-group-header">
+                    <h3>{{ getAlertTypeLabel(groupType) }}</h3>
+                    <div class="alert-group-actions">
+                        <span class="alert-count">{{ getGroupedAlerts()[groupType].length }} alert{{ getGroupedAlerts()[groupType].length !== 1 ? 's' : '' }}</span>
+                        <button mat-stroked-button color="warn" (click)="dismissAllAlertsInGroup(groupType)" [title]="'Dismiss all alerts in this group'">
+                            <mat-icon>clear_all</mat-icon>
+                            Clear All
+                        </button>
+                    </div>
+                </div>
+                <div *ngFor="let alert of getGroupedAlerts()[groupType]" class="alert-item" [ngClass]="alert.severity">
+                    <div class="alert-header">
+                        <div class="alert-title-section">
+                            <div class="alert-title">
+                                <span class="alert-icon">{{ getSeverityIcon(alert.severity) }}</span>
+                                {{ alert.title }}
+                            </div>
                         </div>
-                        <div class="alert-meta">
-                            <span class="alert-type">{{ alert.alertType }}</span>
-                            <span class="alert-severity">{{ alert.severity }}</span>
+                        <div class="alert-actions">
+                            <div class="alert-time">{{ formatDate(alert.createdAt) }}</div>
+                            <button mat-icon-button (click)="dismissAlert(alert.id)" [title]="'Dismiss alert'">
+                                <mat-icon>close</mat-icon>
+                            </button>
                         </div>
                     </div>
-                    <div class="alert-time">{{ formatDate(alert.createdAt) }}</div>
-                </div>
-                <div class="alert-message">{{ alert.message }}</div>
-                <div *ngIf="hasAlertData(alert)" class="alert-data">
-                    <pre>{{ getAlertData(alert) | json }}</pre>
-                </div>
+                    <div class="alert-message">{{ alert.message }}</div>
 
-                <!-- Transcription Failure Details -->
-                <div *ngIf="alert.alertType === 'transcription_failure'" class="transcription-failure-details">
+                    <!-- Transcription Failure Details -->
+                    <div *ngIf="alert.alertType === 'transcription_failure'" class="transcription-failure-details">
                     <div class="failure-controls">
                         <button mat-raised-button color="warn" (click)="resetFailures()" [disabled]="loadingFailedCalls">
                             <mat-icon>refresh</mat-icon>
@@ -180,9 +417,9 @@
                         <mat-icon>check_circle</mat-icon>
                         <span>No failed calls found</span>
                     </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
-

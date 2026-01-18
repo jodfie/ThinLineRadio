@@ -2,6 +2,79 @@
     padding: 16px;
 }
 
+.help-info-box {
+    background: #f0f7ff;
+    border: 1px solid #2196f3;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+
+    h4 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 12px 0;
+        color: #1976d2;
+        font-size: 16px;
+        font-weight: 500;
+
+        mat-icon {
+            font-size: 20px;
+            width: 20px;
+            height: 20px;
+        }
+    }
+
+    .help-content {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .help-item {
+        font-size: 13px;
+        line-height: 1.6;
+        color: #333;
+
+        strong {
+            color: #1976d2;
+            font-weight: 600;
+        }
+
+        em {
+            color: #666;
+            font-size: 12px;
+            display: block;
+            margin-top: 4px;
+            padding-left: 12px;
+        }
+
+        &.notification-info {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+
+            .notification-icon {
+                color: #ff9800;
+                font-size: 24px;
+                width: 24px;
+                height: 24px;
+                flex-shrink: 0;
+                margin-top: 2px;
+            }
+
+            div {
+                flex: 1;
+            }
+        }
+    }
+}
+
 .settings-section {
     margin-bottom: 24px;
     background: white;
@@ -25,33 +98,270 @@
             font-size: 14px;
         }
 
-        .setting-control {
+        &.toggle-setting {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+
+            .setting-label-group {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+        }
+    }
+
+    // Toggle switch styling - green when enabled, red when disabled
+    ::ng-deep mat-slide-toggle {
+        &.mat-checked {
+            .mdc-switch__track {
+                background-color: #4caf50 !important;
+                border-color: #4caf50 !important;
+            }
+            .mdc-switch__handle {
+                background-color: #4caf50 !important;
+                border-color: #4caf50 !important;
+            }
+        }
+
+        &:not(.mat-checked) {
+            .mdc-switch__track {
+                background-color: #f44336 !important;
+                border-color: #f44336 !important;
+            }
+            .mdc-switch__handle {
+                background-color: #f44336 !important;
+                border-color: #f44336 !important;
+            }
+        }
+
+        &[disabled] {
+            opacity: 0.5;
+        }
+    }
+
+    .setting-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        .setting-value {
+            font-size: 16px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .setting-edit {
             display: flex;
             align-items: center;
             gap: 8px;
 
-            .setting-value {
-                font-size: 16px;
-                color: #666;
-                font-weight: 500;
+            .threshold-input {
+                width: 120px;
+            }
+        }
+    }
+
+    .setting-description {
+        font-size: 12px;
+        color: #999;
+        font-style: italic;
+    }
+
+    .alert-settings-table {
+        margin-top: 20px;
+        overflow-x: auto;
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+
+            thead {
+                background: #f5f5f5;
+                
+                th {
+                    padding: 12px 16px;
+                    text-align: left;
+                    font-weight: 600;
+                    font-size: 13px;
+                    color: #666;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    border-bottom: 2px solid #e0e0e0;
+                }
             }
 
-            .setting-edit {
-                display: flex;
-                align-items: center;
-                gap: 8px;
+            tbody {
+                tr {
+                    border-bottom: 1px solid #e0e0e0;
+                    transition: background-color 0.2s;
 
-                .threshold-input {
-                    width: 120px;
+                    &:hover {
+                        background: #fafafa;
+                    }
+
+                    &:last-child {
+                        border-bottom: none;
+                    }
+                }
+
+                td {
+                    padding: 16px;
+                    vertical-align: middle;
+                }
+            }
+
+            .alert-type-cell {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+
+                strong {
+                    font-size: 14px;
+                    color: #333;
+                    font-weight: 500;
+                }
+
+                .alert-description {
+                    font-size: 12px;
+                    color: #999;
+                    font-style: italic;
+                }
+            }
+
+            .compact-field {
+                width: 140px;
+                margin: 0;
+
+                ::ng-deep .mat-mdc-form-field-subscript-wrapper {
+                    display: block;
+                    margin-top: 4px;
+                    position: relative;
+                    height: auto;
+                    min-height: 20px;
+                }
+
+                ::ng-deep .mat-mdc-form-field-hint-wrapper {
+                    padding: 0;
+                    width: 100%;
+                }
+
+                ::ng-deep .mat-mdc-form-field-hint {
+                    font-size: 11px;
+                    color: #666;
+                    margin-top: 2px;
+                    white-space: normal;
+                    word-wrap: break-word;
+                    line-height: 1.4;
+                    display: block;
+                    width: 100%;
+                }
+
+                ::ng-deep .mat-mdc-form-field-label {
+                    white-space: normal;
+                    overflow: visible;
+                    text-overflow: clip;
+                    word-wrap: break-word;
+                    max-width: 100%;
+                }
+
+                ::ng-deep .mat-mdc-form-field-label-wrapper {
+                    width: 100%;
+                    overflow: visible;
+                }
+
+                ::ng-deep .mat-mdc-text-field-wrapper {
+                    padding-bottom: 0;
+                }
+
+                ::ng-deep .mat-mdc-form-field-infix {
+                    min-height: 40px;
+                }
+            }
+
+            .additional-settings {
+                display: flex;
+                gap: 12px;
+                align-items: flex-start;
+                flex-wrap: wrap;
+
+                .compact-field {
+                    width: 180px;
+                    min-width: 180px;
+
+                    ::ng-deep .mat-mdc-form-field-subscript-wrapper {
+                        display: block;
+                        margin-top: 4px;
+                        position: relative;
+                        height: auto;
+                        min-height: 20px;
+                    }
+
+                    ::ng-deep .mat-mdc-form-field-hint-wrapper {
+                        padding: 0;
+                        width: 100%;
+                    }
+
+                    ::ng-deep .mat-mdc-form-field-hint {
+                        font-size: 11px;
+                        color: #666;
+                        margin-top: 2px;
+                        white-space: normal;
+                        word-wrap: break-word;
+                        line-height: 1.4;
+                        display: block;
+                        width: 100%;
+                    }
+
+                    ::ng-deep .mat-mdc-form-field-label {
+                        white-space: normal;
+                        overflow: visible;
+                        text-overflow: clip;
+                        word-wrap: break-word;
+                        max-width: 100%;
+                    }
+
+                    ::ng-deep .mat-mdc-text-field-wrapper {
+                        padding-bottom: 0;
+                    }
+
+                    ::ng-deep .mat-mdc-form-field-infix {
+                        min-height: 40px;
+                        padding-top: 0;
+                    }
+                }
+
+                .save-feedback-icon {
+                    color: #4caf50;
+                    font-size: 20px;
+                    width: 20px;
+                    height: 20px;
+                    animation: fadeInOut 2s ease-in-out;
                 }
             }
         }
+    }
+}
 
-        .setting-description {
-            font-size: 12px;
-            color: #999;
-            font-style: italic;
-        }
+@keyframes fadeInOut {
+    0% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    20% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    80% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.8);
     }
 }
 
@@ -159,7 +469,61 @@
 .alerts-list {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 24px;
+}
+
+.alert-group {
+    background: #f9f9f9;
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid #e0e0e0;
+
+    .alert-group-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid #e0e0e0;
+
+        h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .alert-group-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .alert-count {
+            font-size: 14px;
+            color: #666;
+            background: #e0e0e0;
+            padding: 4px 12px;
+            border-radius: 12px;
+        }
+
+        button {
+            mat-icon {
+                font-size: 18px;
+                width: 18px;
+                height: 18px;
+                margin-right: 4px;
+            }
+        }
+    }
+
+    .alert-item {
+        margin-bottom: 12px;
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
 }
 
 .alert-item {
@@ -199,10 +563,19 @@
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 12px;
+    gap: 16px;
+}
+
+.alert-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 .alert-title-section {
     flex: 1;
+    min-width: 0;
 }
 
 .alert-title {
@@ -219,11 +592,7 @@
 }
 
 .alert-meta {
-    display: flex;
-    gap: 12px;
-    font-size: 12px;
-    color: #666;
-    text-transform: uppercase;
+    display: none; // Hide technical metadata
 }
 
 .alert-time {
@@ -239,19 +608,7 @@
 }
 
 .alert-data {
-    margin-top: 12px;
-    padding: 12px;
-    background: white;
-    border-radius: 4px;
-    font-size: 12px;
-
-    pre {
-        margin: 0;
-        font-family: 'Courier New', monospace;
-        color: #999;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-    }
+    display: none; // Hide technical JSON data
 }
 
 .transcription-failure-details {
@@ -374,6 +731,25 @@
 
     mat-icon {
         color: #4caf50;
+    }
+}
+
+// Snackbar styles
+::ng-deep .success-snackbar {
+    background-color: #4caf50 !important;
+    color: white !important;
+    
+    .mat-mdc-snack-bar-label {
+        color: white !important;
+    }
+}
+
+::ng-deep .error-snackbar {
+    background-color: #f44336 !important;
+    color: white !important;
+    
+    .mat-mdc-snack-bar-label {
+        color: white !important;
     }
 }
 

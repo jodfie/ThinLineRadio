@@ -76,6 +76,8 @@ type Options struct {
 	// Email logo settings
 	EmailLogoFilename            string `json:"emailLogoFilename"` // Filename of logo file (stored in base directory)
 	EmailLogoBorderRadius       string `json:"emailLogoBorderRadius"` // Border radius for email logo (e.g., "0px", "8px", "50%")
+	// Favicon settings
+	FaviconFilename             string `json:"faviconFilename"` // Filename of favicon file (stored in base directory)
 	StripePublishableKey        string `json:"stripePublishableKey"`
 	StripeSecretKey             string `json:"stripeSecretKey"`
 	StripeWebhookSecret         string `json:"stripeWebhookSecret"`
@@ -86,6 +88,23 @@ type Options struct {
 	TranscriptionFailureThreshold uint            `json:"transcriptionFailureThreshold"`
 	ToneDetectionIssueThreshold uint            `json:"toneDetectionIssueThreshold"`
 	AlertRetentionDays          uint              `json:"alertRetentionDays"`
+	NoAudioThresholdMinutes     uint            `json:"noAudioThresholdMinutes"`
+	NoAudioMultiplier            float64         `json:"noAudioMultiplier"`
+	SystemHealthAlertsEnabled   bool            `json:"systemHealthAlertsEnabled"`
+	// Individual alert type toggles
+	TranscriptionFailureAlertsEnabled bool   `json:"transcriptionFailureAlertsEnabled"`
+	ToneDetectionAlertsEnabled        bool   `json:"toneDetectionAlertsEnabled"`
+	NoAudioAlertsEnabled              bool   `json:"noAudioAlertsEnabled"`
+	// Time windows (in hours)
+	TranscriptionFailureTimeWindow    uint   `json:"transcriptionFailureTimeWindow"`
+	ToneDetectionTimeWindow           uint   `json:"toneDetectionTimeWindow"`
+	NoAudioTimeWindow                 uint   `json:"noAudioTimeWindow"`
+	// Historical data window for no audio (in days)
+	NoAudioHistoricalDataDays         uint   `json:"noAudioHistoricalDataDays"`
+	// Repeat alert intervals (in minutes)
+	TranscriptionFailureRepeatMinutes uint   `json:"transcriptionFailureRepeatMinutes"`
+	ToneDetectionRepeatMinutes        uint   `json:"toneDetectionRepeatMinutes"`
+	NoAudioRepeatMinutes              uint   `json:"noAudioRepeatMinutes"`
 	RelayServerURL              string            `json:"relayServerURL"`
 	RelayServerAPIKey           string            `json:"relayServerAPIKey"`
 	RadioReferenceAPIKey        string            `json:"radioReferenceAPIKey"`
@@ -121,6 +140,7 @@ type TranscriptionConfig struct {
 	GoogleAPIKey                 string   `json:"googleAPIKey"`                 // Google Cloud Speech-to-Text API key
 	GoogleCredentials            string   `json:"googleCredentials"`            // Google Cloud service account JSON credentials (alternative to API key)
 	AssemblyAIKey                string   `json:"assemblyAIKey"`                // AssemblyAI API key
+	AssemblyAIWordBoost          []string `json:"assemblyAIWordBoost"`          // Word boost/keyterms for AssemblyAI (max 100 terms, 50 chars each)
 	HallucinationPatterns        []string `json:"hallucinationPatterns"`        // Patterns to remove from transcripts (Whisper hallucinations)
 	HallucinationDetectionMode   string   `json:"hallucinationDetectionMode"`   // "off", "manual", "auto"
 	HallucinationMinOccurrences  int      `json:"hallucinationMinOccurrences"`  // Minimum times a phrase must appear in rejected calls before flagging (default: 5)
@@ -441,6 +461,13 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		options.EmailLogoBorderRadius = defaults.options.emailLogoBorderRadius
 	}
 
+	switch v := m["faviconFilename"].(type) {
+	case string:
+		options.FaviconFilename = v
+	default:
+		options.FaviconFilename = defaults.options.faviconFilename
+	}
+
 	switch v := m["stripePublishableKey"].(type) {
 	case string:
 		options.StripePublishableKey = v
@@ -544,6 +571,71 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		options.AdminLocalhostOnly = v
 	default:
 		options.AdminLocalhostOnly = defaults.options.adminLocalhostOnly
+	}
+
+	switch v := m["transcriptionFailureAlertsEnabled"].(type) {
+	case bool:
+		options.TranscriptionFailureAlertsEnabled = v
+	default:
+		options.TranscriptionFailureAlertsEnabled = defaults.options.transcriptionFailureAlertsEnabled
+	}
+
+	switch v := m["toneDetectionAlertsEnabled"].(type) {
+	case bool:
+		options.ToneDetectionAlertsEnabled = v
+	default:
+		options.ToneDetectionAlertsEnabled = defaults.options.toneDetectionAlertsEnabled
+	}
+
+	switch v := m["noAudioAlertsEnabled"].(type) {
+	case bool:
+		options.NoAudioAlertsEnabled = v
+	default:
+		options.NoAudioAlertsEnabled = defaults.options.noAudioAlertsEnabled
+	}
+
+	switch v := m["transcriptionFailureTimeWindow"].(type) {
+	case float64:
+		options.TranscriptionFailureTimeWindow = uint(v)
+	case int:
+		options.TranscriptionFailureTimeWindow = uint(v)
+	case int64:
+		options.TranscriptionFailureTimeWindow = uint(v)
+	default:
+		options.TranscriptionFailureTimeWindow = defaults.options.transcriptionFailureTimeWindow
+	}
+
+	switch v := m["toneDetectionTimeWindow"].(type) {
+	case float64:
+		options.ToneDetectionTimeWindow = uint(v)
+	case int:
+		options.ToneDetectionTimeWindow = uint(v)
+	case int64:
+		options.ToneDetectionTimeWindow = uint(v)
+	default:
+		options.ToneDetectionTimeWindow = defaults.options.toneDetectionTimeWindow
+	}
+
+	switch v := m["noAudioTimeWindow"].(type) {
+	case float64:
+		options.NoAudioTimeWindow = uint(v)
+	case int:
+		options.NoAudioTimeWindow = uint(v)
+	case int64:
+		options.NoAudioTimeWindow = uint(v)
+	default:
+		options.NoAudioTimeWindow = defaults.options.noAudioTimeWindow
+	}
+
+	switch v := m["noAudioHistoricalDataDays"].(type) {
+	case float64:
+		options.NoAudioHistoricalDataDays = uint(v)
+	case int:
+		options.NoAudioHistoricalDataDays = uint(v)
+	case int64:
+		options.NoAudioHistoricalDataDays = uint(v)
+	default:
+		options.NoAudioHistoricalDataDays = defaults.options.noAudioHistoricalDataDays
 	}
 
 	switch v := m["configSyncEnabled"].(type) {
@@ -650,6 +742,15 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		if v, ok := tc["assemblyAIKey"].(string); ok {
 			options.TranscriptionConfig.AssemblyAIKey = v
 		}
+		if v, ok := tc["assemblyAIWordBoost"].([]interface{}); ok {
+			wordBoost := make([]string, 0, len(v))
+			for _, wb := range v {
+				if str, ok := wb.(string); ok && str != "" {
+					wordBoost = append(wordBoost, str)
+				}
+			}
+			options.TranscriptionConfig.AssemblyAIWordBoost = wordBoost
+		}
 		if v, ok := tc["hallucinationPatterns"].([]interface{}); ok {
 			patterns := make([]string, 0, len(v))
 			for _, p := range v {
@@ -707,6 +808,19 @@ func (options *Options) Read(db *Database) error {
 	options.AlertRetentionDays = defaults.options.alertRetentionDays
 	options.TranscriptionFailureThreshold = defaults.options.transcriptionFailureThreshold
 	options.ToneDetectionIssueThreshold = defaults.options.toneDetectionIssueThreshold
+	options.NoAudioThresholdMinutes = defaults.options.noAudioThresholdMinutes
+	options.NoAudioMultiplier = defaults.options.noAudioMultiplier
+	options.SystemHealthAlertsEnabled = defaults.options.systemHealthAlertsEnabled
+	options.TranscriptionFailureAlertsEnabled = defaults.options.transcriptionFailureAlertsEnabled
+	options.ToneDetectionAlertsEnabled = defaults.options.toneDetectionAlertsEnabled
+	options.NoAudioAlertsEnabled = defaults.options.noAudioAlertsEnabled
+	options.TranscriptionFailureTimeWindow = defaults.options.transcriptionFailureTimeWindow
+	options.ToneDetectionTimeWindow = defaults.options.toneDetectionTimeWindow
+	options.NoAudioTimeWindow = defaults.options.noAudioTimeWindow
+	options.NoAudioHistoricalDataDays = defaults.options.noAudioHistoricalDataDays
+	options.TranscriptionFailureRepeatMinutes = defaults.options.transcriptionFailureRepeatMinutes
+	options.ToneDetectionRepeatMinutes = defaults.options.toneDetectionRepeatMinutes
+	options.NoAudioRepeatMinutes = defaults.options.noAudioRepeatMinutes
 	options.AdminLocalhostOnly = defaults.options.adminLocalhostOnly
 	options.ConfigSyncEnabled = defaults.options.configSyncEnabled
 	options.ConfigSyncPath = defaults.options.configSyncPath
@@ -1039,6 +1153,13 @@ func (options *Options) Read(db *Database) error {
 					options.EmailLogoBorderRadius = v
 				}
 			}
+		case "faviconFilename":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case string:
+					options.FaviconFilename = v
+				}
+			}
 		case "stripePublishableKey":
 			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
 				switch v := f.(type) {
@@ -1098,6 +1219,97 @@ func (options *Options) Read(db *Database) error {
 				switch v := f.(type) {
 				case float64:
 					options.ToneDetectionIssueThreshold = uint(v)
+				}
+			}
+		case "noAudioThresholdMinutes":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					options.NoAudioThresholdMinutes = uint(v)
+				}
+			}
+		case "noAudioMultiplier":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					options.NoAudioMultiplier = v
+				}
+			}
+		case "systemHealthAlertsEnabled":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case bool:
+					options.SystemHealthAlertsEnabled = v
+				}
+			}
+		case "transcriptionFailureAlertsEnabled":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case bool:
+					options.TranscriptionFailureAlertsEnabled = v
+				}
+			}
+		case "toneDetectionAlertsEnabled":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case bool:
+					options.ToneDetectionAlertsEnabled = v
+				}
+			}
+		case "noAudioAlertsEnabled":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case bool:
+					options.NoAudioAlertsEnabled = v
+				}
+			}
+		case "transcriptionFailureTimeWindow":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					options.TranscriptionFailureTimeWindow = uint(v)
+				}
+			}
+		case "toneDetectionTimeWindow":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					options.ToneDetectionTimeWindow = uint(v)
+				}
+			}
+		case "noAudioTimeWindow":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					options.NoAudioTimeWindow = uint(v)
+				}
+			}
+		case "noAudioHistoricalDataDays":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					options.NoAudioHistoricalDataDays = uint(v)
+				}
+			}
+		case "transcriptionFailureRepeatMinutes":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					options.TranscriptionFailureRepeatMinutes = uint(v)
+				}
+			}
+		case "toneDetectionRepeatMinutes":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					options.ToneDetectionRepeatMinutes = uint(v)
+				}
+			}
+		case "noAudioRepeatMinutes":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					options.NoAudioRepeatMinutes = uint(v)
 				}
 			}
 		case "relayServerURL":
@@ -1271,6 +1483,7 @@ func (options *Options) Write(db *Database) error {
 	set("emailSmtpSkipVerify", options.EmailSmtpSkipVerify)
 	set("emailLogoFilename", options.EmailLogoFilename)
 	set("emailLogoBorderRadius", options.EmailLogoBorderRadius)
+	set("faviconFilename", options.FaviconFilename)
 	set("stripePublishableKey", options.StripePublishableKey)
 	set("stripeSecretKey", options.StripeSecretKey)
 	set("stripeWebhookSecret", options.StripeWebhookSecret)
@@ -1280,6 +1493,19 @@ func (options *Options) Write(db *Database) error {
 	set("alertRetentionDays", options.AlertRetentionDays)
 	set("transcriptionFailureThreshold", options.TranscriptionFailureThreshold)
 	set("toneDetectionIssueThreshold", options.ToneDetectionIssueThreshold)
+	set("noAudioThresholdMinutes", options.NoAudioThresholdMinutes)
+	set("noAudioMultiplier", options.NoAudioMultiplier)
+	set("systemHealthAlertsEnabled", options.SystemHealthAlertsEnabled)
+	set("transcriptionFailureAlertsEnabled", options.TranscriptionFailureAlertsEnabled)
+	set("toneDetectionAlertsEnabled", options.ToneDetectionAlertsEnabled)
+	set("noAudioAlertsEnabled", options.NoAudioAlertsEnabled)
+	set("transcriptionFailureTimeWindow", options.TranscriptionFailureTimeWindow)
+	set("toneDetectionTimeWindow", options.ToneDetectionTimeWindow)
+	set("noAudioTimeWindow", options.NoAudioTimeWindow)
+	set("noAudioHistoricalDataDays", options.NoAudioHistoricalDataDays)
+	set("transcriptionFailureRepeatMinutes", options.TranscriptionFailureRepeatMinutes)
+	set("toneDetectionRepeatMinutes", options.ToneDetectionRepeatMinutes)
+	set("noAudioRepeatMinutes", options.NoAudioRepeatMinutes)
 	set("relayServerURL", options.RelayServerURL)
 	set("relayServerAPIKey", options.RelayServerAPIKey)
 	set("radioReferenceAPIKey", options.RadioReferenceAPIKey)

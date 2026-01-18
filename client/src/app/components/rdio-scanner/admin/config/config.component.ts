@@ -288,6 +288,18 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
                 }
             }
             
+            // Convert AssemblyAI word boost from textarea string to array
+            if (formValue.options.transcriptionConfig?.assemblyAIWordBoost) {
+                const wordBoostString = formValue.options.transcriptionConfig.assemblyAIWordBoost;
+                if (typeof wordBoostString === 'string') {
+                    // Split by newlines, trim each line, and filter out empty lines
+                    formValue.options.transcriptionConfig.assemblyAIWordBoost = wordBoostString
+                        .split('\n')
+                        .map((line: string) => line.trim())
+                        .filter((line: string) => line.length > 0);
+                }
+            }
+            
             // Always use hardcoded relay server URL
             formValue.options.relayServerURL = 'https://tlradioserver.thinlineds.com';
         }

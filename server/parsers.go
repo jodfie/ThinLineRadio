@@ -371,18 +371,23 @@ func ParseMultipartContent(call *Call, p *multipart.Part, b []byte) {
 			case []any:
 				for _, f := range v {
 					unit := CallUnit{}
+					hasValidSrc := false
 					switch v := f.(type) {
 					case map[string]any:
 						switch s := v["src"].(type) {
 						case float64:
-							// Include all source values, even 0, to match v6 behavior
-							unit.UnitRef = uint(s)
-							// Also populate Meta.UnitRefs as fallback
-							call.Meta.UnitRefs = append(call.Meta.UnitRefs, unit.UnitRef)
+							// Skip negative values (e.g. -1 from Trunk Recorder for unknown sources)
+							if s >= 0 {
+								// Include all source values, even 0, to match v6 behavior
+								unit.UnitRef = uint(s)
+								// Also populate Meta.UnitRefs as fallback
+								call.Meta.UnitRefs = append(call.Meta.UnitRefs, unit.UnitRef)
+								hasValidSrc = true
+							}
 						}
 						switch s := v["tag"].(type) {
 						case string:
-							if len(s) > 0 {
+							if len(s) > 0 && hasValidSrc {
 								call.Meta.UnitLabels = append(call.Meta.UnitLabels, s)
 							}
 						}
@@ -393,7 +398,10 @@ func ParseMultipartContent(call *Call, p *multipart.Part, b []byte) {
 							}
 						}
 					}
-					call.Units = append(call.Units, unit)
+					// Only append the unit if it has a valid source ID
+					if hasValidSrc {
+						call.Units = append(call.Units, unit)
+					}
 				}
 			}
 		}
@@ -418,18 +426,23 @@ func ParseMultipartContent(call *Call, p *multipart.Part, b []byte) {
 			case []any:
 				for _, f := range v {
 					unit := CallUnit{}
+					hasValidId := false
 					switch v := f.(type) {
 					case map[string]any:
 						switch s := v["id"].(type) {
 						case float64:
-							// Include all unit values, even 0, to match v6 behavior
-							unit.UnitRef = uint(s)
-							// Also populate Meta.UnitRefs as fallback
-							call.Meta.UnitRefs = append(call.Meta.UnitRefs, unit.UnitRef)
+							// Skip negative values (e.g. -1 from Trunk Recorder for unknown sources)
+							if s >= 0 {
+								// Include all unit values, even 0, to match v6 behavior
+								unit.UnitRef = uint(s)
+								// Also populate Meta.UnitRefs as fallback
+								call.Meta.UnitRefs = append(call.Meta.UnitRefs, unit.UnitRef)
+								hasValidId = true
+							}
 						}
 						switch s := v["label"].(type) {
 						case string:
-							if len(s) > 0 {
+							if len(s) > 0 && hasValidId {
 								call.Meta.UnitLabels = append(call.Meta.UnitLabels, s)
 							}
 						}
@@ -440,13 +453,17 @@ func ParseMultipartContent(call *Call, p *multipart.Part, b []byte) {
 							}
 						}
 					}
-					call.Units = append(call.Units, unit)
+					// Only append the unit if it has a valid ID
+					if hasValidId {
+						call.Units = append(call.Units, unit)
+					}
 				}
 			}
 		}
 
 	case "unit":
-		if i, err := strconv.Atoi(string(b)); err == nil {
+		if i, err := strconv.Atoi(string(b)); err == nil && i >= 0 {
+			// Skip negative values (e.g. -1 from Trunk Recorder for unknown sources)
 			// Include all unit values, even 0, to match v6 behavior
 			unitRef := uint(i)
 			call.Units = append(call.Units, CallUnit{
@@ -570,6 +587,7 @@ func ParseTrunkRecorderMeta(call *Call, b []byte) error {
 	case []any:
 		for _, f := range v {
 			unit := CallUnit{}
+			hasValidSrc := false
 			switch v := f.(type) {
 			case map[string]any:
 				switch v := v["pos"].(type) {
@@ -580,18 +598,25 @@ func ParseTrunkRecorderMeta(call *Call, b []byte) error {
 				}
 				switch s := v["src"].(type) {
 				case float64:
-					// Include all source values, even 0, to match v6 behavior
-					unit.UnitRef = uint(s)
-					// Also populate Meta.UnitRefs as fallback
-					call.Meta.UnitRefs = append(call.Meta.UnitRefs, unit.UnitRef)
+					// Skip negative values (e.g. -1 from Trunk Recorder for unknown sources)
+					if s >= 0 {
+						// Include all source values, even 0, to match v6 behavior
+						unit.UnitRef = uint(s)
+						// Also populate Meta.UnitRefs as fallback
+						call.Meta.UnitRefs = append(call.Meta.UnitRefs, unit.UnitRef)
+						hasValidSrc = true
+					}
 				}
 				switch s := v["tag"].(type) {
 				case string:
-					if len(s) > 0 {
+					if len(s) > 0 && hasValidSrc {
 						call.Meta.UnitLabels = append(call.Meta.UnitLabels, s)
 					}
 				}
-				call.Units = append(call.Units, unit)
+				// Only append the unit if it has a valid source ID
+				if hasValidSrc {
+					call.Units = append(call.Units, unit)
+				}
 			}
 		}
 	}

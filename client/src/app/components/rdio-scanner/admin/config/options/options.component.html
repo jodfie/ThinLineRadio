@@ -61,6 +61,27 @@
   </div>
   <div class="row">
     <p>
+      <span class="mat-body">Favicon</span><br>
+      <span class="mat-caption">Custom favicon for the web application. Recommended: PNG, ICO, or SVG format.</span>
+    </p>
+    <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+      <input type="file" #faviconInput accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/x-icon" 
+             (change)="onFaviconSelected($event)" style="display: none;">
+      <button mat-raised-button type="button" (click)="faviconInput.click()">
+        <mat-icon>upload</mat-icon>
+        {{ hasFavicon() ? 'Change' : 'Upload' }} Favicon
+      </button>
+      <button mat-raised-button type="button" color="warn" *ngIf="hasFavicon()" (click)="removeFavicon()">
+        <mat-icon>delete</mat-icon>
+        Remove
+      </button>
+      <div *ngIf="hasFavicon()" style="max-width: 64px; max-height: 64px; border: 1px solid #ddd; padding: 5px; border-radius: 4px; background: white;">
+        <img [src]="getFaviconPreview()" style="max-width: 100%; max-height: 100%; display: block;">
+      </div>
+    </div>
+  </div>
+  <div class="row">
+    <p>
       <span class="mat-body">Dimmer Delay</span><br>
       <span class="mat-caption">Delay in milliseconds before turning off the screen backlight when
                 inactive.</span>
@@ -347,6 +368,17 @@
     </mat-form-field>
   </div>
 
+  <div class="row" *ngIf="form?.get('transcriptionEnabled')?.value && form?.get('transcriptionConfig')?.get('provider')?.value === 'assemblyai'" formGroupName="transcriptionConfig">
+    <p>
+      <span class="mat-body">Word Boost / Keyterms (AssemblyAI)</span><br>
+      <span class="mat-caption">Enter words or phrases (one per line) to improve recognition accuracy. Maximum 100 terms, each up to 50 characters. Examples: unit names, technical terms, proper names. Leave empty for default behavior.</span>
+    </p>
+    <mat-form-field floatLabel="auto" style="width: 100%;">
+      <textarea matInput formControlName="assemblyAIWordBoost" placeholder="ENGINE&#10;TRUCK&#10;LADDER&#10;RESCUE" rows="4"></textarea>
+      <mat-hint>One term per line. Terms longer than 50 characters will be ignored.</mat-hint>
+    </mat-form-field>
+  </div>
+
 
   <div class="row" *ngIf="form?.get('transcriptionEnabled')?.value" formGroupName="transcriptionConfig">
     <p>
@@ -369,15 +401,6 @@
     </mat-form-field>
   </div>
 
-  <div class="row" *ngIf="form?.get('transcriptionEnabled')?.value" formGroupName="transcriptionConfig">
-    <p>
-      <span class="mat-body">Worker Pool Size</span><br>
-      <span class="mat-caption">Number of parallel transcription workers. More workers process faster but use more resources.</span>
-    </p>
-    <mat-form-field floatLabel="auto">
-      <input type="number" min="1" step="1" matInput formControlName="workerPoolSize" placeholder="5">
-    </mat-form-field>
-  </div>
 
   <div class="row" *ngIf="form?.get('transcriptionEnabled')?.value" formGroupName="transcriptionConfig">
     <p>

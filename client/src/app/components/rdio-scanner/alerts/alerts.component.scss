@@ -75,6 +75,87 @@
 .transcripts-content {
     flex: 1;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.transcript-filters {
+    background-color: #2e2e2e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    
+    .filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-end;
+    }
+    
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 150px;
+        flex: 1;
+        
+        &.filter-search {
+            flex: 2;
+            min-width: 200px;
+        }
+        
+        &.filter-actions {
+            flex: 0 0 auto;
+            min-width: auto;
+        }
+        
+        label {
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 500;
+        }
+        
+        .filter-select,
+        .filter-input {
+            padding: 0.5rem 0.75rem;
+            background-color: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.9rem;
+            
+            &:focus {
+                outline: none;
+                border-color: #00e676;
+                background-color: rgba(0, 0, 0, 0.4);
+            }
+            
+            &:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+        }
+        
+        .search-input {
+            width: 100%;
+        }
+        
+        .btn-clear-filters {
+            padding: 0.5rem 1rem;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            white-space: nowrap;
+            
+            &:hover {
+                background-color: rgba(255, 255, 255, 0.15);
+            }
+        }
+    }
 }
 
 .pagination-controls {
@@ -136,6 +217,18 @@
     word-break: break-word;
     color: rgba(255, 255, 255, 0.9);
     border: 1px solid rgba(255, 255, 255, 0.1);
+    
+    p {
+        margin: 0;
+        
+        mark {
+            background-color: #ffc107;
+            color: #000;
+            padding: 0.1rem 0.2rem;
+            border-radius: 2px;
+            font-weight: 600;
+        }
+    }
 }
 
 .transcript-footer {

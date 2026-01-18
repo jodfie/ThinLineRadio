@@ -74,9 +74,9 @@ func NewConfig() *Config {
 		configSave    = flag.Bool("config_save", false, fmt.Sprintf("save configuration to %s", defaultConfigFile))
 		serviceAction = flag.String("service", "", "service command, one of start, stop, restart, install, uninstall")
 		version       = flag.Bool("version", false, "show application version")
-		migrateOpus   = flag.Bool("migrate_to_opus", false, "convert all M4A/AAC audio to Opus format (50% storage savings)")
-		migrateBatch  = flag.Int("migrate_batch_size", 100, "number of calls to process per batch during migration")
-		migrateDryRun = flag.Bool("migrate_dry_run", false, "preview migration without making changes")
+	migrateOpus   = flag.Bool("migrate_to_opus", false, "convert all M4A/AAC audio to Opus format (50% storage savings)")
+	migrateBatch  = flag.Int("migrate_batch_size", 100, "number of calls to process per batch during migration")
+	migrateDryRun = flag.Bool("migrate_dry_run", false, "preview migration without making changes")
 	)
 
 	if exe, err := os.Executable(); err == nil {
@@ -178,7 +178,8 @@ func NewConfig() *Config {
 			config.EnableDebugLog = v
 		}
 		
-		// Read opus settings (defaults to false for backward compatibility)
+		// Read opus settings (defaults to true as of Beta 8)
+		config.UseOpus = true // Default to Opus
 		if v, err := cfg.Section("").Key("opus").Bool(); err == nil {
 			config.UseOpus = v
 		}

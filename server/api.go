@@ -2926,6 +2926,9 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 		systemId    uint64
 		talkgroupId uint64
 		status      string
+		dateFrom    int64
+		dateTo      int64
+		search      string
 	)
 
 	if l := r.URL.Query().Get("limit"); l != "" {
@@ -2940,15 +2943,50 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if s := r.URL.Query().Get("systemId"); s != "" {
 		if v, err := strconv.ParseUint(s, 10, 64); err == nil {
-			systemId = v
+			// Try to resolve systemRef to systemId (client sends systemRef as "systemId")
+			var resolvedId uint64
+			resolveQuery := fmt.Sprintf(`SELECT "systemId" FROM "systems" WHERE "systemRef" = %d`, v)
+			if err := api.Controller.Database.Sql.QueryRow(resolveQuery).Scan(&resolvedId); err == nil {
+				systemId = resolvedId
+			} else {
+				// Fallback: assume it's already a database systemId
+				systemId = v
+			}
 		}
 	}
 	if tg := r.URL.Query().Get("talkgroupId"); tg != "" {
 		if v, err := strconv.ParseUint(tg, 10, 64); err == nil {
-			talkgroupId = v
+			// Try to resolve talkgroupRef to talkgroupId (client sends talkgroupRef as "talkgroupId")
+			if systemId > 0 {
+				var resolvedId uint64
+				resolveQuery := fmt.Sprintf(`SELECT "talkgroupId" FROM "talkgroups" WHERE "systemId" = %d AND "talkgroupRef" = %d`, systemId, v)
+				if err := api.Controller.Database.Sql.QueryRow(resolveQuery).Scan(&resolvedId); err == nil {
+					talkgroupId = resolvedId
+				} else {
+					// Fallback: assume it's already a database talkgroupId
+					talkgroupId = v
+				}
+			} else {
+				talkgroupId = v
+			}
 		}
 	}
 	status = strings.TrimSpace(r.URL.Query().Get("status"))
+	
+	// Date range filtering
+	if df := r.URL.Query().Get("dateFrom"); df != "" {
+		if v, err := strconv.ParseInt(df, 10, 64); err == nil {
+			dateFrom = v
+		}
+	}
+	if dt := r.URL.Query().Get("dateTo"); dt != "" {
+		if v, err := strconv.ParseInt(dt, 10, 64); err == nil {
+			dateTo = v
+		}
+	}
+	
+	// Search query (searches in transcript text)
+	search = strings.TrimSpace(r.URL.Query().Get("search"))
 
 	where := []string{`(c."transcript" IS NOT NULL AND c."transcript" <> '')`}
 	if systemId > 0 {
@@ -2959,6 +2997,16 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if status != "" {
 		where = append(where, fmt.Sprintf(`c."transcriptionStatus" = '%s'`, escapeQuotes(status)))
+	}
+	if dateFrom > 0 {
+		where = append(where, fmt.Sprintf(`c."timestamp" >= %d`, dateFrom))
+	}
+	if dateTo > 0 {
+		where = append(where, fmt.Sprintf(`c."timestamp" <= %d`, dateTo))
+	}
+	if search != "" {
+		// Use ILIKE for case-insensitive search in PostgreSQL
+		where = append(where, fmt.Sprintf(`c."transcript" ILIKE '%%%s%%'`, escapeQuotes(search)))
 	}
 	whereClause := strings.Join(where, " AND ")
 

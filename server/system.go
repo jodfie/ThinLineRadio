@@ -271,13 +271,13 @@ func (systems *Systems) GetScopedSystems(client *Client, groups *Groups, tags *T
 		// Filter talkgroups based on group access
 		filteredSystem := *system
 		filteredSystem.Talkgroups = NewTalkgroups()
-		
+
 		for _, tg := range system.Talkgroups.List {
 			if userGroup.HasTalkgroupAccess(uint64(system.SystemRef), tg.TalkgroupRef) {
 				filteredSystem.Talkgroups.List = append(filteredSystem.Talkgroups.List, tg)
 			}
 		}
-		
+
 		return &filteredSystem
 	}
 
@@ -398,20 +398,20 @@ func (systems *Systems) GetScopedSystems(client *Client, groups *Groups, tags *T
 				continue
 			}
 
-	talkgroupMap := TalkgroupMap{
-		"id":                   rawTalkgroup.TalkgroupRef,
-		"talkgroupId":          rawTalkgroup.Id,            // Database ID for admin/backend use
-		"talkgroupRef":         rawTalkgroup.TalkgroupRef,  // Radio reference ID
-		"frequency":            rawTalkgroup.Frequency,
-		"group":                groupLabel,
-		"groups":               groupLabels,
-		"label":                rawTalkgroup.Label,
-		"name":                 rawTalkgroup.Name,
-		"order":                rawTalkgroup.Order,
-		"tag":                  tag.Label,
-		"type":                 rawTalkgroup.Kind,
-		"toneDetectionEnabled": rawTalkgroup.ToneDetectionEnabled,
-	}
+			talkgroupMap := TalkgroupMap{
+				"id":                   rawTalkgroup.TalkgroupRef,
+				"talkgroupId":          rawTalkgroup.Id,           // Database ID for admin/backend use
+				"talkgroupRef":         rawTalkgroup.TalkgroupRef, // Radio reference ID
+				"frequency":            rawTalkgroup.Frequency,
+				"group":                groupLabel,
+				"groups":               groupLabels,
+				"label":                rawTalkgroup.Label,
+				"name":                 rawTalkgroup.Name,
+				"order":                rawTalkgroup.Order,
+				"tag":                  tag.Label,
+				"type":                 rawTalkgroup.Kind,
+				"toneDetectionEnabled": rawTalkgroup.ToneDetectionEnabled,
+			}
 
 			if len(rawTalkgroup.ToneSets) > 0 {
 				if toneSetsJson, err := SerializeToneSets(rawTalkgroup.ToneSets); err == nil {
@@ -422,39 +422,39 @@ func (systems *Systems) GetScopedSystems(client *Client, groups *Groups, tags *T
 				}
 			}
 
-		talkgroupsMap = append(talkgroupsMap, talkgroupMap)
-	}
+			talkgroupsMap = append(talkgroupsMap, talkgroupMap)
+		}
 
-	// Sort talkgroups: either by custom order (from database) or alphabetically by label
-	if sortTalkgroups {
-		// Sort alphabetically by label
-		sort.Slice(talkgroupsMap, func(i int, j int) bool {
-			labelA := fmt.Sprintf("%v", talkgroupsMap[i]["label"])
-			labelB := fmt.Sprintf("%v", talkgroupsMap[j]["label"])
-			return labelA < labelB
-		})
-	} else {
-		// Sort by custom order field
-		sort.Slice(talkgroupsMap, func(i int, j int) bool {
-			if a, err := strconv.Atoi(fmt.Sprintf("%v", talkgroupsMap[i]["order"])); err == nil {
-				if b, err := strconv.Atoi(fmt.Sprintf("%v", talkgroupsMap[j]["order"])); err == nil {
-					return a < b
+		// Sort talkgroups: either by custom order (from database) or alphabetically by label
+		if sortTalkgroups {
+			// Sort alphabetically by label
+			sort.Slice(talkgroupsMap, func(i int, j int) bool {
+				labelA := fmt.Sprintf("%v", talkgroupsMap[i]["label"])
+				labelB := fmt.Sprintf("%v", talkgroupsMap[j]["label"])
+				return labelA < labelB
+			})
+		} else {
+			// Sort by custom order field
+			sort.Slice(talkgroupsMap, func(i int, j int) bool {
+				if a, err := strconv.Atoi(fmt.Sprintf("%v", talkgroupsMap[i]["order"])); err == nil {
+					if b, err := strconv.Atoi(fmt.Sprintf("%v", talkgroupsMap[j]["order"])); err == nil {
+						return a < b
+					}
 				}
-			}
-			return false
-		})
-	}
+				return false
+			})
+		}
 
-	systemMap := SystemMap{
-		"id":         rawSystem.SystemRef,
-		"systemId":   rawSystem.Id,          // Database ID for admin/backend use
-		"systemRef":  rawSystem.SystemRef,   // Radio reference ID
-		"label":      rawSystem.Label,
-		"order":      rawSystem.Order,
-		"talkgroups": talkgroupsMap,
-		"units":      rawSystem.Units.List,
-		"type":       rawSystem.Kind,
-	}
+		systemMap := SystemMap{
+			"id":         rawSystem.SystemRef,
+			"systemId":   rawSystem.Id,        // Database ID for admin/backend use
+			"systemRef":  rawSystem.SystemRef, // Radio reference ID
+			"label":      rawSystem.Label,
+			"order":      rawSystem.Order,
+			"talkgroups": talkgroupsMap,
+			"units":      rawSystem.Units.List,
+			"type":       rawSystem.Kind,
+		}
 
 		systemsMap = append(systemsMap, systemMap)
 	}

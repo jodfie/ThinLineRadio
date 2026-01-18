@@ -1,5 +1,176 @@
 # Change log
 
+## Version 7.0 Beta 8 - Released TBD
+
+### New Features
+
+- **Universal dispatch tone removal for transcription**
+  - Added automatic detection and removal of ALL dispatch tones before transcription (200-5000Hz range)
+  - Prevents Whisper hallucinations caused by two-tone sequential, quick call, and long tone paging systems
+  - Works on all audio regardless of whether tone detection is enabled for the talkgroup
+  - Detects sustained tones using FFT analysis with dynamic noise floor estimation
+  - Removes detected tone segments using ffmpeg while preserving voice audio
+  - Minimum tone duration: 500ms (catches all typical dispatch tones)
+  - Skips transcription if less than 2 seconds of voice audio remains after tone removal
+  - Provides detailed logging: detected tones with frequencies, durations, and removal status
+  - Significantly improves transcription quality by eliminating tone-induced hallucination phrases
+  - Files modified: server/tone_detector.go, server/transcription_queue.go
+
+- **AssemblyAI word boost support for improved transcription accuracy**
+  - Added word boost/keyterms feature for AssemblyAI transcription provider
+  - Allows administrators to provide a list of words or phrases to improve recognition accuracy
+  - Particularly useful for: unit names, technical terms, proper names, local terminology, call signs
+  - Configuration: Enter words/phrases in Admin UI (one per line) under Options → Transcription → AssemblyAI Word Boost
+  - Maximum 100 terms, each up to 50 characters
+  - Terms are automatically validated and filtered before being sent to AssemblyAI
+  - Only visible when AssemblyAI is selected as the transcription provider
+  - Files modified: server/options.go, server/transcription_provider.go, server/transcription_assemblyai.go, server/transcription_queue.go, client/src/app/components/rdio-scanner/admin/admin.service.ts, client/src/app/components/rdio-scanner/admin/config/config.component.ts, client/src/app/components/rdio-scanner/admin/config/options/options.component.html
+
+- **Enhanced transcripts tab with filtering and search capabilities**
+  - Added comprehensive filtering controls to the Transcripts tab in the Alerts UI
+  - Filter by system: Dropdown to filter transcripts by specific radio system
+  - Filter by talkgroup: Dropdown to filter transcripts by specific talkgroup (filtered by selected system)
+  - Filter by date range: Date inputs to filter transcripts by "From" and "To" dates
+  - Search functionality: Text search bar to find specific words or phrases within transcript text
+  - Search highlighting: Matching search terms are highlighted in yellow within displayed transcripts
+  - Clear filters button: Quick reset of all filter criteria
+  - Real-time filtering: Filters apply immediately as selections change
+  - Backend API enhancements: Added support for systemId, talkgroupId, dateFrom, dateTo, and search query parameters
+  - Proper systemRef/talkgroupRef resolution: Backend correctly resolves radio reference IDs to database IDs for filtering
+  - Files modified: server/api.go (TranscriptsHandler), client/src/app/components/rdio-scanner/alerts/alerts.component.ts, client/src/app/components/rdio-scanner/alerts/alerts.component.html, client/src/app/components/rdio-scanner/alerts/alerts.component.scss, client/src/app/components/rdio-scanner/alerts/alerts.service.ts
+
+- **Whisper transcription worker optimization - single worker configuration**
+  - Removed configurable worker pool size option for Whisper transcription
+  - Whisper API provider (local Whisper) now always uses exactly 1 worker
+  - Testing showed that using 1 worker eliminated all transcription failures
+  - Multiple workers were causing race conditions and failures with local Whisper
+  - Other transcription providers (Azure, Google, AssemblyAI) continue to use configurable workers
+  - Worker pool size UI field removed from Admin → Options → Transcription settings
+  - Files modified: server/transcription_queue.go, client/src/app/components/rdio-scanner/admin/config/options/options.component.html, client/src/app/components/rdio-scanner/admin/admin.service.ts
+
+- **Configurable repeat alert timing for system health monitoring**
+  - Added individual repeat interval settings for each alert type (Transcription Failures, Tone Detection Issues, No Audio Received)
+  - Administrators can now configure how often alerts repeat when issues persist
+  - Default values: 60 minutes for transcription and tone detection alerts, 30 minutes for no audio alerts
+  - Configuration available in Admin → System Health → Additional Settings column for each alert type
+  - Prevents alert spam by allowing customization of repeat frequency per alert category
+  - Files modified: server/options.go, server/defaults.go, server/admin.go, server/system_alert.go, client/src/app/components/rdio-scanner/admin/system-health/system-health.component.ts, client/src/app/components/rdio-scanner/admin/system-health/system-health.component.html, client/src/app/components/rdio-scanner/admin/admin.service.ts
+
+- **Enhanced system alerts display with intelligent grouping and management**
+  - Redesigned system alerts interface with professional category-based grouping
+  - Alerts are now organized by type: "No Audio Received", "Tone Detection Issues", "Transcription Failures", and "Other Alerts"
+  - Each group displays alert count badge for quick overview
+  - Removed technical clutter: System IDs, raw JSON data, and technical metadata hidden from display
+  - Individual alert dismissal: Each alert has a dismiss button (X icon) in the header
+  - Bulk dismissal: "Clear All" button for each alert group to dismiss all alerts in a category at once
+  - Confirmation dialogs: Prevent accidental dismissals with clear confirmations showing alert counts
+  - Success notifications: Snackbar feedback when alerts are dismissed (individual or bulk)
+  - Improved visual hierarchy: Group headers with clear categorization, better spacing and organization
+  - Active alerts only: Statistics and displays only show non-dismissed alerts
+  - Enhanced description for No Audio monitoring: Updated to "Intelligent adaptive monitoring: Continuously analyzes historical audio patterns by time of day, learns normal activity baselines, and dynamically adjusts alert thresholds to reduce false positives while maintaining sensitivity to genuine issues"
+  - Files modified: client/src/app/components/rdio-scanner/admin/system-health/system-health.component.ts, client/src/app/components/rdio-scanner/admin/system-health/system-health.component.html, client/src/app/components/rdio-scanner/admin/system-health/system-health.component.scss, client/src/app/components/rdio-scanner/admin/admin.service.ts
+
+- **Purge logs and calls from admin UI with selective deletion support**
+  - Added purge functionality to Admin → Tools → Purge Data section
+  - **Purge All**: Delete all logs or all calls with triple confirmation (warning dialog, final confirmation, typed confirmation)
+  - **Selective Delete**: Search and filter logs/calls, then select specific items for deletion
+  - **Logs Management**: Search by date, level (info/warn/error), sort order; select individual items or batches
+  - **Calls Management**: Search by date, system, talkgroup, sort order; select individual items or batches
+  - **Selection Options**: "Select All on Page" (current 10 items), "Select All in Batch" (current 200 items), "Deselect All"
+  - Pagination support: Navigate through results while maintaining selections
+  - Confirmation dialogs: Requires confirmation before deleting selected items
+  - Visual feedback: Selected count displayed, success/error notifications
+  - Backend API: `/api/admin/purge` endpoint accepts `{type: 'calls'|'logs', ids?: number[]}` for selective or bulk deletion
+  - Admin authentication required with localhost restriction (same as other admin endpoints)
+  - Files modified: server/call.go, server/log.go, server/admin.go, server/main.go, client/src/app/components/rdio-scanner/admin/admin.service.ts, client/src/app/components/rdio-scanner/admin/admin.module.ts, client/src/app/components/rdio-scanner/admin/tools/purge-data/*
+  - Files added: client/src/app/components/rdio-scanner/admin/tools/purge-data/purge-data.component.ts, purge-data.component.html, purge-data.component.scss
+
+### Bug Fixes
+
+- **Fixed handling of unknown radio IDs from Trunk Recorder**
+  - Trunk Recorder sends -1 for transmissions where the radio ID could not be determined (no value over the air or control channel)
+  - Previously, -1 was being converted to an unsigned integer (18446744073709551615), causing database insertion errors
+  - Error message: "bigint out of range (SQLSTATE 22003)" when attempting to insert call units
+  - Solution: Added validation to skip negative source IDs before converting to unsigned integers
+  - Unknown transmissions (src: -1) are now gracefully ignored instead of causing database errors
+  - Affects all parsing methods: Trunk Recorder srcList, generic sources/units, and unit field
+  - Files modified: server/parsers.go
+
+### Changes
+
+- **Talkgroups with tone detection now transcribe short audio clips after tone removal**
+  - Previously, calls with less than 2 seconds of audio remaining after tone removal were skipped
+  - Now, if a talkgroup has tone detection enabled, short clips are transcribed regardless of remaining duration
+  - This ensures important dispatch messages aren't missed even if they're brief after tones are removed
+  - Applies to both the pre-queue duration check and the transcription worker check
+  - Example: "RESPOND CODE 3" after tone removal might only be 1.5 seconds but is now transcribed
+  - Files modified: server/controller.go, server/transcription_queue.go
+
+- **Removed emojis from all email subjects and body content to reduce spam marking**
+  - Emojis are automatically stripped from all email subjects and body text (both HTML and plain text)
+  - Improves email deliverability by avoiding spam filters that flag emoji-heavy emails
+  - Applies to all email types: verification, password reset, invitations, transfers, and test emails
+  - Works with all email providers: SendGrid, Mailgun, and SMTP
+  - Emoji removal uses comprehensive regex patterns covering all major emoji ranges
+  - Files modified: server/email.go
+
+- **Opus codec is now the default for new audio recordings**
+  - Changed default from M4A/AAC to Opus codec for 50% storage savings
+  - Provides superior voice quality at lower bitrates (16 kbps Opus vs 32 kbps AAC)
+  - Can be disabled in `thinline-radio.ini` by setting `opus = false` to revert to M4A/AAC
+  - Only affects NEW calls - existing calls remain unchanged
+  - Migration tool remains optional (set `opus_migration = true` in INI to convert existing audio)
+  - Browser and mobile app compatibility: Chrome/Edge/Firefox/Safari 14+, Android 5.0+, iOS 11+
+  - Files modified: server/config.go
+
+### Bug Fixes
+
+- **Fixed playback sort order and date filtering behavior**
+  - Fixed inconsistent behavior when selecting a specific date in playback mode
+  - When a date is selected, calls now always start from that date forward (>= selected date)
+  - Sort order now correctly controls display order: "Newest First" shows most recent calls first (DESC), "Oldest First" shows oldest calls first (ASC)
+  - Previously, "Newest First" with a selected date would show calls before the selected date (backwards in time)
+  - Now both sort orders show calls from the selected date forward, just in different order
+  - Mobile app: Fixed reversed sort order labels that displayed "Newest First" when actually showing oldest first
+  - Improves intuitive behavior: selecting a date means "show me calls from this point forward"
+  - Files modified: server/call.go, ThinlineRadio-Mobile/lib/screens/playback/playback_screen.dart
+
+- **Fixed foreign key constraint violation when creating pre-alerts for tone detection**
+  - Fixed "ERROR: insert or update on table 'alerts' violates foreign key constraint" error
+  - Pre-alerts are now instant notifications only and are not saved to the database
+  - Removed unnecessary database lookups and insert operations for pre-alerts
+  - Pre-alerts now send immediately when tones are detected without waiting for call to be saved
+  - Improves pre-alert delivery speed and eliminates race condition errors
+  - Files modified: server/alert_engine.go, server/controller.go
+
+- **Fixed authorization error when dismissing system alerts from admin UI**
+  - Fixed "API unauthorized" error when clicking "Clear All" or individual dismiss buttons in System Health
+  - Updated alert dismissal to use admin token authentication instead of WebSocket client authentication
+  - Added POST handler to `/admin/systemhealth` endpoint for dismissing alerts
+  - Allows administrators to dismiss individual alerts or bulk dismiss alert groups
+  - Files modified: server/admin.go, client/src/app/components/rdio-scanner/admin/admin.service.ts
+
+- **Fixed UI text cutoff issues in system health settings**
+  - Fixed "Repeat Interval" label text being cut off on Transcription Failures and Tone Detection Issues rows
+  - Increased field width from 140px to 160px for repeat interval dropdowns
+  - Improved label wrapper CSS to allow text to wrap and display fully
+  - Files modified: client/src/app/components/rdio-scanner/admin/system-health/system-health.component.html, client/src/app/components/rdio-scanner/admin/system-health/system-health.component.scss
+
+- **Fixed critical data integrity bug with keyword lists and user alert preferences**
+  - Fixed destructive bug where keyword lists and user alert preferences were deleted and recreated on ANY admin config save
+  - Root cause: Admin config handler was ignoring the `isFullImport` flag and processing keyword lists/preferences deletions on all saves
+  - Previously, editing unrelated settings (systems, talkgroups, etc.) would delete ALL keyword lists and recreate them with new IDs
+  - This caused user alert preferences to reference non-existent keyword list IDs, breaking keyword-based alerts
+  - PostgreSQL auto-increment sequences caused IDs to jump (e.g., 41-44 → 53-56), orphaning existing user references
+  - Now keyword lists and user alert preferences are ONLY processed during explicit full config imports (with `X-Full-Import: true` header)
+  - Normal admin saves no longer touch keyword lists or user alert preferences, maintaining data integrity
+  - Added automatic migration on server startup to repair existing orphaned keyword list ID references
+  - Migration detects orphaned IDs and maps them to current keyword lists by position (maintains user selections)
+  - Migration runs once automatically and tracks completion to avoid re-running
+  - This matches the protection pattern already correctly implemented for users (which properly checked `isFullImport`)
+  - Files modified: server/admin.go (lines 1246-1299 and 1302-1377), server/fix_keyword_list_ids.go, server/database.go
+  - Prevents hundreds of users from losing their alert preferences when administrators make routine config changes
+
 ## Version 7.0 Beta 7 - Released TBD
 
 ### New Features

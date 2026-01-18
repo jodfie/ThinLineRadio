@@ -160,8 +160,9 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
     }
 
     get showScanningAnimation(): boolean {
-        // Show scanning animation when live feed is on, nothing is playing, and not paused
-        return this.livefeedOnline && !this.call && !this.livefeedPaused;
+        // Show scanning animation when live feed is on, nothing is playing, not paused, and no items in queue
+        // Don't show scanning if queue has items to prevent audio delay
+        return this.livefeedOnline && !this.call && !this.livefeedPaused && this.callQueue === 0;
     }
 
     get isUserAuthenticated(): boolean {
@@ -175,7 +176,36 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
         }
 
         const enabledSystems: Array<{ id: number; label: string }> = [];
+        
+        // If hold system is active, only show the held system
+        if (this.holdSys && (this.call || this.callPrevious)) {
+            const heldSystemId = (this.call || this.callPrevious)?.system;
+            if (heldSystemId !== undefined) {
+                const heldSystem = this.config.systems.find(s => s.id === heldSystemId);
+                if (heldSystem) {
+                    return [{
+                        id: heldSystem.id,
+                        label: heldSystem.label
+                    }];
+                }
+            }
+        }
+        
+        // If hold talkgroup is active, only show the system of the held talkgroup
+        if (this.holdTg && (this.call || this.callPrevious)) {
+            const heldSystemId = (this.call || this.callPrevious)?.system;
+            if (heldSystemId !== undefined) {
+                const heldSystem = this.config.systems.find(s => s.id === heldSystemId);
+                if (heldSystem) {
+                    return [{
+                        id: heldSystem.id,
+                        label: heldSystem.label
+                    }];
+                }
+            }
+        }
 
+        // Normal mode: show all systems with active talkgroups
         this.config.systems.forEach(system => {
             // Check if this system has any active talkgroups
             const systemMap = this.map[system.id];
@@ -396,8 +426,6 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
                 this.rdioScannerService.beep(RdioScannerBeepStyle.Deactivate);
             }
 
-            this.updateDimmer();
-
         } else {
             this.rdioScannerService.beep(RdioScannerBeepStyle.Denied);
         }
@@ -417,8 +445,6 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
             } else {
                 this.rdioScannerService.beep(RdioScannerBeepStyle.Denied);
             }
-
-            this.updateDimmer();
         }
     }
 
@@ -435,8 +461,6 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
             } else {
                 this.rdioScannerService.beep(RdioScannerBeepStyle.Denied);
             }
-
-            this.updateDimmer();
         }
     }
 
@@ -448,8 +472,6 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
             this.rdioScannerService.beep(this.livefeedOffline ? RdioScannerBeepStyle.Activate : RdioScannerBeepStyle.Deactivate);
 
             this.rdioScannerService.livefeed();
-
-            this.updateDimmer();
         }
     }
 
@@ -770,7 +792,6 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
                         setTimeout(() => {
                             this.rdioScannerService.beep(RdioScannerBeepStyle.Activate);
                             this.rdioScannerService.livefeed();
-                            this.updateDimmer();
                         }, 100);
                     }
                 },
@@ -796,8 +817,6 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
 
                 this.rdioScannerService.pause();
             }
-
-            this.updateDimmer();
         }
     }
 
@@ -834,8 +853,6 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
             } else {
                 this.rdioScannerService.beep(RdioScannerBeepStyle.Denied);
             }
-
-            this.updateDimmer();
         }
     }
 
@@ -989,7 +1006,8 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
 
     getRightLedStyle(): string {
         // Right LED uses talkgroup tag colors
-        const call = this.call || this.callPrevious;
+        // Only show when a call is actively playing (not callPrevious)
+        const call = this.call;
         
         if (call) {
             // Get the tag color
@@ -1006,12 +1024,13 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
             return 'on'; // Base class, color applied via inline style
         }
         
-        return 'on'; // Default
+        return ''; // No class when LED is off
     }
 
     getRightLedColor(): string {
         // Get the actual color value for the right LED based on talkgroup tag
-        const call = this.call || this.callPrevious;
+        // Only show color when a call is actively playing (not callPrevious)
+        const call = this.call;
         
         if (call) {
             if (call.tagData?.led) {
@@ -1021,13 +1040,46 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
             }
         }
         
-        return '#ffffff'; // Default white when no call
+        return '#505050'; // Dark grey when no call is actively playing (LED off)
     }
 
     getRightLedBoxShadow(): string {
         // Generate box-shadow color to match the LED background color
         const color = this.getRightLedColor();
+        // Only show shadow when LED is on (not dark grey)
+        if (color === '#505050') {
+            return '0 0 3px rgba(0, 0, 0, 0.3)'; // Subtle shadow when LED is off
+        }
         return `0 0 6px 3px ${color}`;
+    }
+
+    getTransmissionHistoryTagColor(call: RdioScannerCall | undefined): string {
+        // Get tag color for transmission history row (matching mobile app behavior)
+        if (!call) {
+            return 'transparent';
+        }
+
+        // Check tagData first (this is the actual tag color)
+        if (call.tagData?.led) {
+            return this.tagColorService.getTagColor(call.tagData.led);
+        } else if (call.talkgroupData?.tag) {
+            return this.tagColorService.getTagColor(call.talkgroupData.tag);
+        }
+
+        return 'transparent';
+    }
+
+    getTransmissionHistoryBackgroundColor(call: RdioScannerCall | undefined): string {
+        // Get background color with opacity for transmission history row (matching mobile app)
+        const color = this.getTransmissionHistoryTagColor(call);
+        if (color === 'transparent') {
+            return 'transparent';
+        }
+        // Convert hex to rgba with 0.2 opacity (matching mobile app)
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, 0.2)`;
     }
 
     getTalkgroupBoxColor(): string {
@@ -1063,6 +1115,37 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
         
         return '#fff'; // Default white
     }
+    
+    getTextGlowStyle(): string {
+        const call = this.call || this.callPrevious;
+        
+        // Don't add glow if dimmer is off (scanner is idle/dark)
+        if (!this.dimmer) {
+            return '';
+        }
+        
+        // Add colored glow when call exists (playing or previous) and dimmer is on
+        if (call) {
+            const color = this.getTalkgroupTextColor();
+            if (color && color !== '#fff') {
+                // Convert hex to RGB for rgba
+                const r = parseInt(color.slice(1, 3), 16);
+                const g = parseInt(color.slice(3, 5), 16);
+                const b = parseInt(color.slice(5, 7), 16);
+                
+                return `
+                    color: #fff;
+                    text-shadow: 
+                        0 0 8px rgba(${r}, ${g}, ${b}, 0.9),
+                        0 0 12px rgba(${r}, ${g}, ${b}, 0.7),
+                        0 0 20px rgba(${r}, ${g}, ${b}, 0.5),
+                        0 0 30px rgba(${r}, ${g}, ${b}, 0.3);
+                `;
+            }
+        }
+        
+        return '';
+    }
 
     toggleFavorite(): void {
         if (this.auth) {
@@ -1090,8 +1173,7 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
             this.rdioScannerService.beep(RdioScannerBeepStyle.Activate);
 
             this.rdioScannerService.skip(options);
-
-            this.updateDimmer();
+            // Dimmer will be turned off when call becomes undefined in eventHandler
         }
     }
 
@@ -1141,11 +1223,13 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
                 this.callPrevious = this.call;
 
                 this.call = undefined;
+                // Turn dimmer off when call stops
+                this.updateDimmer();
             }
 
             if (event.call) {
                 this.call = event.call;
-
+                // Turn dimmer on immediately when call arrives
                 this.updateDimmer();
             }
             
@@ -1268,7 +1352,10 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
         if ('time' in event && typeof event.time === 'number') {
             this.callTime = event.time;
 
-            this.updateDimmer();
+            // Turn dimmer on when time updates start (audio is actually playing)
+            if (!this.dimmer && this.call) {
+                this.updateDimmer();
+            }
         }
 
         if ('tooMany' in event && event.tooMany === true) {
@@ -1349,21 +1436,20 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
     }
 
     private updateDimmer(): void {
-        if (typeof this.config?.dimmerDelay === 'number') {
-            this.dimmerTimer?.unsubscribe();
-
-            this.dimmer = true;
-
-            this.dimmerTimer = timer(this.config.dimmerDelay).subscribe(() => {
-                this.dimmerTimer?.unsubscribe();
-
-                this.dimmerTimer = undefined;
-
-                this.dimmer = false;
-
-                this.ngChangeDetectorRef.detectChanges();
-            });
+        // Only update dimmer if we have a config with dimmerDelay
+        if (typeof this.config?.dimmerDelay !== 'number') {
+            return;
         }
+
+        // Clear any existing timer
+        this.dimmerTimer?.unsubscribe();
+        this.dimmerTimer = undefined;
+
+        // Dimmer should be ON when audio is actually playing (call exists)
+        // It will be turned OFF when call becomes undefined
+        this.dimmer = !!this.call;
+
+        this.ngChangeDetectorRef.detectChanges();
     }
 
     private updateDisplay(time = this.callTime): void {

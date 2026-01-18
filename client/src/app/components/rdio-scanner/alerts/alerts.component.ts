@@ -38,6 +38,15 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
     activeTab: 'alerts' | 'preferences' | 'transcripts' = 'alerts';
     private pin?: string;
     
+    // Filter properties
+    filterSystemId?: number;
+    filterTalkgroupId?: number;
+    filterDateFrom?: string; // YYYY-MM-DD format for date input
+    filterDateTo?: string; // YYYY-MM-DD format for date input
+    filterSearch: string = '';
+    availableSystems: Array<{id: number, label: string}> = [];
+    availableTalkgroups: Array<{id: number, label: string, systemId: number}> = [];
+    
     // Cached grouped alerts to avoid recalculation on every change detection
     allAlertGroups: Array<{key: string, alerts: RdioScannerAlert[], latestTimestamp: number, groupType: 'tone' | 'channel'}> = [];
 
@@ -54,6 +63,9 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
     ngOnInit(): void {
         // Refresh PIN from localStorage
         this.pin = this.rdioScannerService.readPin();
+        
+        // Load systems and talkgroups from config
+        this.loadSystemsAndTalkgroups();
         
         // Initial full load
         this.loadAlerts(true);
@@ -75,7 +87,89 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
                 this.showNotification(event.alert);
                 this.playAlertSound();
             }
+            if (event.config) {
+                // Config updated, reload systems/talkgroups
+                this.loadSystemsAndTalkgroups();
+            }
         });
+    }
+    
+    loadSystemsAndTalkgroups(): void {
+        const config = this.rdioScannerService.getConfig();
+        if (config && config.systems) {
+            this.availableSystems = config.systems.map(s => ({
+                id: s.id,
+                label: s.label || `System ${s.id}`
+            }));
+            
+            // Flatten talkgroups from all systems
+            this.availableTalkgroups = [];
+            config.systems.forEach(system => {
+                if (system.talkgroups) {
+                    system.talkgroups.forEach(tg => {
+                        this.availableTalkgroups.push({
+                            id: tg.id,
+                            label: tg.label || tg.name || `Talkgroup ${tg.id}`,
+                            systemId: system.id
+                        });
+                    });
+                }
+            });
+        }
+    }
+    
+    getFilteredTalkgroups(): Array<{id: number, label: string, systemId: number}> {
+        if (!this.filterSystemId) {
+            return this.availableTalkgroups;
+        }
+        return this.availableTalkgroups.filter(tg => tg.systemId === this.filterSystemId);
+    }
+    
+    onSystemFilterChange(value: any): void {
+        // Convert to number if it's a string, or set to undefined if empty/null
+        if (value === '' || value === null || value === undefined || value === 'undefined') {
+            this.filterSystemId = undefined;
+        } else {
+            const numValue = typeof value === 'string' ? parseInt(value, 10) : Number(value);
+            this.filterSystemId = isNaN(numValue) ? undefined : numValue;
+        }
+        // Reset talkgroup filter when system changes
+        this.filterTalkgroupId = undefined;
+        this.applyFilters();
+    }
+    
+    onTalkgroupFilterChange(value: any): void {
+        // Convert to number if it's a string, or set to undefined if empty/null
+        if (value === '' || value === null || value === undefined || value === 'undefined') {
+            this.filterTalkgroupId = undefined;
+        } else {
+            const numValue = typeof value === 'string' ? parseInt(value, 10) : Number(value);
+            this.filterTalkgroupId = isNaN(numValue) ? undefined : numValue;
+        }
+        this.applyFilters();
+    }
+    
+    applyFilters(): void {
+        // Reset to first page when filters change
+        this.transcriptOffset = 0;
+        this.loadTranscripts();
+    }
+    
+    clearFilters(): void {
+        this.filterSystemId = undefined;
+        this.filterTalkgroupId = undefined;
+        this.filterDateFrom = undefined;
+        this.filterDateTo = undefined;
+        this.filterSearch = '';
+        this.applyFilters();
+    }
+    
+    highlightSearchText(text: string, search: string): string {
+        if (!search || !text) {
+            return text;
+        }
+        const regex = new RegExp(`(${search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return text.replace(regex, '<mark>$1</mark>');
     }
 
     ngOnDestroy(): void {
@@ -143,8 +237,31 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
             return;
         }
         this.loadingTranscripts = true;
-        this.alertsService.getTranscripts(this.limit, this.transcriptOffset, this.pin).subscribe({
+        
+        // Convert date strings (YYYY-MM-DD) to timestamps (start of day for from, end of day for to)
+        let dateFrom: number | undefined;
+        let dateTo: number | undefined;
+        if (this.filterDateFrom) {
+            const date = new Date(this.filterDateFrom + 'T00:00:00');
+            dateFrom = Math.floor(date.getTime() / 1000) * 1000;
+        }
+        if (this.filterDateTo) {
+            const date = new Date(this.filterDateTo + 'T23:59:59');
+            dateTo = Math.floor(date.getTime() / 1000) * 1000;
+        }
+        
+        this.alertsService.getTranscripts(
+            this.limit, 
+            this.transcriptOffset, 
+            this.pin, 
+            this.filterSystemId, 
+            this.filterTalkgroupId,
+            dateFrom,
+            dateTo,
+            this.filterSearch
+        ).subscribe({
             next: (transcripts) => {
+                console.log('Received transcripts:', transcripts?.length, 'transcripts');
                 this.transcripts = (transcripts || []).map((t: any) => {
                     return {
                         ...t,

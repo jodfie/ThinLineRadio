@@ -24,6 +24,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { timer } from 'rxjs';
 import { RdioScannerEvent, RdioScannerLivefeedMode } from './rdio-scanner';
 import { RdioScannerService } from './rdio-scanner.service';
+import { AlertsService } from './alerts/alerts.service';
+import { SettingsService } from './settings/settings.service';
 import { RdioScannerNativeComponent } from './native/native.component';
 
 @Component({
@@ -53,6 +55,7 @@ export class RdioScannerComponent implements OnDestroy, OnInit {
         private matSnackBar: MatSnackBar,
         private ngElementRef: ElementRef,
         private rdioScannerService: RdioScannerService,
+        private settingsService: SettingsService,
         private route: ActivatedRoute,
     ) {
         this.eventSubscription = this.rdioScannerService.event.subscribe((event: RdioScannerEvent) => this.eventHandler(event));
@@ -129,6 +132,39 @@ export class RdioScannerComponent implements OnDestroy, OnInit {
         /**
          * END OF RED TAPE.
          */
+        
+        // Load and apply saved font on app init
+        this.loadAndApplyFont();
+    }
+    
+    private loadAndApplyFont(): void {
+        const availableFonts = [
+            { name: 'Roboto', value: 'Roboto, sans-serif' },
+            { name: 'Rajdhani', value: 'Rajdhani, sans-serif' },
+            { name: 'ShareTechMono', value: '"Share Tech Mono", monospace' },
+            { name: 'Audiowide', value: 'Audiowide, cursive' },
+        ];
+        
+        this.settingsService.getSettings().subscribe({
+            next: (settings) => {
+                const fontName = settings?.appFont || 'Roboto';
+                const font = availableFonts.find(f => f.name === fontName);
+                if (font) {
+                    document.body.style.fontFamily = font.value;
+                    
+                    // Adjust font size for Audiowide (15% smaller)
+                    if (fontName === 'Audiowide') {
+                        document.documentElement.style.fontSize = '14.45px'; // 85% of 17px
+                    } else {
+                        document.documentElement.style.fontSize = '';
+                    }
+                }
+            },
+            error: () => {
+                // On error, use default font (Roboto)
+                document.body.style.fontFamily = 'Roboto, sans-serif';
+            },
+        });
     }
 
     scrollTop(e: HTMLElement): void {
@@ -147,8 +183,9 @@ export class RdioScannerComponent implements OnDestroy, OnInit {
     }
 
     onSearchPanelClosed(): void {
-        // Clear playback list when search panel is closed
-        // This prevents old search results from persisting and auto-playing later
+        // Only stop playback mode if we're actually in playback mode
+        // This preserves live feed if it was running before entering search/playback
+        // stopPlaybackMode() will restore the previous livefeed mode if it was Online
         this.rdioScannerService.stopPlaybackMode();
     }
 

@@ -86,6 +86,7 @@ type DefaultOptions struct {
 	emailSmtpFromName           string
 	emailLogoFilename           string
 	emailLogoBorderRadius       string
+	faviconFilename             string
 	stripePublishableKey        string
 	stripeSecretKey             string
 	stripeWebhookSecret         string
@@ -96,6 +97,19 @@ type DefaultOptions struct {
 	transcriptionFailureThreshold uint
 	toneDetectionIssueThreshold uint
 	alertRetentionDays          uint
+	noAudioThresholdMinutes     uint
+	noAudioMultiplier            float64
+	systemHealthAlertsEnabled   bool
+	transcriptionFailureAlertsEnabled bool
+	toneDetectionAlertsEnabled  bool
+	noAudioAlertsEnabled        bool
+	transcriptionFailureTimeWindow uint
+	toneDetectionTimeWindow     uint
+	noAudioTimeWindow           uint
+	noAudioHistoricalDataDays   uint
+	transcriptionFailureRepeatMinutes uint
+	toneDetectionRepeatMinutes        uint
+	noAudioRepeatMinutes              uint
 	adminLocalhostOnly          bool
 	configSyncEnabled           bool
 	configSyncPath              string
@@ -187,6 +201,7 @@ var defaults = Defaults{
 		emailSmtpFromName:           "",
 		emailLogoFilename:           "",
 		emailLogoBorderRadius:       "0px",
+		faviconFilename:             "",
 		stripePublishableKey:        "",
 		stripeSecretKey:             "",
 		stripeWebhookSecret:         "",
@@ -210,6 +225,19 @@ var defaults = Defaults{
 		transcriptionFailureThreshold: 10,
 		toneDetectionIssueThreshold: 5,
 		alertRetentionDays: 5,
+	noAudioThresholdMinutes: 30,
+	noAudioMultiplier: 1.5,
+	systemHealthAlertsEnabled: true,
+	transcriptionFailureAlertsEnabled: true,
+	toneDetectionAlertsEnabled: true,
+	noAudioAlertsEnabled: true,
+	transcriptionFailureTimeWindow: 24,
+	toneDetectionTimeWindow: 24,
+		noAudioTimeWindow: 24,
+		noAudioHistoricalDataDays: 7,
+		transcriptionFailureRepeatMinutes: 60,
+		toneDetectionRepeatMinutes: 60,
+		noAudioRepeatMinutes: 30,
 		adminLocalhostOnly: false, // Default to false for backwards compatibility
 		configSyncEnabled:  false,
 		configSyncPath:     "",

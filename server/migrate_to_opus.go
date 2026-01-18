@@ -17,10 +17,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 	"path"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -149,6 +151,14 @@ func (db *Database) MigrateToOpus(batchSize int, dryRun bool, autoConfirm bool) 
 		}
 
 		batchCount := 0
+		type convertJob struct {
+			callId   uint64
+			audio    []byte
+			filename string
+			mimeType string
+		}
+		var jobs []convertJob
+
 		for rows.Next() {
 			var callId uint64
 			var audio []byte
@@ -169,55 +179,166 @@ func (db *Database) MigrateToOpus(batchSize int, dryRun bool, autoConfirm bool) 
 				continue
 			}
 
-			// Convert to Opus
-			opusAudio, err := convertToOpus(audio)
-			if err != nil {
-				fmt.Printf("❌ Call %d: Conversion failed: %v\n", callId, err)
-				failed++
-				continue
-			}
-
-			// Update filename
-			newFilename := strings.TrimSuffix(filename, path.Ext(filename)) + ".opus"
-
-			// Update database
-			var updateQuery string
-			if db.Config.DbType == DbTypePostgresql {
-				updateQuery = fmt.Sprintf(`UPDATE "calls" SET "audio" = $1, "audioFilename" = '%s', "audioMime" = 'audio/opus' WHERE "callId" = %d`, newFilename, callId)
-				_, err = db.Sql.Exec(updateQuery, opusAudio)
-			} else {
-				updateQuery = fmt.Sprintf(`UPDATE "calls" SET "audio" = ?, "audioFilename" = '%s', "audioMime" = 'audio/opus' WHERE "callId" = %d`, newFilename, callId)
-				_, err = db.Sql.Exec(updateQuery, opusAudio)
-			}
-
-			if err != nil {
-				fmt.Printf("❌ Call %d: Database update failed: %v\n", callId, err)
-				failed++
-				continue
-			}
-
-			// Track savings
-			saved := len(audio) - len(opusAudio)
-			totalSaved += int64(saved)
-			migrated++
-
-			// Progress update every 10 calls
-			if migrated%10 == 0 {
-				elapsed := time.Since(startTime)
-				rate := float64(migrated) / elapsed.Seconds()
-				remaining := int(float64(totalCalls-migrated) / rate)
-				fmt.Printf("✅ Progress: %d/%d (%.1f%%) | Saved: %.2f MB | ETA: %s\n",
-					migrated, totalCalls,
-					float64(migrated)/float64(totalCalls)*100,
-					float64(totalSaved)/(1024*1024),
-					time.Duration(remaining)*time.Second)
-			}
+			jobs = append(jobs, convertJob{callId, audio, filename, mimeType})
 		}
 		rows.Close()
 
 		// If no rows were returned, we're done (all calls converted)
 		if batchCount == 0 {
 			break
+		}
+
+		// Process conversions in parallel using worker pool
+		// Adjust workers based on batch size:
+		// - Small batches (<=100): 1 worker for ultra-gentle background processing (can run for days)
+		// - Medium batches (<=1000): 50 workers
+		// - Large batches (>1000): 200 workers for maximum speed
+		numWorkers := 200
+		if batchSize <= 100 {
+			numWorkers = 1
+		} else if batchSize <= 1000 {
+			numWorkers = 50
+		}
+
+		jobChan := make(chan convertJob, len(jobs))
+		resultChan := make(chan struct {
+			callId      uint64
+			opusAudio   []byte
+			newFilename string
+			originalLen int
+			err         error
+		}, len(jobs))
+
+		// Start workers
+		var wg sync.WaitGroup
+		for i := 0; i < numWorkers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer func() {
+					// Recover from panics to prevent worker death
+					if r := recover(); r != nil {
+						fmt.Printf("⚠️  Worker panic recovered: %v\n", r)
+					}
+				}()
+				for job := range jobChan {
+					// Convert to Opus (with timeout protection)
+					opusAudio, err := convertToOpus(job.audio)
+					newFilename := strings.TrimSuffix(job.filename, path.Ext(job.filename)) + ".opus"
+					resultChan <- struct {
+						callId      uint64
+						opusAudio   []byte
+						newFilename string
+						originalLen int
+						err         error
+					}{job.callId, opusAudio, newFilename, len(job.audio), err}
+				}
+			}()
+		}
+
+		// Send jobs to workers
+		for _, job := range jobs {
+			jobChan <- job
+		}
+		close(jobChan)
+
+		// Wait for all workers to finish
+		go func() {
+			wg.Wait()
+			close(resultChan)
+		}()
+
+		// Collect results and batch database updates
+		var updateBatch []struct {
+			callId      uint64
+			opusAudio   []byte
+			newFilename string
+			originalLen int
+		}
+		// Adjust DB batch size based on conversion batch size:
+		// - Small batches: write 1 at a time (minimal DB impact)
+		// - Medium batches: write 20 at a time
+		// - Large batches: write 50 at a time
+		batchUpdateSize := 20
+		if batchSize <= 100 {
+			batchUpdateSize = 1
+		} else if batchSize <= 1000 {
+			batchUpdateSize = 20
+		} else {
+			batchUpdateSize = 50
+		}
+
+		resultsProcessed := 0
+		for result := range resultChan {
+			resultsProcessed++
+
+			if result.err != nil {
+				// Silently skip failed conversions to avoid log spam
+				failed++
+
+				// Progress heartbeat every 100 results (including failures)
+				if resultsProcessed%100 == 0 {
+					fmt.Printf("⏳ Processed %d results (pending DB write)...\n", resultsProcessed)
+				}
+				continue
+			}
+
+			// Add to batch
+			updateBatch = append(updateBatch, struct {
+				callId      uint64
+				opusAudio   []byte
+				newFilename string
+				originalLen int
+			}{result.callId, result.opusAudio, result.newFilename, result.originalLen})
+
+			// When batch is full, write to database
+			if len(updateBatch) >= batchUpdateSize {
+				fmt.Printf("💾 Writing batch of %d calls to database...\n", len(updateBatch))
+
+				if err := db.batchUpdateCalls(updateBatch); err != nil {
+					fmt.Printf("❌ Batch update failed: %v\n", err)
+					failed += len(updateBatch)
+					updateBatch = nil
+					continue
+				}
+
+				// Track savings and progress
+				for _, item := range updateBatch {
+					saved := item.originalLen - len(item.opusAudio)
+					totalSaved += int64(saved)
+					migrated++
+				}
+
+				// Progress update every 100 calls
+				if migrated%100 == 0 {
+					elapsed := time.Since(startTime)
+					rate := float64(migrated) / elapsed.Seconds()
+					remaining := int(float64(totalCalls-migrated) / rate)
+					fmt.Printf("✅ Progress: %d/%d (%.1f%%) | Saved: %.2f MB | Rate: %.0f/sec | ETA: %s\n",
+						migrated, totalCalls,
+						float64(migrated)/float64(totalCalls)*100,
+						float64(totalSaved)/(1024*1024),
+						rate,
+						time.Duration(remaining)*time.Second)
+				}
+
+				// Clear batch
+				updateBatch = nil
+			}
+		}
+
+		// Write remaining items in batch
+		if len(updateBatch) > 0 {
+			if err := db.batchUpdateCalls(updateBatch); err != nil {
+				fmt.Printf("❌ Final batch update failed: %v\n", err)
+				failed += len(updateBatch)
+			} else {
+				for _, item := range updateBatch {
+					saved := item.originalLen - len(item.opusAudio)
+					totalSaved += int64(saved)
+					migrated++
+				}
+			}
 		}
 	}
 
@@ -254,6 +375,44 @@ func (db *Database) MigrateToOpus(batchSize int, dryRun bool, autoConfirm bool) 
 	return nil
 }
 
+// batchUpdateCalls updates multiple calls in a single transaction
+func (db *Database) batchUpdateCalls(batch []struct {
+	callId      uint64
+	opusAudio   []byte
+	newFilename string
+	originalLen int
+}) error {
+	// Start transaction with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	tx, err := db.Sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback()
+
+	// Execute updates without preparing (faster for PostgreSQL)
+	for _, item := range batch {
+		var err error
+		if db.Config.DbType == DbTypePostgresql {
+			_, err = tx.ExecContext(ctx, `UPDATE "calls" SET "audio" = $1, "audioFilename" = $2, "audioMime" = 'audio/opus' WHERE "callId" = $3`, item.opusAudio, item.newFilename, item.callId)
+		} else {
+			_, err = tx.ExecContext(ctx, `UPDATE "calls" SET "audio" = ?, "audioFilename" = ?, "audioMime" = 'audio/opus' WHERE "callId" = ?`, item.opusAudio, item.newFilename, item.callId)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to execute update for call %d: %v", item.callId, err)
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %v", err)
+	}
+
+	return nil
+}
+
 // convertToOpus converts audio bytes to Opus format using FFmpeg
 func convertToOpus(audio []byte) ([]byte, error) {
 	args := []string{
@@ -278,8 +437,26 @@ func convertToOpus(audio []byte) ([]byte, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg failed: %v, stderr: %s", err, stderr.String())
+	// Add timeout to prevent hanging
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Run()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			// Skip detailed error output to avoid spam
+			return nil, fmt.Errorf("ffmpeg conversion failed")
+		}
+	case <-time.After(10 * time.Second):
+		// Kill process if it takes too long
+		cmd.Process.Kill()
+		return nil, fmt.Errorf("ffmpeg timeout after 10 seconds")
+	}
+
+	if stdout.Len() == 0 {
+		return nil, fmt.Errorf("ffmpeg produced no output")
 	}
 
 	return stdout.Bytes(), nil

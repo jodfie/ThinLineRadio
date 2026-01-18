@@ -25,12 +25,13 @@ type TranscriptionProvider interface {
 
 // TranscriptionOptions contains options for transcription
 type TranscriptionOptions struct {
-	Language     string  // "en", "auto", etc.
-	Model        string  // "tiny", "base", "small", "medium", "large" (for Whisper)
-	Device       string  // "cpu", "cuda", "metal" (for GPU)
-	Temperature  float64 // Temperature for sampling (0.0-1.0)
-	InitialPrompt string // Initial prompt/context
-	AudioMime    string  // MIME type of audio (e.g., "audio/mp4", "audio/mpeg")
+	Language     string   // "en", "auto", etc.
+	Model        string   // "tiny", "base", "small", "medium", "large" (for Whisper)
+	Device       string   // "cpu", "cuda", "metal" (for GPU)
+	Temperature  float64  // Temperature for sampling (0.0-1.0)
+	InitialPrompt string  // Initial prompt/context
+	AudioMime    string   // MIME type of audio (e.g., "audio/mp4", "audio/mpeg")
+	WordBoost    []string // Word boost/keyterms for AssemblyAI (max 100 terms, 50 chars each)
 }
 
 // TranscriptionResult contains the transcription result

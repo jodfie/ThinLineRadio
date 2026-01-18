@@ -127,32 +127,9 @@ func (engine *AlertEngine) TriggerPreAlerts(call *Call) {
 		// DEBUG: Log detected tone set details
 		engine.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("🔔 [TONE SET DEBUG] Pre-alert processing: Detected tone set ID='%s', Label='%s' on call %d", matchedToneSet.Id, matchedToneSet.Label, call.Id))
 
-		// Check if pre-alert already exists for this call + tone set combination
-		var existingAlertId uint64
-		var checkQuery string
-		if engine.controller.Database.Config.DbType == DbTypePostgresql {
-			checkQuery = `SELECT "alertId" FROM "alerts" WHERE "callId" = $1 AND "systemId" = $2 AND "talkgroupId" = $3 AND "alertType" = 'pre-alert' AND "toneSetId" = $4 LIMIT 1`
-		} else {
-			checkQuery = `SELECT "alertId" FROM "alerts" WHERE "callId" = ? AND "systemId" = ? AND "talkgroupId" = ? AND "alertType" = 'pre-alert' AND "toneSetId" = ? LIMIT 1`
-		}
-		if err := engine.controller.Database.Sql.QueryRow(checkQuery, call.Id, call.System.Id, call.Talkgroup.Id, matchedToneSet.Id).Scan(&existingAlertId); err == nil {
-			// Pre-alert already exists, skip
-			engine.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("pre-alert already exists for call %d, tone set %s", call.Id, matchedToneSet.Label))
-			continue
-		}
-
-		// Create pre-alert for this tone set
-		engine.createAlert(&AlertRecord{
-			CallId:       call.Id,
-			SystemId:     call.System.Id,
-			TalkgroupId:  call.Talkgroup.Id,
-			AlertType:    "pre-alert",
-			ToneDetected: true,
-			ToneSetId:    matchedToneSet.Id,
-			CreatedAt:    time.Now().UnixMilli(),
-		})
-
-		engine.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("created pre-alert for call %d, tone set '%s'", call.Id, matchedToneSet.Label))
+		// NOTE: Pre-alerts are NOT saved to database - they're instant notifications only
+		// No need to check for existing alerts or create database records
+		engine.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("preparing pre-alert notifications for call %d, tone set '%s' (not saving to database)", call.Id, matchedToneSet.Label))
 
 		// Collect users who should get notifications for this tone set
 		var eligibleUsers []uint64

@@ -74,6 +74,26 @@ func generateMessageID(domain string) string {
 	return fmt.Sprintf("<%d.%s@%s>", timestamp, randomHex, domain)
 }
 
+// removeEmojis removes all emoji characters from a string
+func removeEmojis(text string) string {
+	// Regex to match emoji ranges (most comprehensive coverage)
+	emojiRegex := regexp.MustCompile(`[\x{1F300}-\x{1F9FF}]|[\x{2600}-\x{26FF}]|[\x{2700}-\x{27BF}]|[\x{1F900}-\x{1F9FF}]|[\x{1F1E0}-\x{1F1FF}]|[\x{1F600}-\x{1F64F}]|[\x{1F680}-\x{1F6FF}]|[\x{200D}]`)
+	return emojiRegex.ReplaceAllString(text, "")
+}
+
+// removeEmojisFromHTML removes emojis from HTML content while preserving HTML tags
+func removeEmojisFromHTML(htmlContent string) string {
+	// Match content between HTML tags and replace emojis in text nodes
+	// This regex matches text between > and < (text nodes)
+	textNodeRegex := regexp.MustCompile(`>([^<]+)<`)
+	result := textNodeRegex.ReplaceAllStringFunc(htmlContent, func(match string) string {
+		textContent := match[1 : len(match)-1]
+		cleanedText := removeEmojis(textContent)
+		return ">" + cleanedText + "<"
+	})
+	return result
+}
+
 // htmlToPlainText converts HTML email body to plain text
 func htmlToPlainText(htmlContent string) string {
 	// Remove HTML tags
@@ -82,6 +102,9 @@ func htmlToPlainText(htmlContent string) string {
 	
 	// Decode HTML entities
 	text = html.UnescapeString(text)
+	
+	// Remove emojis
+	text = removeEmojis(text)
 	
 	// Clean up whitespace
 	text = strings.TrimSpace(text)
@@ -99,6 +122,9 @@ func htmlToPlainText(htmlContent string) string {
 
 // buildEmailMessage builds a properly formatted email message with all required headers
 func buildEmailMessage(fromName, fromEmail, toEmail, subject, htmlBody string) string {
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
 	// Extract domain for HELO and Message-ID
 	domain := extractDomainFromEmail(fromEmail)
 	
@@ -150,6 +176,10 @@ func buildEmailMessage(fromName, fromEmail, toEmail, subject, htmlBody string) s
 
 // sendSendGridEmail sends an email using the SendGrid API
 func (es *EmailService) sendSendGridEmail(fromName, fromEmail, toEmail, subject, htmlBody string) error {
+	// Remove emojis from subject and body (already done in sendEmail, but ensure it here too)
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	apiKey := es.Controller.Options.EmailSendGridAPIKey
 	if apiKey == "" {
 		return fmt.Errorf("SendGrid API key is not configured")
@@ -220,6 +250,10 @@ func (es *EmailService) sendSendGridEmail(fromName, fromEmail, toEmail, subject,
 
 // sendMailgunEmail sends an email using the Mailgun API
 func (es *EmailService) sendMailgunEmail(fromName, fromEmail, toEmail, subject, htmlBody string) error {
+	// Remove emojis from subject and body (already done in sendEmail, but ensure it here too)
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	apiKey := es.Controller.Options.EmailMailgunAPIKey
 	domain := es.Controller.Options.EmailMailgunDomain
 	apiBase := es.Controller.Options.EmailMailgunAPIBase
@@ -274,6 +308,9 @@ func (es *EmailService) sendMailgunEmail(fromName, fromEmail, toEmail, subject, 
 
 // sendSMTPEmail sends an email using direct SMTP connection
 func (es *EmailService) sendSMTPEmail(fromName, fromEmail, toEmail, subject, htmlBody string) error {
+	// Remove emojis from subject and body (already done in sendEmail, but ensure it here too)
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
 	host := es.Controller.Options.EmailSmtpHost
 	port := es.Controller.Options.EmailSmtpPort
 	username := es.Controller.Options.EmailSmtpUsername
@@ -424,6 +461,10 @@ func (es *EmailService) sendSMTPEmail(fromName, fromEmail, toEmail, subject, htm
 
 // sendEmail routes to the appropriate email provider
 func (es *EmailService) sendEmail(fromName, fromEmail, toEmail, subject, htmlBody string) error {
+	// Remove emojis from subject and body for all emails
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	provider := es.Controller.Options.EmailProvider
 	if provider == "" {
 		provider = "sendgrid" // Default to SendGrid
@@ -1016,6 +1057,10 @@ func (es *EmailService) SendVerificationEmail(user *User) error {
 
 	log.Printf("📧 Sending verification email to %s with HELO %s...", user.Email, domain)
 
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	// Send email using provider routing
 	if err := es.sendEmail(fromName, fromEmail, toEmail, subject, htmlBody); err != nil {
 		return err
@@ -1293,6 +1338,10 @@ func (es *EmailService) SendPasswordResetEmail(user *User, resetCode string) err
 
 	log.Printf("📧 Sending password reset email to %s with HELO %s...", user.Email, domain)
 
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	// Send email using provider routing
 	if err := es.sendEmail(fromName, fromEmail, toEmail, subject, htmlBody); err != nil {
 		return err
@@ -1380,6 +1429,10 @@ func (es *EmailService) SendEmailChangeVerificationEmail(user *User, verificatio
 
 	log.Printf("📧 Sending email change verification code to %s with HELO %s...", user.Email, domain)
 
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	// Send email using provider routing
 	if err := es.sendEmail(fromName, fromEmail, toEmail, subject, htmlBody); err != nil {
 		return err
@@ -1476,6 +1529,10 @@ func (es *EmailService) SendNewEmailVerificationEmail(newEmail, verificationToke
 
 	log.Printf("📧 Sending new email verification to %s with HELO %s...", newEmail, domain)
 
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	// Send email using provider routing
 	if err := es.sendEmail(fromName, fromEmail, toEmail, subject, htmlBody); err != nil {
 		return err
@@ -1954,6 +2011,10 @@ func (es *EmailService) SendPasswordChangeVerificationEmail(user *User, verifica
 
 	log.Printf("📧 Sending password change verification code to %s with HELO %s...", user.Email, domain)
 
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	// Send email using provider routing
 	if err := es.sendEmail(fromName, fromEmail, toEmail, subject, htmlBody); err != nil {
 		return err
@@ -2034,6 +2095,10 @@ func (es *EmailService) SendInvitationEmail(email, code, invitationLink, groupNa
 
 	log.Printf("📧 Sending invitation email to %s with HELO %s...", email, domain)
 
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	// Send email using provider routing
 	if err := es.sendEmail(fromName, fromEmail, toEmail, subject, htmlBody); err != nil {
 		return err
@@ -2258,6 +2323,10 @@ func (es *EmailService) SendUserGroupChangeEmail(user *User, newGroup *UserGroup
 
 	log.Printf("📧 Sending user group change email to %s with HELO %s...", user.Email, domain)
 
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	// Send email using provider routing
 	if err := es.sendEmail(fromName, fromEmail, toEmail, subject, htmlBody); err != nil {
 		return err
@@ -2339,6 +2408,10 @@ func (es *EmailService) SendUserMovedFromGroupEmail(admin *User, movedUser *User
 
 	log.Printf("📧 Sending user moved notification email to %s with HELO %s...", admin.Email, domain)
 
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	// Send email using provider routing
 	if err := es.sendEmail(fromName, fromEmail, toEmail, subject, htmlBody); err != nil {
 		return err
@@ -2763,6 +2836,10 @@ func (es *EmailService) SendTransferRequestEmail(admin *User, transferReq *Trans
 
 	log.Printf("📧 Sending transfer request email to %s with HELO %s...", admin.Email, domain)
 
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	// Send email using provider routing
 	if err := es.sendEmail(fromName, fromEmail, toEmail, subject, htmlBody); err != nil {
 		return err
@@ -3033,6 +3110,10 @@ func (es *EmailService) SendTestEmail(toEmail string) error {
 
 	log.Printf("📧 Sending test email to %s with HELO %s...", toEmail, domain)
 
+	// Remove emojis from subject and body
+	subject = removeEmojis(subject)
+	htmlBody = removeEmojisFromHTML(htmlBody)
+	
 	// Send email using provider routing
 	if err := es.sendEmail(fromName, fromEmail, toEmail, subject, htmlBody); err != nil {
 		return err

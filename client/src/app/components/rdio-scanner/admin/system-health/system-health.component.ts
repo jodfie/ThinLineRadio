@@ -17,7 +17,8 @@
  * ****************************************************************************
  */
 
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { RdioScannerAdminService } from '../admin.service';
 
 export interface SystemAlert {
@@ -64,29 +65,51 @@ export class RdioScannerAdminSystemHealthComponent implements OnInit, OnDestroy 
     // Transcription failure specific data
     failedCalls: FailedCall[] = [];
     loadingFailedCalls = false;
-    transcriptionFailureThreshold = 10;
-    editingThreshold = false;
-    newThreshold = 10;
     
-    // Alert retention settings
-    alertRetentionDays = 5;
-    editingRetentionDays = false;
-    newRetentionDays = 5;
+    // System health alert settings
+    settings = {
+        transcriptionFailureAlertsEnabled: true,
+        toneDetectionAlertsEnabled: true,
+        noAudioAlertsEnabled: true,
+        transcriptionFailureThreshold: 10,
+        transcriptionFailureTimeWindow: 24,
+        toneDetectionIssueThreshold: 5,
+        toneDetectionTimeWindow: 24,
+        noAudioThresholdMinutes: 30,
+        noAudioMultiplier: 1.5,
+        noAudioTimeWindow: 24,
+        noAudioHistoricalDataDays: 7,
+        transcriptionFailureRepeatMinutes: 60,
+        toneDetectionRepeatMinutes: 60,
+        noAudioRepeatMinutes: 30,
+        alertRetentionDays: 5
+    };
     
-    // Tone detection issue threshold
-    toneDetectionIssueThreshold = 5;
-    editingToneThreshold = false;
-    newToneThreshold = 5;
+    // System health alerts enabled toggle
+    systemHealthAlertsEnabled = true;
+    
+    // Options for dropdowns
+    thresholdOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 40, 50, 75, 100];
+    timeWindowOptions = [1, 2, 3, 4, 6, 8, 12, 24, 48, 72];
+    multiplierOptions = [1.0, 1.2, 1.5, 2.0, 2.5, 3.0];
+    historicalDaysOptions = [3, 5, 7, 10, 14, 21, 30];
+    retentionDaysOptions = [1, 2, 3, 5, 7, 10, 14, 30];
+    repeatMinutesOptions = [15, 30, 60, 120, 180, 240, 360, 480, 720];
 
     private refreshInterval: any;
+    private saveFeedbackTimeouts: Map<string, any> = new Map();
+    private saveFeedbackFields: Set<string> = new Set();
 
-    constructor(private adminService: RdioScannerAdminService) {}
+    constructor(
+        private adminService: RdioScannerAdminService,
+        private cdr: ChangeDetectorRef,
+        private snackBar: MatSnackBar
+    ) {}
 
     ngOnInit(): void {
         this.loadAlerts();
-        this.loadThreshold();
-        this.loadRetentionDays();
-        this.loadToneDetectionThreshold();
+        this.loadSystemHealthAlertsEnabled();
+        this.loadSystemHealthAlertSettings();
         // Auto-refresh every 60 seconds
         this.refreshInterval = setInterval(() => {
             this.loadAlerts();
@@ -97,6 +120,10 @@ export class RdioScannerAdminSystemHealthComponent implements OnInit, OnDestroy 
         if (this.refreshInterval) {
             clearInterval(this.refreshInterval);
         }
+        // Clear all save feedback timeouts
+        this.saveFeedbackTimeouts.forEach(timeout => clearTimeout(timeout));
+        this.saveFeedbackTimeouts.clear();
+        this.saveFeedbackFields.clear();
     }
 
     async loadAlerts(): Promise<void> {
@@ -136,94 +163,102 @@ export class RdioScannerAdminSystemHealthComponent implements OnInit, OnDestroy 
         }
     }
 
-    async loadThreshold(): Promise<void> {
+
+    async loadSystemHealthAlertsEnabled(): Promise<void> {
         try {
-            this.transcriptionFailureThreshold = await this.adminService.getTranscriptionFailureThreshold();
-            this.newThreshold = this.transcriptionFailureThreshold;
+            this.systemHealthAlertsEnabled = await this.adminService.getSystemHealthAlertsEnabled();
         } catch (error: any) {
-            console.error('Failed to load threshold:', error);
+            console.error('Failed to load system health alerts enabled status:', error);
         }
     }
 
-    async loadRetentionDays(): Promise<void> {
+    async toggleSystemHealthAlertsEnabled(): Promise<void> {
+        const newValue = !this.systemHealthAlertsEnabled;
         try {
-            this.alertRetentionDays = await this.adminService.getAlertRetentionDays();
-            this.newRetentionDays = this.alertRetentionDays;
+            await this.adminService.setSystemHealthAlertsEnabled(newValue);
+            this.systemHealthAlertsEnabled = newValue;
         } catch (error: any) {
-            console.error('Failed to load retention days:', error);
+            console.error('Failed to toggle system health alerts:', error);
+            alert('Failed to update setting: ' + (error.message || 'Unknown error'));
         }
     }
 
-    async saveThreshold(): Promise<void> {
-        if (this.newThreshold <= 0) {
-            alert('Threshold must be a positive number.');
-            return;
-        }
+    async loadSystemHealthAlertSettings(): Promise<void> {
         try {
-            await this.adminService.setTranscriptionFailureThreshold(this.newThreshold);
-            this.transcriptionFailureThreshold = this.newThreshold;
-            this.editingThreshold = false;
-            this.loadAlerts(); // Reload alerts to reflect new threshold
+            const data = await this.adminService.getSystemHealthAlertSettings();
+            this.settings = {
+                transcriptionFailureAlertsEnabled: data.transcriptionFailureAlertsEnabled !== false,
+                toneDetectionAlertsEnabled: data.toneDetectionAlertsEnabled !== false,
+                noAudioAlertsEnabled: data.noAudioAlertsEnabled !== false,
+                transcriptionFailureThreshold: data.transcriptionFailureThreshold || 10,
+                transcriptionFailureTimeWindow: data.transcriptionFailureTimeWindow || 24,
+                toneDetectionIssueThreshold: data.toneDetectionIssueThreshold || 5,
+                toneDetectionTimeWindow: data.toneDetectionTimeWindow || 24,
+                noAudioThresholdMinutes: data.noAudioThresholdMinutes || 30,
+                noAudioMultiplier: data.noAudioMultiplier || 1.5,
+                noAudioTimeWindow: data.noAudioTimeWindow || 24,
+                noAudioHistoricalDataDays: data.noAudioHistoricalDataDays || 7,
+                transcriptionFailureRepeatMinutes: data.transcriptionFailureRepeatMinutes || 60,
+                toneDetectionRepeatMinutes: data.toneDetectionRepeatMinutes || 60,
+                noAudioRepeatMinutes: data.noAudioRepeatMinutes || 30,
+                alertRetentionDays: data.alertRetentionDays || 5
+            };
         } catch (error: any) {
-            console.error('Failed to save threshold:', error);
-            alert('Failed to save threshold: ' + (error.message || 'Unknown error'));
+            console.error('Failed to load system health alert settings:', error);
         }
     }
 
-    cancelEditThreshold(): void {
-        this.newThreshold = this.transcriptionFailureThreshold;
-        this.editingThreshold = false;
-    }
-
-    async saveRetentionDays(): Promise<void> {
-        if (this.newRetentionDays <= 0) {
-            alert('Retention days must be a positive number.');
-            return;
-        }
+    async saveSetting(field: string, value: any): Promise<void> {
         try {
-            await this.adminService.setAlertRetentionDays(this.newRetentionDays);
-            this.alertRetentionDays = this.newRetentionDays;
-            this.editingRetentionDays = false;
+            const update: any = {};
+            update[field] = value;
+            await this.adminService.updateSystemHealthAlertSettings(update);
+            (this.settings as any)[field] = value;
+            // Show brief success feedback
+            this.showSaveFeedback(field);
+            // Show success message
+            this.snackBar.open('Setting saved', '', {
+                duration: 2000,
+                horizontalPosition: 'center',
+                verticalPosition: 'bottom',
+                panelClass: ['success-snackbar']
+            });
+            // Trigger change detection to show the feedback icon
+            this.cdr.detectChanges();
         } catch (error: any) {
-            console.error('Failed to save retention days:', error);
-            alert('Failed to save retention days: ' + (error.message || 'Unknown error'));
+            console.error(`Failed to save ${field}:`, error);
+            this.snackBar.open(`Failed to save setting: ${error.message || 'Unknown error'}`, 'Close', {
+                duration: 4000,
+                horizontalPosition: 'center',
+                verticalPosition: 'bottom',
+                panelClass: ['error-snackbar']
+            });
         }
     }
 
-    cancelEditRetentionDays(): void {
-        this.newRetentionDays = this.alertRetentionDays;
-        this.editingRetentionDays = false;
+    showSaveFeedback(field: string): void {
+        // Add field to feedback set
+        this.saveFeedbackFields.add(field);
+        
+        // Clear existing timeout for this field
+        if (this.saveFeedbackTimeouts.has(field)) {
+            clearTimeout(this.saveFeedbackTimeouts.get(field));
+        }
+        
+        // Remove feedback after 2 seconds
+        const timeout = setTimeout(() => {
+            this.saveFeedbackFields.delete(field);
+            this.saveFeedbackTimeouts.delete(field);
+            this.cdr.detectChanges();
+        }, 2000);
+        
+        this.saveFeedbackTimeouts.set(field, timeout);
     }
 
-    async loadToneDetectionThreshold(): Promise<void> {
-        try {
-            this.toneDetectionIssueThreshold = await this.adminService.getToneDetectionIssueThreshold();
-            this.newToneThreshold = this.toneDetectionIssueThreshold;
-        } catch (error: any) {
-            console.error('Failed to load tone detection threshold:', error);
-        }
+    hasSaveFeedback(field: string): boolean {
+        return this.saveFeedbackFields.has(field);
     }
 
-    async saveToneDetectionThreshold(): Promise<void> {
-        if (this.newToneThreshold <= 0) {
-            alert('Threshold must be a positive number.');
-            return;
-        }
-        try {
-            await this.adminService.setToneDetectionIssueThreshold(this.newToneThreshold);
-            this.toneDetectionIssueThreshold = this.newToneThreshold;
-            this.editingToneThreshold = false;
-            this.loadAlerts(); // Reload alerts to reflect new threshold
-        } catch (error: any) {
-            console.error('Failed to save tone detection threshold:', error);
-            alert('Failed to save threshold: ' + (error.message || 'Unknown error'));
-        }
-    }
-
-    cancelEditToneThreshold(): void {
-        this.newToneThreshold = this.toneDetectionIssueThreshold;
-        this.editingToneThreshold = false;
-    }
 
     async resetFailures(callIds?: number[]): Promise<void> {
         if (!confirm(callIds ? 'Reset selected transcription failures?' : 'Reset all transcription failures from the last 24 hours?')) {
@@ -245,20 +280,127 @@ export class RdioScannerAdminSystemHealthComponent implements OnInit, OnDestroy 
     }
 
     private updateStats(): void {
+        const activeAlerts = this.alerts.filter(a => !a.dismissed);
         this.stats = {
-            total: this.alerts.length,
+            total: activeAlerts.length,
             critical: 0,
             error: 0,
             warning: 0,
             info: 0
         };
 
-        this.alerts.forEach(alert => {
+        activeAlerts.forEach(alert => {
             if (alert.severity === 'critical') this.stats.critical++;
             else if (alert.severity === 'error') this.stats.error++;
             else if (alert.severity === 'warning') this.stats.warning++;
             else if (alert.severity === 'info') this.stats.info++;
         });
+    }
+
+    getGroupedAlerts(): { [key: string]: SystemAlert[] } {
+        const activeAlerts = this.alerts.filter(a => !a.dismissed);
+        const grouped: { [key: string]: SystemAlert[] } = {
+            'no_audio_received': [],
+            'tone_detection_issue': [],
+            'transcription_failure': [],
+            'other': []
+        };
+
+        for (const alert of activeAlerts) {
+            if (alert.alertType in grouped) {
+                grouped[alert.alertType].push(alert);
+            } else {
+                grouped['other'].push(alert);
+            }
+        }
+
+        // Remove empty groups
+        Object.keys(grouped).forEach(key => {
+            if (grouped[key].length === 0) {
+                delete grouped[key];
+            }
+        });
+
+        return grouped;
+    }
+
+    getGroupedAlertKeys(): string[] {
+        return Object.keys(this.getGroupedAlerts());
+    }
+
+    getAlertTypeLabel(type: string): string {
+        switch (type) {
+            case 'no_audio_received':
+                return 'No Audio Received';
+            case 'tone_detection_issue':
+                return 'Tone Detection Issues';
+            case 'transcription_failure':
+                return 'Transcription Failures';
+            default:
+                return 'Other Alerts';
+        }
+    }
+
+    async dismissAlert(alertId: number): Promise<void> {
+        try {
+            await this.adminService.dismissSystemAlert(alertId);
+            // Reload alerts to refresh the display
+            await this.loadAlerts();
+            this.snackBar.open('Alert dismissed', '', {
+                duration: 2000,
+                horizontalPosition: 'center',
+                verticalPosition: 'bottom',
+                panelClass: ['success-snackbar']
+            });
+        } catch (error: any) {
+            console.error('Failed to dismiss alert:', error);
+            this.snackBar.open(`Failed to dismiss alert: ${error.message || 'Unknown error'}`, 'Close', {
+                duration: 4000,
+                horizontalPosition: 'center',
+                verticalPosition: 'bottom',
+                panelClass: ['error-snackbar']
+            });
+        }
+    }
+
+    async dismissAllAlertsInGroup(groupType: string): Promise<void> {
+        const groupedAlerts = this.getGroupedAlerts();
+        const alertsInGroup = groupedAlerts[groupType] || [];
+        
+        if (alertsInGroup.length === 0) {
+            return;
+        }
+
+        const groupLabel = this.getAlertTypeLabel(groupType);
+        if (!confirm(`Dismiss all ${alertsInGroup.length} alert${alertsInGroup.length !== 1 ? 's' : ''} in "${groupLabel}"?`)) {
+            return;
+        }
+
+        try {
+            // Dismiss all alerts in parallel
+            const dismissPromises = alertsInGroup.map(alert => 
+                this.adminService.dismissSystemAlert(alert.id)
+            );
+            await Promise.all(dismissPromises);
+            
+            // Reload alerts to refresh the display
+            await this.loadAlerts();
+            
+            this.snackBar.open(`${alertsInGroup.length} alert${alertsInGroup.length !== 1 ? 's' : ''} dismissed`, '', {
+                duration: 2000,
+                horizontalPosition: 'center',
+                verticalPosition: 'bottom',
+                panelClass: ['success-snackbar']
+            });
+        } catch (error: any) {
+            console.error('Failed to dismiss alerts:', error);
+            this.snackBar.open(`Failed to dismiss alerts: ${error.message || 'Unknown error'}`, 'Close', {
+                duration: 4000,
+                horizontalPosition: 'center',
+                verticalPosition: 'bottom',
+                panelClass: ['error-snackbar']
+            });
+        }
     }
 
     getSeverityIcon(severity: string): string {

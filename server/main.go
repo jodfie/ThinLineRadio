@@ -103,11 +103,11 @@ func main() {
 		} else {
 			fmt.Println("\n⚠️  No configuration file found.")
 		}
-		fmt.Println("Running interactive setup wizard...\n")
+		fmt.Println("Running interactive setup wizard...")
 		if err := runInteractiveSetup(config.ConfigFile); err != nil {
 			log.Fatalf("Setup failed: %v\n", err)
 		}
-		fmt.Println("\n✓ Setup complete! Please restart the server.\n")
+		fmt.Println("\n✓ Setup complete! Please restart the server.")
 		os.Exit(0)
 	}
 
@@ -120,33 +120,41 @@ func main() {
 
 	// Handle opus_migration flag from INI file
 	if config.OpusMigration {
-		fmt.Printf("\nThinLine Radio v%s - Opus Migration\n", Version)
-		fmt.Printf("----------------------------------\n\n")
+		fmt.Printf("\nThinLine Radio v%s - Opus Migration (Background Mode)\n", Version)
+		fmt.Printf("--------------------------------------------------\n\n")
 		fmt.Println("⚠️  opus_migration = true detected in configuration")
-		fmt.Println("Starting automatic database migration...")
+		fmt.Println("Starting background migration while server runs...")
+		fmt.Println("Migration will use reduced resources to avoid impacting server.")
 		fmt.Println("")
 		
-		if err := controller.Database.MigrateToOpus(100, false, true); err != nil {
-			log.Fatalf("Migration failed: %v", err)
-		}
+		// Run migration in background goroutine
+		go func() {
+			// Use smaller batch (100 instead of 5000) and fewer workers (10 instead of 200)
+			if err := controller.Database.MigrateToOpus(100, false, true); err != nil {
+				log.Printf("❌ Background migration error: %v", err)
+				log.Printf("Migration will continue running. Check logs for details.")
+			} else {
+				fmt.Println("")
+				fmt.Println("✅ Background migration complete! Setting opus_migration = false in INI file...")
+				
+				// Automatically set opus_migration = false in the INI file
+				if err := config.SetOpusMigration(false); err != nil {
+					log.Printf("⚠️  Warning: Could not update INI file: %v", err)
+					log.Printf("Please manually set opus_migration = false in %s", config.ConfigFile)
+				} else {
+					fmt.Println("✅ Configuration updated successfully")
+					fmt.Println("Migration is complete. Restart server to apply final changes.")
+				}
+			}
+		}()
 		
+		// Give migration a moment to start
+		time.Sleep(1 * time.Second)
+		fmt.Println("🚀 Server starting while migration runs in background...")
 		fmt.Println("")
-		fmt.Println("✅ Migration complete! Setting opus_migration = false in INI file...")
 		
-		// Automatically set opus_migration = false in the INI file
-		if err := config.SetOpusMigration(false); err != nil {
-			log.Printf("⚠️  Warning: Could not update INI file: %v", err)
-			log.Printf("Please manually set opus_migration = false in %s", config.ConfigFile)
-		} else {
-			fmt.Println("✅ Configuration updated successfully")
-		}
-		
-		fmt.Println("")
-		fmt.Println("🚀 Starting server with new Opus encoding enabled...")
-		fmt.Println("")
-		
-		// Continue to start the server normally instead of exiting
-		config.OpusMigration = false // Ensure we don't migrate again
+		// Continue to start the server normally
+		config.OpusMigration = false // Ensure we don't try to migrate again on next iteration
 	}
 
 	// Handle migrate-to-opus command line flag
@@ -161,6 +169,7 @@ func main() {
 		// Command-line migration still exits (user explicitly ran migration tool)
 		os.Exit(0)
 	}
+
 
 	if config.newAdminPassword != "" {
 		hash, err := bcrypt.GenerateFromPassword([]byte(config.newAdminPassword), bcrypt.DefaultCost)
@@ -264,6 +273,10 @@ func main() {
 	http.HandleFunc("/api/admin/transcription-failure-threshold", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.TranscriptionFailureThresholdHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/tone-detection-issue-threshold", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.ToneDetectionIssueThresholdHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/alert-retention-days", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.AlertRetentionDaysHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/no-audio-threshold-minutes", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.NoAudioThresholdMinutesHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/no-audio-multiplier", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.NoAudioMultiplierHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/system-health-alerts-enabled", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.SystemHealthAlertsEnabledHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/system-health-alert-settings", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.SystemHealthAlertSettingsHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/call-audio/", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.CallAudioHandler)).ServeHTTP)
 
 	http.HandleFunc("/api/admin/tone-import", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.ToneImportHandler)).ServeHTTP)
@@ -271,6 +284,8 @@ func main() {
 	http.HandleFunc("/api/admin/config", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.ConfigHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/email-logo", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.EmailLogoUploadHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/email-logo/delete", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.EmailLogoDeleteHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/favicon", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.FaviconUploadHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/favicon/delete", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.FaviconDeleteHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/email-test", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.EmailTestHandler)).ServeHTTP)
 
 	http.HandleFunc("/api/admin/stripe-sync", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.StripeSyncHandler)).ServeHTTP)
@@ -289,6 +304,20 @@ func main() {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 
+	// Serve favicon file - register before root handler to ensure it's handled
+	http.HandleFunc("/favicon", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if controller.Options.FaviconFilename != "" {
+			faviconPath := filepath.Join(controller.Config.BaseDir, controller.Options.FaviconFilename)
+			if b, err := os.ReadFile(faviconPath); err == nil {
+				w.Header().Set("Content-Type", mime.TypeByExtension(filepath.Ext(controller.Options.FaviconFilename)))
+				w.Header().Set("Cache-Control", "public, max-age=31536000")
+				w.Write(b)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+
 	// Admin login with rate limiting and login attempt tracking
 	adminLoginHandler := LoginAttemptMiddleware(controller.LoginAttemptTracker)(
 		recoveryMiddleware(controller.Admin.requireLocalhost(controller.Admin.LoginHandler)),
@@ -298,6 +327,10 @@ func main() {
 	http.HandleFunc("/api/admin/logout", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.LogoutHandler)).ServeHTTP)
 
 	http.HandleFunc("/api/admin/logs", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.LogsHandler)).ServeHTTP)
+
+	http.HandleFunc("/api/admin/calls", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.CallsHandler)).ServeHTTP)
+
+	http.HandleFunc("/api/admin/purge", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.PurgeHandler)).ServeHTTP)
 
 	http.HandleFunc("/api/admin/password", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.PasswordHandler)).ServeHTTP)
 
@@ -536,7 +569,7 @@ func main() {
 			box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 			padding: 40px;
 			max-width: 500px;
-			width: 100%;
+			width: 100%%;
 			text-align: center;
 		}
 		.icon {
@@ -624,7 +657,7 @@ func main() {
 		
 		function formatTime(seconds) {
 			const mins = Math.floor(seconds / 60);
-			const secs = seconds % 60;
+			const secs = seconds %% 60;
 			return String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
 		}
 		

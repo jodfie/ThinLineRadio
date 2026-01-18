@@ -16,27 +16,28 @@
     <meta name="theme-color" content="#1e1e1e">
     <link rel="preconnect" href="https://fonts.gstatic.com">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&family=Audiowide&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <script src="https://js.stripe.com/v3/"></script>
-    <!-- Try to use email logo as favicon -->
+    <!-- Try to use custom favicon if uploaded -->
     <script>
         (function() {
-            // Check if email logo exists
-            fetch('/email-logo', { method: 'HEAD' })
+            // Check if custom favicon exists
+            fetch('/favicon', { method: 'HEAD' })
                 .then(response => {
                     if (response.ok) {
-                        // Email logo exists, use it for all icons
+                        // Custom favicon exists, use it for all icons
                         var appleTouchIcon = document.getElementById('apple-touch-icon');
                         var favicon32 = document.getElementById('favicon-32');
                         var favicon16 = document.getElementById('favicon-16');
                         
-                        if (appleTouchIcon) appleTouchIcon.href = '/email-logo';
-                        if (favicon32) favicon32.href = '/email-logo';
-                        if (favicon16) favicon16.href = '/email-logo';
+                        if (appleTouchIcon) appleTouchIcon.href = '/favicon';
+                        if (favicon32) favicon32.href = '/favicon';
+                        if (favicon16) favicon16.href = '/favicon';
                     }
                 })
                 .catch(function() {
-                    // Email logo doesn't exist, keep default icons
+                    // Custom favicon doesn't exist, keep default icons
                 });
         })();
     </script>

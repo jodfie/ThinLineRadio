@@ -149,6 +149,24 @@ func (assemblyai *AssemblyAITranscription) Transcribe(audio []byte, options Tran
 		"audio_url": uploadResponse.UploadURL,
 	}
 	
+	// Add word boost/keyterms if provided (AssemblyAI supports word_boost parameter)
+	if len(options.WordBoost) > 0 {
+		// Filter and validate keyterms (max 100, each max 50 chars)
+		validKeyterms := []string{}
+		for _, term := range options.WordBoost {
+			trimmed := strings.TrimSpace(term)
+			if trimmed != "" && len(trimmed) <= 50 {
+				validKeyterms = append(validKeyterms, trimmed)
+			}
+			if len(validKeyterms) >= 100 {
+				break // Max 100 keyterms
+			}
+		}
+		if len(validKeyterms) > 0 {
+			transcriptBody["word_boost"] = validKeyterms
+		}
+	}
+	
 	// Only add optional fields if needed
 	// Try minimal request first - just audio_url
 

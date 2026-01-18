@@ -16,6 +16,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -87,7 +88,7 @@ func (controller *Controller) CreateSystemAlert(alertType, severity, title, mess
 func (controller *Controller) SendSystemAlertNotification(title, message, alertType, severity, dataJSON string) {
 	var query string
 	var targetDescription string
-	
+
 	if alertType == "manual" {
 		// Manual alerts: send to ALL verified users
 		query = `SELECT "userId" FROM "users" WHERE "verified" = true`
@@ -97,7 +98,7 @@ func (controller *Controller) SendSystemAlertNotification(title, message, alertT
 		query = `SELECT "userId" FROM "users" WHERE "systemAdmin" = true`
 		targetDescription = "system admins"
 	}
-	
+
 	rows, err := controller.Database.Sql.Query(query)
 	if err != nil {
 		controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("failed to get %s: %v", targetDescription, err))
@@ -156,7 +157,7 @@ func (controller *Controller) SendSystemAlertNotification(title, message, alertT
 	// Group player IDs by platform (if we had platform info, but we don't store it in device tokens lookup)
 	// For now, send to all devices using the batch system
 	notificationTitle := fmt.Sprintf("%s System Alert", icon)
-	
+
 	// Send to all player IDs at once
 	// The relay server will handle the actual platform-specific formatting
 	if len(playerIds) > 0 {
@@ -235,13 +236,42 @@ func (controller *Controller) CleanupOldSystemAlerts() {
 	}
 }
 
+// getProviderDisplayName converts a provider string to a user-friendly display name
+func getProviderDisplayName(provider string) string {
+	switch provider {
+	case "whisper-api":
+		return "Whisper API Server"
+	case "azure":
+		return "Azure Speech Services"
+	case "google":
+		return "Google Cloud Speech-to-Text"
+	case "assemblyai":
+		return "AssemblyAI"
+	default:
+		// Default fallback if provider is unknown or empty
+		if provider == "" {
+			return "transcription service"
+		}
+		return provider
+	}
+}
+
 // MonitorTranscriptionFailures monitors for transcription failures and creates system alerts
 func (controller *Controller) MonitorTranscriptionFailures() {
-	// Check for calls that have failed transcription
-	twentyFourHoursAgo := time.Now().Add(-24 * time.Hour).UnixMilli()
-	
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM "calls" WHERE "transcriptionStatus" = 'failed' AND "timestamp" >= %d`, twentyFourHoursAgo)
-	
+	// Check if transcription failure alerts are enabled
+	if !controller.Options.TranscriptionFailureAlertsEnabled || !controller.Options.SystemHealthAlertsEnabled {
+		return
+	}
+
+	// Get configurable time window (default 24 hours)
+	timeWindowHours := int(controller.Options.TranscriptionFailureTimeWindow)
+	if timeWindowHours <= 0 {
+		timeWindowHours = 24
+	}
+	timeWindowAgo := time.Now().Add(-time.Duration(timeWindowHours) * time.Hour).UnixMilli()
+
+	query := fmt.Sprintf(`SELECT COUNT(*) FROM "calls" WHERE "transcriptionStatus" = 'failed' AND "timestamp" >= %d`, timeWindowAgo)
+
 	var failureCount int
 	if err := controller.Database.Sql.QueryRow(query).Scan(&failureCount); err != nil {
 		controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("failed to check transcription failures: %v", err))
@@ -255,28 +285,68 @@ func (controller *Controller) MonitorTranscriptionFailures() {
 	}
 
 	// If we have more than threshold failures in last 24 hours, create an alert
-	if failureCount >= threshold {
-		data := &SystemAlertData{
-			Count:   failureCount,
-			Service: "transcription",
+	if failureCount >= threshold && controller.Options.SystemHealthAlertsEnabled {
+		// Check if there's already an active alert for transcription failures
+		// Only create a new alert if the last one is older than the repeat interval
+		repeatMinutes := int(controller.Options.TranscriptionFailureRepeatMinutes)
+		if repeatMinutes <= 0 {
+			repeatMinutes = 60 // Default: 60 minutes
 		}
-		
-		controller.CreateSystemAlert(
-			"transcription_failure",
-			"warning",
-			"Transcription Service Issues",
-			fmt.Sprintf("%d transcription failures detected in the last 24 hours. Check Whisper service status.", failureCount),
-			data,
-			0, // System-generated
-		)
+
+		checkAlertQuery := `SELECT MAX("createdAt") FROM "systemAlerts" 
+			WHERE "alertType" = 'transcription_failure' 
+				AND "dismissedAt" IS NULL`
+
+		var lastAlertTime sql.NullInt64
+		shouldCreateAlert := true
+		if err := controller.Database.Sql.QueryRow(checkAlertQuery).Scan(&lastAlertTime); err == nil && lastAlertTime.Valid {
+			lastAlertTimeObj := time.UnixMilli(lastAlertTime.Int64)
+			minutesSinceLastAlert := int(time.Since(lastAlertTimeObj).Minutes())
+			// Only create new alert if last one is older than repeat interval
+			if minutesSinceLastAlert < repeatMinutes {
+				shouldCreateAlert = false
+			}
+		}
+
+		if shouldCreateAlert {
+			// Get provider name for the alert message
+			providerName := getProviderDisplayName(controller.Options.TranscriptionConfig.Provider)
+
+			data := &SystemAlertData{
+				Count:   failureCount,
+				Service: "transcription",
+			}
+
+			timeWindowStr := fmt.Sprintf("%d hour(s)", timeWindowHours)
+			if timeWindowHours == 24 {
+				timeWindowStr = "24 hours"
+			}
+			controller.CreateSystemAlert(
+				"transcription_failure",
+				"warning",
+				"Transcription Service Issues",
+				fmt.Sprintf("%d transcription failures detected in the last %s. Check %s service status.", failureCount, timeWindowStr, providerName),
+				data,
+				0, // System-generated
+			)
+		}
 	}
 }
 
 // MonitorToneDetectionIssues monitors for tone detection problems
 func (controller *Controller) MonitorToneDetectionIssues() {
-	// Check if any talkgroups with tone detection enabled haven't detected tones recently
-	twentyFourHoursAgo := time.Now().Add(-24 * time.Hour).UnixMilli()
-	
+	// Check if tone detection alerts are enabled
+	if !controller.Options.ToneDetectionAlertsEnabled || !controller.Options.SystemHealthAlertsEnabled {
+		return
+	}
+
+	// Get configurable time window (default 24 hours)
+	timeWindowHours := int(controller.Options.ToneDetectionTimeWindow)
+	if timeWindowHours <= 0 {
+		timeWindowHours = 24
+	}
+	timeWindowAgo := time.Now().Add(-time.Duration(timeWindowHours) * time.Hour).UnixMilli()
+
 	// Get talkgroups with tone detection enabled
 	query := `SELECT "talkgroupId", "label", "systemId" FROM "talkgroups" WHERE "toneDetectionEnabled" = true`
 	rows, err := controller.Database.Sql.Query(query)
@@ -293,17 +363,17 @@ func (controller *Controller) MonitorToneDetectionIssues() {
 			continue
 		}
 
-		// Check if this talkgroup has had any calls with tones in the last 24 hours
-		checkQuery := fmt.Sprintf(`SELECT COUNT(*) FROM "calls" WHERE "talkgroupId" = %d AND "hasTones" = true AND "timestamp" >= %d`, talkgroupId, twentyFourHoursAgo)
-		
+		// Check if this talkgroup has had any calls with tones in the time window
+		checkQuery := fmt.Sprintf(`SELECT COUNT(*) FROM "calls" WHERE "talkgroupId" = %d AND "hasTones" = true AND "timestamp" >= %d`, talkgroupId, timeWindowAgo)
+
 		var toneCount int
 		if err := controller.Database.Sql.QueryRow(checkQuery).Scan(&toneCount); err != nil {
 			continue
 		}
 
 		// Also check if there have been ANY calls on this talkgroup
-		callCountQuery := fmt.Sprintf(`SELECT COUNT(*) FROM "calls" WHERE "talkgroupId" = %d AND "timestamp" >= %d`, talkgroupId, twentyFourHoursAgo)
-		
+		callCountQuery := fmt.Sprintf(`SELECT COUNT(*) FROM "calls" WHERE "talkgroupId" = %d AND "timestamp" >= %d`, talkgroupId, timeWindowAgo)
+
 		var callCount int
 		if err := controller.Database.Sql.QueryRow(callCountQuery).Scan(&callCount); err != nil {
 			continue
@@ -315,20 +385,221 @@ func (controller *Controller) MonitorToneDetectionIssues() {
 			threshold = 5 // Default: 5 calls
 		}
 		if callCount >= threshold && toneCount == 0 {
-			data := &SystemAlertData{
-				TalkgroupId: talkgroupId,
-				SystemId:    systemId,
-				Count:       callCount,
+			// Check if there's already an active alert for this talkgroup
+			// Only create a new alert if the last one is older than the repeat interval
+			repeatMinutes := int(controller.Options.ToneDetectionRepeatMinutes)
+			if repeatMinutes <= 0 {
+				repeatMinutes = 60 // Default: 60 minutes
 			}
-			
-			controller.CreateSystemAlert(
-				"tone_detection_issue",
-				"info",
-				"No Tones Detected",
-				fmt.Sprintf("Talkgroup '%s' has tone detection enabled but no tones detected in %d calls over 24 hours.", label, callCount),
-				data,
-				0, // System-generated
-			)
+
+			checkAlertQuery := fmt.Sprintf(`
+				SELECT MAX("createdAt") FROM "systemAlerts" 
+				WHERE "alertType" = 'tone_detection_issue' 
+					AND "data" LIKE '%%"talkgroupId":%d%%'
+					AND "dismissedAt" IS NULL
+			`, talkgroupId)
+
+			var lastAlertTime sql.NullInt64
+			shouldCreateAlert := true
+			if err := controller.Database.Sql.QueryRow(checkAlertQuery).Scan(&lastAlertTime); err == nil && lastAlertTime.Valid {
+				lastAlertTimeObj := time.UnixMilli(lastAlertTime.Int64)
+				minutesSinceLastAlert := int(time.Since(lastAlertTimeObj).Minutes())
+				// Only create new alert if last one is older than repeat interval
+				if minutesSinceLastAlert < repeatMinutes {
+					shouldCreateAlert = false
+				}
+			}
+
+			if shouldCreateAlert {
+				data := &SystemAlertData{
+					TalkgroupId: talkgroupId,
+					SystemId:    systemId,
+					Count:       callCount,
+				}
+
+				timeWindowStr := fmt.Sprintf("%d hour(s)", timeWindowHours)
+				if timeWindowHours == 24 {
+					timeWindowStr = "24 hours"
+				}
+				controller.CreateSystemAlert(
+					"tone_detection_issue",
+					"info",
+					"No Tones Detected",
+					fmt.Sprintf("Talkgroup '%s' has tone detection enabled but no tones detected in %d calls over %s.", label, callCount, timeWindowStr),
+					data,
+					0, // System-generated
+				)
+			}
+		}
+	}
+}
+
+// MonitorNoAudio monitors systems for lack of audio activity
+func (controller *Controller) MonitorNoAudio() {
+	// Check if no-audio alerts are enabled
+	if !controller.Options.NoAudioAlertsEnabled || !controller.Options.SystemHealthAlertsEnabled {
+		return
+	}
+
+	// Get configurable time window (default 24 hours)
+	// Note: This is used for future filtering if needed, but currently we check all systems
+	timeWindowHours := int(controller.Options.NoAudioTimeWindow)
+	if timeWindowHours <= 0 {
+		timeWindowHours = 24
+	}
+
+	// Get base threshold
+	baseThresholdMinutes := int(controller.Options.NoAudioThresholdMinutes)
+	if baseThresholdMinutes <= 0 {
+		baseThresholdMinutes = 30 // Default: 30 minutes
+	}
+
+	// Get multiplier for adaptive threshold
+	multiplier := controller.Options.NoAudioMultiplier
+	if multiplier <= 0 {
+		multiplier = 1.5 // Default: 1.5x
+	}
+
+	// Get historical data days
+	historicalDays := int(controller.Options.NoAudioHistoricalDataDays)
+	if historicalDays <= 0 {
+		historicalDays = 7 // Default: 7 days
+	}
+
+	// Get all systems (systems don't have an enabled field, so we check all)
+	query := `SELECT "systemId", "label" FROM "systems"`
+	rows, err := controller.Database.Sql.Query(query)
+	if err != nil {
+		controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("failed to query systems for no-audio monitoring: %v", err))
+		return
+	}
+	defer rows.Close()
+
+	currentTime := time.Now()
+	currentHour := currentTime.Hour()
+
+	for rows.Next() {
+		var systemId uint64
+		var systemLabel string
+		if err := rows.Scan(&systemId, &systemLabel); err != nil {
+			continue
+		}
+
+		// Get the most recent call timestamp for this system
+		lastCallQuery := fmt.Sprintf(`SELECT MAX("timestamp") FROM "calls" WHERE "systemId" = %d`, systemId)
+		var lastCallTimestamp sql.NullInt64
+		if err := controller.Database.Sql.QueryRow(lastCallQuery).Scan(&lastCallTimestamp); err != nil {
+			// No calls found for this system - skip it
+			continue
+		}
+
+		if !lastCallTimestamp.Valid {
+			// No calls ever received for this system
+			continue
+		}
+
+		lastCallTime := time.UnixMilli(lastCallTimestamp.Int64)
+		minutesSinceLastCall := int(currentTime.Sub(lastCallTime).Minutes())
+
+		// Calculate adaptive threshold based on historical data
+		thresholdMinutes := baseThresholdMinutes
+
+		// Only use adaptive threshold if we have enough historical data
+		if historicalDays > 0 {
+			// Look at the same hour of day over the last N days
+			historicalStartTime := currentTime.Add(-time.Duration(historicalDays) * 24 * time.Hour)
+			historicalStartTimestamp := historicalStartTime.UnixMilli()
+
+			// Query to get average time between calls for this hour of day (PostgreSQL only)
+			// We'll calculate gaps between consecutive calls in the same hour window
+			avgGapQuery := fmt.Sprintf(`
+				WITH call_times AS (
+					SELECT "timestamp", 
+						LAG("timestamp") OVER (ORDER BY "timestamp") as prev_timestamp
+					FROM "calls"
+					WHERE "systemId" = %d 
+						AND "timestamp" >= %d
+						AND EXTRACT(HOUR FROM to_timestamp("timestamp" / 1000.0)) = %d
+				)
+				SELECT AVG("timestamp" - prev_timestamp) / 60000.0 as avg_gap_minutes
+				FROM call_times
+				WHERE prev_timestamp IS NOT NULL
+			`, systemId, historicalStartTimestamp, currentHour)
+
+			var avgGapMinutes sql.NullFloat64
+			if err := controller.Database.Sql.QueryRow(avgGapQuery).Scan(&avgGapMinutes); err == nil && avgGapMinutes.Valid && avgGapMinutes.Float64 > 0 {
+				// Use adaptive threshold: max(base, historical_average × multiplier)
+				adaptiveThreshold := int(avgGapMinutes.Float64 * multiplier)
+				if adaptiveThreshold > thresholdMinutes {
+					thresholdMinutes = adaptiveThreshold
+				}
+			}
+		}
+
+		// Check if we should alert
+		if minutesSinceLastCall >= thresholdMinutes {
+			// Check if there's already an active alert for this system
+			// Only create a new alert if the last one is older than the repeat interval
+			repeatMinutes := int(controller.Options.NoAudioRepeatMinutes)
+			if repeatMinutes <= 0 {
+				repeatMinutes = 30 // Default: 30 minutes
+			}
+
+			checkAlertQuery := fmt.Sprintf(`
+				SELECT MAX("createdAt") FROM "systemAlerts" 
+				WHERE "alertType" = 'no_audio_received' 
+					AND "data" LIKE '%%"systemId":%d%%'
+					AND "dismissedAt" IS NULL
+			`, systemId)
+
+			var lastAlertTime sql.NullInt64
+			shouldCreateAlert := true
+			if err := controller.Database.Sql.QueryRow(checkAlertQuery).Scan(&lastAlertTime); err == nil && lastAlertTime.Valid {
+				lastAlertTimeObj := time.UnixMilli(lastAlertTime.Int64)
+				minutesSinceLastAlert := int(currentTime.Sub(lastAlertTimeObj).Minutes())
+				// Only create new alert if last one is older than repeat interval
+				if minutesSinceLastAlert < repeatMinutes {
+					shouldCreateAlert = false
+				}
+			}
+
+			if shouldCreateAlert {
+				data := &SystemAlertData{
+					SystemId: systemId,
+					Count:    minutesSinceLastCall,
+				}
+
+				thresholdStr := fmt.Sprintf("%d minutes", thresholdMinutes)
+				if thresholdMinutes >= 60 {
+					hours := thresholdMinutes / 60
+					mins := thresholdMinutes % 60
+					if mins == 0 {
+						thresholdStr = fmt.Sprintf("%d hour(s)", hours)
+					} else {
+						thresholdStr = fmt.Sprintf("%d hour(s) %d minute(s)", hours, mins)
+					}
+				}
+
+				timeSinceLastCall := fmt.Sprintf("%d minutes", minutesSinceLastCall)
+				if minutesSinceLastCall >= 60 {
+					hours := minutesSinceLastCall / 60
+					mins := minutesSinceLastCall % 60
+					if mins == 0 {
+						timeSinceLastCall = fmt.Sprintf("%d hour(s)", hours)
+					} else {
+						timeSinceLastCall = fmt.Sprintf("%d hour(s) %d minute(s)", hours, mins)
+					}
+				}
+
+				controller.CreateSystemAlert(
+					"no_audio_received",
+					"warning",
+					"No Audio Received",
+					fmt.Sprintf("System '%s' has not received audio for %s (threshold: %s).", systemLabel, timeSinceLastCall, thresholdStr),
+					data,
+					0, // System-generated
+				)
+			}
 		}
 	}
 }
@@ -340,9 +611,9 @@ func (controller *Controller) StartSystemHealthMonitoring() {
 		for range ticker.C {
 			controller.MonitorTranscriptionFailures()
 			controller.MonitorToneDetectionIssues()
+			controller.MonitorNoAudio()
 		}
 	}()
-	
+
 	controller.Logs.LogEvent(LogLevelInfo, "system health monitoring started")
 }
-

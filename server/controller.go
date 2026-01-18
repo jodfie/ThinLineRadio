@@ -313,7 +313,7 @@ func (controller *Controller) IngestCall(call *Call) {
 		if talkgroupId > 0 {
 			talkgroup, _ = system.Talkgroups.GetTalkgroupByRef(talkgroupId)
 		}
-		
+
 		// P25 Patch Handling (Early Check): If the main talkgroup doesn't exist but we have patches,
 		// check if any patched talkgroup exists. This helps with auto-populate and blacklist checks.
 		if talkgroup == nil && len(call.Patches) > 0 {
@@ -321,19 +321,19 @@ func (controller *Controller) IngestCall(call *Call) {
 				if patchedTgId == 0 {
 					continue
 				}
-				
+
 				// Check blacklist for patched talkgroups too
 				if system.Blacklists.IsBlacklisted(patchedTgId) {
 					logCall(call, LogLevelInfo, "blacklisted (patched talkgroup)")
 					return
 				}
-				
+
 				if patchedTalkgroup, ok := system.Talkgroups.GetTalkgroupByRef(patchedTgId); ok {
 					// Found a valid patched talkgroup - use it
 					originalTalkgroupId := talkgroupId
 					talkgroup = patchedTalkgroup
 					talkgroupId = patchedTgId
-					
+
 					// Add original patch TGID to patches if not already there
 					if originalTalkgroupId > 0 && originalTalkgroupId != patchedTgId {
 						alreadyInPatches := false
@@ -347,11 +347,11 @@ func (controller *Controller) IngestCall(call *Call) {
 							call.Patches = append(call.Patches, originalTalkgroupId)
 						}
 					}
-					
+
 					// Update call references
 					call.TalkgroupId = talkgroupId
 					call.Meta.TalkgroupRef = talkgroupId
-					
+
 					break // Use first valid patched talkgroup
 				}
 			}
@@ -528,7 +528,7 @@ func (controller *Controller) IngestCall(call *Call) {
 		if system != nil && talkgroupId > 0 {
 			talkgroup, _ = system.Talkgroups.GetTalkgroupByRef(talkgroupId)
 		}
-		
+
 		// P25 Patch Handling (After Re-lookup): Check patches again after auto-populate
 		if system != nil && talkgroup == nil && len(call.Patches) > 0 {
 			originalTalkgroupId := talkgroupId
@@ -539,7 +539,7 @@ func (controller *Controller) IngestCall(call *Call) {
 				if patchedTalkgroup, ok := system.Talkgroups.GetTalkgroupByRef(patchedTgId); ok {
 					talkgroup = patchedTalkgroup
 					talkgroupId = patchedTgId
-					
+
 					if originalTalkgroupId > 0 && originalTalkgroupId != patchedTgId {
 						alreadyInPatches := false
 						for _, existingPatch := range call.Patches {
@@ -552,10 +552,10 @@ func (controller *Controller) IngestCall(call *Call) {
 							call.Patches = append(call.Patches, originalTalkgroupId)
 						}
 					}
-					
+
 					call.TalkgroupId = talkgroupId
 					call.Meta.TalkgroupRef = talkgroupId
-					
+
 					break
 				}
 			}
@@ -575,18 +575,18 @@ func (controller *Controller) IngestCall(call *Call) {
 	// patch TGID is temporary but the patched talkgroups are the actual configured TGs.
 	if system != nil && talkgroup == nil && len(call.Patches) > 0 {
 		originalTalkgroupId := talkgroupId
-		
+
 		// Try each patched talkgroup to find one that exists in the system
 		for _, patchedTgId := range call.Patches {
 			if patchedTgId == 0 {
 				continue // Skip zero/invalid TGIDs
 			}
-			
+
 			if patchedTalkgroup, ok := system.Talkgroups.GetTalkgroupByRef(patchedTgId); ok {
 				// Found a valid patched talkgroup - use it as the primary
 				talkgroup = patchedTalkgroup
 				talkgroupId = patchedTgId
-				
+
 				// Add the original patch TGID to the patches array if it's not already there
 				// This preserves it for display and search purposes
 				if originalTalkgroupId > 0 && originalTalkgroupId != patchedTgId {
@@ -602,15 +602,15 @@ func (controller *Controller) IngestCall(call *Call) {
 						call.Patches = append(call.Patches, originalTalkgroupId)
 					}
 				}
-				
+
 				// Update the call's talkgroup references
 				call.Talkgroup = talkgroup
 				call.TalkgroupId = talkgroupId
 				call.Meta.TalkgroupRef = talkgroupId
-				
-				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("newcall: system=%v patch=%v resolved to talkgroup=%v file=%v", 
+
+				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("newcall: system=%v patch=%v resolved to talkgroup=%v file=%v",
 					system.SystemRef, originalTalkgroupId, talkgroupId, call.AudioFilename))
-				
+
 				break // Use the first valid patched talkgroup found
 			}
 		}
@@ -656,6 +656,26 @@ func (controller *Controller) IngestCall(call *Call) {
 		}
 	}
 
+	// Store original audio before encoding - tone detection needs raw/uncompressed audio
+	originalAudio := make([]byte, len(call.Audio))
+	copy(originalAudio, call.Audio)
+	originalAudioMime := call.AudioMime
+
+	// Run tone detection BEFORE encoding to avoid Opus compression affecting tone detection
+	shouldDetectTones := call.Talkgroup != nil && call.Talkgroup.ToneDetectionEnabled && len(call.Talkgroup.ToneSets) > 0
+	if shouldDetectTones {
+		// Create temporary call with original audio for tone detection
+		toneDetectionCall := *call
+		toneDetectionCall.Audio = originalAudio
+		toneDetectionCall.AudioMime = originalAudioMime
+		controller.processToneDetection(&toneDetectionCall)
+
+		// Copy tone detection results back to the main call
+		call.ToneSequence = toneDetectionCall.ToneSequence
+		call.HasTones = toneDetectionCall.HasTones
+	}
+
+	// Now encode audio to Opus/AAC for storage
 	if err := controller.FFMpeg.Convert(call, controller.Systems, controller.Tags, controller.Options.AudioConversion, controller.Config); err != nil {
 		controller.Logs.LogEvent(LogLevelWarn, err.Error())
 	}
@@ -695,23 +715,9 @@ func (controller *Controller) IngestCall(call *Call) {
 		// IMMEDIATE: Emit call to clients (users can play NOW - zero delay)
 		controller.EmitCall(call)
 
-		// Check if tone detection is enabled for this talkgroup
-		shouldDetectTones := call.Talkgroup != nil && call.Talkgroup.ToneDetectionEnabled && len(call.Talkgroup.ToneSets) > 0
-
-		if shouldDetectTones {
-			// SEQUENTIAL: Process tone detection FIRST (fast, 100-500ms typically)
-			// We need this to complete before transcription to:
-			// 1. Calculate remaining audio after tone removal
-			// 2. Skip transcription if mostly tones (saves API costs)
-			controller.processToneDetection(call)
-
-			// After tone detection, queue transcription with tone-aware decision
-			go controller.queueTranscriptionIfNeeded(call)
-		} else {
-			// No tone detection needed - queue transcription immediately
-			// PARALLEL: Queue transcription if needed (slow, async)
-			go controller.queueTranscriptionIfNeeded(call)
-		}
+		// Note: Tone detection already completed above (before encoding)
+		// Queue transcription with tone-aware decision
+		go controller.queueTranscriptionIfNeeded(call)
 
 		// Note: Pending tones are checked and attached AFTER transcription completes
 		// This ensures we only attach pending tones to calls that actually have voice (not tone-only)
@@ -837,13 +843,15 @@ func (controller *Controller) processToneDetection(call *Call) {
 			}
 		}
 
-		// Update call in database (async, non-blocking)
-		go controller.updateCallToneSequence(call.Id, toneSequence)
+		// Update call in database (synchronous to ensure HasTones is set before transcription completes)
+		// This prevents a race condition where transcription checks for tones before the DB is updated
+		controller.updateCallToneSequence(call.Id, toneSequence)
 
 		// IMMEDIATE PRE-ALERT: Send notification as soon as tones are detected
 		// This allows users to tune in right away without waiting for transcription
+		// Pre-alerts are not saved to database - they're instant notifications only
 		if len(matchedToneSets) > 0 {
-			controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("sending pre-alert for call %d with %d matched tone sets", call.Id, len(matchedToneSets)))
+			controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("sending pre-alert notifications for call with %d matched tone sets", len(matchedToneSets)))
 			go controller.AlertEngine.TriggerPreAlerts(call)
 		}
 
@@ -1891,14 +1899,21 @@ func (controller *Controller) queueTranscriptionIfNeeded(call *Call) {
 				remainingDuration := audioDuration - toneDuration
 				const minRemainingDuration = 2.0 // Same threshold as in transcription_queue worker
 
-				if remainingDuration < minRemainingDuration {
+				// EXCEPTION: If talkgroup has tone detection enabled, transcribe even short clips after tone removal
+				// These are likely important dispatch messages that should be transcribed regardless of length
+				toneDetectionEnabled := call.Talkgroup != nil && call.Talkgroup.ToneDetectionEnabled
+
+				if remainingDuration < minRemainingDuration && !toneDetectionEnabled {
 					controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("skipping transcription for call %d: remaining audio after tone removal (%.1fs) is less than minimum (%.1fs) - likely tone-only", call.Id, remainingDuration, minRemainingDuration))
 					// Mark as completed so pending tones don't wait forever
 					updateQuery := fmt.Sprintf(`UPDATE "calls" SET "transcriptionStatus" = 'completed' WHERE "callId" = %d`, call.Id)
 					controller.Database.Sql.Exec(updateQuery)
 					return
+				} else if remainingDuration < minRemainingDuration && toneDetectionEnabled {
+					controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("call %d has short remaining audio (%.1fs < %.1fs), but tone detection is enabled - transcribing anyway", call.Id, remainingDuration, minRemainingDuration))
+				} else {
+					controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("call %d has sufficient remaining audio after tone removal (%.1fs of %.1fs total, %.1fs tones)", call.Id, remainingDuration, audioDuration, toneDuration))
 				}
-				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("call %d has sufficient remaining audio after tone removal (%.1fs of %.1fs total, %.1fs tones)", call.Id, remainingDuration, audioDuration, toneDuration))
 			}
 
 			// Duration check passed, now check if any user has alerts enabled
@@ -2617,8 +2632,8 @@ func (controller *Controller) readAllData() error {
 		controller.ReconnectionMgr.HoldDuration = time.Duration(controller.Options.ReconnectionGracePeriod) * time.Second
 		controller.ReconnectionMgr.MaxBufferSize = int(controller.Options.ReconnectionMaxBufferSize)
 		controller.ReconnectionMgr.Enabled = controller.Options.ReconnectionEnabled
-		log.Printf("[ReconnectionManager] Configured - Enabled: %v, Grace Period: %ds, Max Buffer: %d", 
-			controller.ReconnectionMgr.Enabled, 
+		log.Printf("[ReconnectionManager] Configured - Enabled: %v, Grace Period: %ds, Max Buffer: %d",
+			controller.ReconnectionMgr.Enabled,
 			controller.Options.ReconnectionGracePeriod,
 			controller.Options.ReconnectionMaxBufferSize)
 	}
