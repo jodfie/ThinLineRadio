@@ -23,6 +23,13 @@
   - Prevents unexpected audio from new sources users haven't selected
   - Files modified: client/src/app/components/rdio-scanner/rdio-scanner.service.ts
 
+- **Fixed system no-audio alerts foreign key constraint error**
+  - Root cause: System-generated no-audio alerts were passing 0 for `createdBy` field instead of NULL
+  - This violated the foreign key constraint requiring `createdBy` to reference a valid user or be NULL
+  - Fix: Changed `createdBy` value from 0 to NULL for system-generated alerts
+  - Error message: `ERROR: insert or update on table "systemAlerts" violates foreign key constraint "systemAlerts_createdBy_fkey" (SQLSTATE 23503)`
+  - Files modified: server/system_alert.go
+
 ### New Features
 
 - **Per-system no-audio alert configuration with simplified monitoring**
