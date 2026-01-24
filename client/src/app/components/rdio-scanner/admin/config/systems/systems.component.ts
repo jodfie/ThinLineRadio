@@ -30,9 +30,46 @@ import { RdioScannerAdminService, Group, Tag } from '../../admin.service';
 export class RdioScannerAdminSystemsComponent {
     @Input() form: FormArray | undefined;
 
+    // Pagination and search
+    systemsPage: number = 0;
+    systemsPageSize: number = 50;
+    systemsSearchTerm: string = '';
+
+    // Cached sorted array
+    private _cachedSystems: FormGroup[] = [];
+    private _lastSystemsVersion: number = 0;
+
     get systems(): FormGroup[] {
-        return this.form?.controls
-            .sort((a, b) => (a.value.order || 0) - (b.value.order || 0)) as FormGroup[];
+        if (!this.form) return [];
+        
+        const currentVersion = this.form.length;
+        if (this._lastSystemsVersion !== currentVersion || this._cachedSystems.length !== this.form.length) {
+            this._cachedSystems = (this.form.controls as FormGroup[])
+                .slice()
+                .sort((a, b) => (a.value.order || 0) - (b.value.order || 0));
+            this._lastSystemsVersion = currentVersion;
+        }
+        return this._cachedSystems;
+    }
+
+    // Filtered and paginated systems
+    get filteredSystems(): FormGroup[] {
+        let filtered = this.systems;
+        if (this.systemsSearchTerm.trim()) {
+            const search = this.systemsSearchTerm.toLowerCase();
+            filtered = filtered.filter(sys => {
+                const label = (sys.value.label || '').toLowerCase();
+                const id = (sys.value.systemRef || '').toString();
+                return label.includes(search) || id.includes(search);
+            });
+        }
+        return filtered;
+    }
+
+    get paginatedSystems(): FormGroup[] {
+        const start = this.systemsPage * this.systemsPageSize;
+        const end = start + this.systemsPageSize;
+        return this.filteredSystems.slice(start, end);
     }
 
     get groups(): Group[] {
@@ -47,6 +84,12 @@ export class RdioScannerAdminSystemsComponent {
         return tagsArray ? tagsArray.value : [];
     }
 
+    get apikeys(): any[] {
+        if (!this.form) return [];
+        const apikeysArray = this.form.root.get('apikeys') as FormArray;
+        return apikeysArray ? apikeysArray.value : [];
+    }
+
     @ViewChildren(MatExpansionPanel) private panels: QueryList<MatExpansionPanel> | undefined;
 
     constructor(private adminService: RdioScannerAdminService) { }
@@ -59,6 +102,8 @@ export class RdioScannerAdminSystemsComponent {
         this.form?.insert(0, system);
 
         this.form?.markAsDirty();
+        this._lastSystemsVersion++;
+        this.systemsPage = 0; // Reset to first page
     }
 
     closeAll(): void {
@@ -72,6 +117,7 @@ export class RdioScannerAdminSystemsComponent {
             event.container.data.forEach((dat, idx) => dat.get('order')?.setValue(idx + 1, { emitEvent: false }));
 
             this.form?.markAsDirty();
+            this._lastSystemsVersion++;
         }
     }
 
@@ -79,6 +125,7 @@ export class RdioScannerAdminSystemsComponent {
         this.form?.removeAt(index);
 
         this.form?.markAsDirty();
+        this._lastSystemsVersion++;
     }
 
     removeAll(): void {
@@ -96,6 +143,8 @@ export class RdioScannerAdminSystemsComponent {
         }
 
         this.form.markAsDirty();
+        this._lastSystemsVersion++;
+        this.systemsPage = 0;
     }
 
     getFormErrors(formGroup: FormGroup): string {
@@ -137,5 +186,19 @@ export class RdioScannerAdminSystemsComponent {
         });
 
         return errors.join(', ');
+    }
+
+    // Pagination methods
+    onSystemsSearchChange(searchTerm: string): void {
+        this.systemsSearchTerm = searchTerm;
+        this.systemsPage = 0; // Reset to first page on search
+    }
+
+    onSystemsPageChange(page: number): void {
+        this.systemsPage = page;
+    }
+
+    get systemsTotalPages(): number {
+        return Math.ceil(this.filteredSystems.length / this.systemsPageSize);
     }
 }

@@ -418,11 +418,27 @@ func (detector *ToneDetector) analyzeFrequencies(samples []float64, sampleRate i
 		magnitudes := detector.dft(windowed, sampleRate)
 
 		// Find peaks in tone range with parabolic interpolation
+		// Use peak detection to only capture local maxima (avoids detecting every bin above threshold)
 		for bin, mag := range magnitudes {
 			freq := float64(bin) * float64(sampleRate) / float64(windowSize)
 
 			// Basic magnitude check (much lower threshold now that we have noise gating)
 			if freq >= toneRange.Min && freq <= toneRange.Max && mag > 0.02 {
+				// Check if this is a local maximum (peak detection)
+				// A bin is a peak if it's larger than its neighbors
+				isLocalMax := true
+				if bin > 0 && magnitudes[bin-1] >= mag {
+					isLocalMax = false
+				}
+				if bin < len(magnitudes)-1 && magnitudes[bin+1] > mag {
+					isLocalMax = false
+				}
+				
+				// Only process local maxima to avoid detecting noise/harmonics
+				if !isLocalMax {
+					continue
+				}
+
 				// Parabolic interpolation for sub-bin accuracy
 				binMinus := bin - 1
 				binPlus := bin + 1
@@ -705,7 +721,7 @@ func (detector *ToneDetector) analyzeFrequencies(samples []float64, sampleRate i
 					if ts.ATone != nil {
 						actualTol := baseTol
 						if baseTol < 1.0 {
-							actualTol = ts.ATone.Frequency * baseTol
+							actualTol = baseTol * 500.0
 						}
 						diff := math.Abs(md.frequency - ts.ATone.Frequency)
 						if diff < minDiff {
@@ -716,7 +732,7 @@ func (detector *ToneDetector) analyzeFrequencies(samples []float64, sampleRate i
 					if ts.BTone != nil {
 						actualTol := baseTol
 						if baseTol < 1.0 {
-							actualTol = ts.BTone.Frequency * baseTol
+							actualTol = baseTol * 500.0
 						}
 						diff := math.Abs(md.frequency - ts.BTone.Frequency)
 						if diff < minDiff {
@@ -727,7 +743,7 @@ func (detector *ToneDetector) analyzeFrequencies(samples []float64, sampleRate i
 					if ts.LongTone != nil {
 						actualTol := baseTol
 						if baseTol < 1.0 {
-							actualTol = ts.LongTone.Frequency * baseTol
+							actualTol = baseTol * 500.0
 						}
 						diff := math.Abs(md.frequency - ts.LongTone.Frequency)
 						if diff < minDiff {
@@ -885,11 +901,13 @@ func (detector *ToneDetector) matchesToneSet(detected *ToneSequence, toneSet Ton
 
 	// Require A-tone if configured
 	if toneSet.ATone != nil && len(aTones) == 0 {
+		fmt.Printf("DEBUG: Tone set '%s' requires A-tone but none found\n", toneSet.Label)
 		return false
 	}
 
 	// Require B-tone if configured
 	if toneSet.BTone != nil && len(bTones) == 0 {
+		fmt.Printf("DEBUG: Tone set '%s' requires B-tone but none found\n", toneSet.Label)
 		return false
 	}
 
@@ -900,6 +918,8 @@ func (detector *ToneDetector) matchesToneSet(detected *ToneSequence, toneSet Ton
 	// Each A-tone must be paired with its closest following B-tone (within 0.5s)
 	// This prevents false matches where an A-tone pairs with a B-tone from a different tone sequence
 	if toneSet.ATone != nil && toneSet.BTone != nil {
+		fmt.Printf("DEBUG: Checking sequence for tone set '%s' - found %d A-tones and %d B-tones\n", toneSet.Label, len(aTones), len(bTones))
+		
 		// Sort A-tones by start time to process them in sequence
 		aTonesSorted := make([]matchingTone, len(aTones))
 		copy(aTonesSorted, aTones)
@@ -910,6 +930,9 @@ func (detector *ToneDetector) matchesToneSet(detected *ToneSequence, toneSet Ton
 		// Check each A-tone against the tone set's B-tone
 		// Each A-tone must find its closest following B-tone that matches this tone set
 		for _, aMatch := range aTonesSorted {
+			fmt.Printf("DEBUG: A-tone %.1f Hz: start=%.2fs, end=%.2fs, duration=%.2fs\n", 
+				aMatch.tone.Frequency, aMatch.tone.StartTime, aMatch.tone.EndTime, aMatch.tone.Duration)
+			
 			// Find the closest following B-tone within 0.5s gap
 			// "Closest" means the smallest gap (either negative for overlap, or positive for sequential)
 			var closestB *matchingTone
@@ -918,36 +941,53 @@ func (detector *ToneDetector) matchesToneSet(detected *ToneSequence, toneSet Ton
 
 			for i := range bTones {
 				bMatch := &bTones[i]
+				
+				fmt.Printf("DEBUG:   Checking B-tone %.1f Hz: start=%.2fs, end=%.2fs, duration=%.2fs\n",
+					bMatch.tone.Frequency, bMatch.tone.StartTime, bMatch.tone.EndTime, bMatch.tone.Duration)
 
-				// B-tone must end after or when A ends (ensures A comes first in sequence)
-				if bMatch.tone.EndTime < aMatch.tone.EndTime {
-					continue // B ends before A ends, not a valid sequence
+				// B-tone must START after A-tone starts (allows overlapping tones)
+				// This supports both sequential (A then B) and overlapping (A+B simultaneously) two-tone paging
+				if bMatch.tone.StartTime < aMatch.tone.StartTime {
+					fmt.Printf("DEBUG:     REJECTED: B-tone starts (%.2fs) before A-tone starts (%.2fs)\n", 
+						bMatch.tone.StartTime, aMatch.tone.StartTime)
+					continue // B starts before A starts, not a valid sequence
 				}
 
 				// Calculate gap (B start time - A end time)
-				// Negative = overlapping (B starts before A ends)
+				// Negative = overlapping (B starts before A ends) - this is OK now!
 				// Positive = sequential (B starts after A ends)
 				gap := bMatch.tone.StartTime - aMatch.tone.EndTime
+				fmt.Printf("DEBUG:     Gap: %.2fs (B start %.2fs - A end %.2fs)\n", 
+					gap, bMatch.tone.StartTime, aMatch.tone.EndTime)
 
-				// Must be within 0.5s gap (either overlap up to 0.5s, or sequential up to 0.5s)
-				if gap >= -0.5 && gap <= 0.5 {
+				// Allow overlap up to full duration of A-tone, or sequential up to 0.5s gap
+				// This handles overlapping two-tone paging (gap will be negative)
+				maxNegativeGap := -aMatch.tone.Duration // Allow B to start anytime after A starts
+				if gap >= maxNegativeGap && gap <= 0.5 {
 					// Check if this is closer than previous closest
 					if !hasClosest {
 						closestB = bMatch
 						closestGap = gap
 						hasClosest = true
+						fmt.Printf("DEBUG:     ACCEPTED as closest (gap=%.2fs)\n", gap)
 					} else {
 						// Compare absolute gaps - want the one closest to 0
 						if math.Abs(gap) < math.Abs(closestGap) {
 							closestB = bMatch
 							closestGap = gap
+							fmt.Printf("DEBUG:     ACCEPTED as new closest (gap=%.2fs, prev=%.2fs)\n", gap, closestGap)
+						} else {
+							fmt.Printf("DEBUG:     Not closer than current closest (gap=%.2fs vs %.2fs)\n", gap, closestGap)
 						}
 					}
+				} else {
+					fmt.Printf("DEBUG:     REJECTED: Gap %.2fs outside of -0.5s to +0.5s range\n", gap)
 				}
 			}
 
 			// If we found a closest B-tone, check if it matches this tone set's B-tone frequency
 			if closestB != nil {
+				fmt.Printf("DEBUG:   Found closest B-tone: %.1f Hz with gap=%.2fs\n", closestB.tone.Frequency, closestGap)
 				// Check if the closest B-tone matches the tone set's B-tone frequency
 				actualTolerance := baseTolerance
 				if baseTolerance < 1.0 {
@@ -957,11 +997,18 @@ func (detector *ToneDetector) matchesToneSet(detected *ToneSequence, toneSet Ton
 				if detector.frequencyMatches(closestB.tone.Frequency, toneSet.BTone.Frequency, actualTolerance) {
 					// Found a valid A-B pair where A-tone pairs with its closest B-tone
 					// and that closest B-tone matches this tone set's B-tone
+					fmt.Printf("DEBUG: MATCH! Tone set '%s' matched with A-B sequence\n", toneSet.Label)
 					return true
+				} else {
+					fmt.Printf("DEBUG:   B-tone frequency %.1f Hz does NOT match expected %.1f Hz (tol: ±%.1f Hz)\n",
+						closestB.tone.Frequency, toneSet.BTone.Frequency, actualTolerance)
 				}
+			} else {
+				fmt.Printf("DEBUG:   No valid B-tone found within 0.5s of this A-tone\n")
 			}
 		}
 
+		fmt.Printf("DEBUG: No valid A-B sequence found for tone set '%s'\n", toneSet.Label)
 		// No valid A-B pair found where A pairs with closest B-tone that matches this tone set
 		return false
 	}

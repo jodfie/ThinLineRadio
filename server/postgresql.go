@@ -56,7 +56,9 @@ var PostgresqlSchema = []string{
     "label" text NOT NULL,
     "order" integer NOT NULL DEFAULT 0,
     "systemRef" integer NOT NULL,
-    "type" text NOT NULL DEFAULT ''
+    "type" text NOT NULL DEFAULT '',
+    "noAudioAlertsEnabled" boolean NOT NULL DEFAULT true,
+    "noAudioThresholdMinutes" integer NOT NULL DEFAULT 30
   );`,
 
 	`CREATE TABLE IF NOT EXISTS "sites" (
@@ -81,6 +83,7 @@ var PostgresqlSchema = []string{
     "type" TEXT NOT NULL DEFAULT '',
     "toneDetectionEnabled" boolean NOT NULL DEFAULT false,
     "toneSets" text NOT NULL DEFAULT '[]',
+    "excludeFromPreferredSite" boolean NOT NULL DEFAULT false,
     CONSTRAINT "talkgroups_systemId_fkey" FOREIGN KEY ("systemId") REFERENCES "systems" ("systemId") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "talkgroups_tagId_fkey" FOREIGN KEY ("tagId") REFERENCES "tags" ("tagId") ON DELETE CASCADE ON UPDATE CASCADE
   );`,

@@ -35,6 +35,8 @@ export class RdioScannerAdminSystemComponent {
 
     @Input() tags: Tag[] = [];
 
+    @Input() apikeys: any[] = [];  // API keys for preferred API key dropdown
+
     @Output() add = new EventEmitter<void>();
 
     @Output() remove = new EventEmitter<void>();
@@ -44,25 +46,175 @@ export class RdioScannerAdminSystemComponent {
     bulkAssignGroupId: number | null = null;
     bulkAssignTagId: number | null = null;
 
-    get sites(): FormGroup[] {
-        const sites = this.form.get('sites') as FormArray | null;
+    // Pagination and search
+    talkgroupsPage: number = 0;
+    talkgroupsPageSize: number = 50;
+    talkgroupsSearchTerm: string = '';
+    
+    unitsPage: number = 0;
+    unitsPageSize: number = 50;
+    unitsSearchTerm: string = '';
+    
+    sitesPage: number = 0;
+    sitesPageSize: number = 50;
+    sitesSearchTerm: string = '';
 
-        return sites?.controls
-            .sort((a, b) => (a.value.order || 0) - (b.value.order || 0)) as FormGroup[];
+    // Cached sorted arrays
+    private _cachedSites: FormGroup[] = [];
+    private _cachedTalkgroups: FormGroup[] = [];
+    private _cachedUnits: FormGroup[] = [];
+    private _lastSitesVersion: number = 0;
+    private _lastTalkgroupsVersion: number = 0;
+    private _lastUnitsVersion: number = 0;
+
+    get sites(): FormGroup[] {
+        const sitesArray = this.form.get('sites') as FormArray | null;
+        if (!sitesArray) return [];
+        
+        // Check if array changed by comparing length and a version number
+        const currentVersion = sitesArray.length;
+        if (this._lastSitesVersion !== currentVersion || this._cachedSites.length !== sitesArray.length) {
+            // Sort with stable sort: primary by order, secondary by siteId
+            this._cachedSites = (sitesArray.controls as FormGroup[])
+                .slice()
+                .sort((a, b) => {
+                    const orderA = a.value.order || 0;
+                    const orderB = b.value.order || 0;
+                    if (orderA !== orderB) {
+                        return orderA - orderB;
+                    }
+                    // Secondary sort by id to ensure stable sort
+                    return (a.value.id || 0) - (b.value.id || 0);
+                });
+            
+            // Reorder the actual FormArray to match display order
+            sitesArray.clear({ emitEvent: false });
+            this._cachedSites.forEach(control => {
+                sitesArray.push(control, { emitEvent: false });
+            });
+            
+            this._lastSitesVersion = currentVersion;
+        }
+        return this._cachedSites;
     }
 
     get talkgroups(): FormGroup[] {
-        const talkgroups = this.form.get('talkgroups') as FormArray | null;
-
-        return talkgroups?.controls
-            .sort((a, b) => (a.value.order || 0) - (b.value.order || 0)) as FormGroup[];
+        const talkgroupsArray = this.form.get('talkgroups') as FormArray | null;
+        if (!talkgroupsArray) return [];
+        
+        const currentVersion = talkgroupsArray.length;
+        if (this._lastTalkgroupsVersion !== currentVersion || this._cachedTalkgroups.length !== talkgroupsArray.length) {
+            // Sort with stable sort: primary by order, secondary by talkgroupId to ensure consistent ordering
+            this._cachedTalkgroups = (talkgroupsArray.controls as FormGroup[])
+                .slice()
+                .sort((a, b) => {
+                    const orderA = a.value.order || 0;
+                    const orderB = b.value.order || 0;
+                    if (orderA !== orderB) {
+                        return orderA - orderB;
+                    }
+                    // Secondary sort by talkgroupId to ensure stable sort
+                    return (a.value.talkgroupId || 0) - (b.value.talkgroupId || 0);
+                });
+            
+            // CRITICAL FIX: Reorder the actual FormArray to match display order
+            // This ensures getRawValue() returns talkgroups in the correct order when saving
+            talkgroupsArray.clear({ emitEvent: false });
+            this._cachedTalkgroups.forEach(control => {
+                talkgroupsArray.push(control, { emitEvent: false });
+            });
+            
+            this._lastTalkgroupsVersion = currentVersion;
+        }
+        return this._cachedTalkgroups;
     }
 
     get units(): FormGroup[] {
-        const units = this.form.get('units') as FormArray | null;
+        const unitsArray = this.form.get('units') as FormArray | null;
+        if (!unitsArray) return [];
+        
+        const currentVersion = unitsArray.length;
+        if (this._lastUnitsVersion !== currentVersion || this._cachedUnits.length !== unitsArray.length) {
+            // Sort with stable sort: primary by order, secondary by id
+            this._cachedUnits = (unitsArray.controls as FormGroup[])
+                .slice()
+                .sort((a, b) => {
+                    const orderA = a.value.order || 0;
+                    const orderB = b.value.order || 0;
+                    if (orderA !== orderB) {
+                        return orderA - orderB;
+                    }
+                    // Secondary sort by id to ensure stable sort
+                    return (a.value.id || 0) - (b.value.id || 0);
+                });
+            
+            // Reorder the actual FormArray to match display order
+            unitsArray.clear({ emitEvent: false });
+            this._cachedUnits.forEach(control => {
+                unitsArray.push(control, { emitEvent: false });
+            });
+            
+            this._lastUnitsVersion = currentVersion;
+        }
+        return this._cachedUnits;
+    }
 
-        return units?.controls
-            .sort((a, b) => (a.value.order || 0) - (b.value.order || 0)) as FormGroup[];
+    // Filtered and paginated lists
+    get filteredTalkgroups(): FormGroup[] {
+        let filtered = this.talkgroups;
+        if (this.talkgroupsSearchTerm.trim()) {
+            const search = this.talkgroupsSearchTerm.toLowerCase();
+            filtered = filtered.filter(tg => {
+                const label = (tg.value.label || '').toLowerCase();
+                const name = (tg.value.name || '').toLowerCase();
+                const id = (tg.value.talkgroupRef || '').toString();
+                return label.includes(search) || name.includes(search) || id.includes(search);
+            });
+        }
+        return filtered;
+    }
+
+    get paginatedTalkgroups(): FormGroup[] {
+        const start = this.talkgroupsPage * this.talkgroupsPageSize;
+        const end = start + this.talkgroupsPageSize;
+        return this.filteredTalkgroups.slice(start, end);
+    }
+
+    get filteredUnits(): FormGroup[] {
+        let filtered = this.units;
+        if (this.unitsSearchTerm.trim()) {
+            const search = this.unitsSearchTerm.toLowerCase();
+            filtered = filtered.filter(unit => {
+                const label = (unit.value.label || '').toLowerCase();
+                const id = (unit.value.unitRef || '').toString();
+                return label.includes(search) || id.includes(search);
+            });
+        }
+        return filtered;
+    }
+
+    get paginatedUnits(): FormGroup[] {
+        const start = this.unitsPage * this.unitsPageSize;
+        const end = start + this.unitsPageSize;
+        return this.filteredUnits.slice(start, end);
+    }
+
+    get filteredSites(): FormGroup[] {
+        let filtered = this.sites;
+        if (this.sitesSearchTerm.trim()) {
+            const search = this.sitesSearchTerm.toLowerCase();
+            filtered = filtered.filter(site => {
+                const label = (site.value.label || '').toLowerCase();
+                return label.includes(search);
+            });
+        }
+        return filtered;
+    }
+
+    get paginatedSites(): FormGroup[] {
+        const start = this.sitesPage * this.sitesPageSize;
+        const end = start + this.sitesPageSize;
+        return this.filteredSites.slice(start, end);
     }
 
     get hasSelectedTalkgroups(): boolean {
@@ -84,6 +236,8 @@ export class RdioScannerAdminSystemComponent {
         sites?.insert(0, this.adminService.newSiteForm());
 
         this.form.markAsDirty();
+        this._lastSitesVersion++;
+        this.sitesPage = 0; // Reset to first page
     }
 
     addTalkgroup(): void {
@@ -92,6 +246,8 @@ export class RdioScannerAdminSystemComponent {
         talkgroups?.insert(0, this.adminService.newTalkgroupForm());
 
         this.form.markAsDirty();
+        this._lastTalkgroupsVersion++;
+        this.talkgroupsPage = 0; // Reset to first page
     }
 
     addUnit(): void {
@@ -100,6 +256,8 @@ export class RdioScannerAdminSystemComponent {
         units?.insert(0, this.adminService.newUnitForm());
 
         this.form.markAsDirty();
+        this._lastUnitsVersion++;
+        this.unitsPage = 0; // Reset to first page
     }
 
     blacklistTalkgroup(index: number): void {
@@ -146,6 +304,7 @@ export class RdioScannerAdminSystemComponent {
             });
 
             this.form.markAsDirty();
+            this._lastTalkgroupsVersion++;
         }
     }
 
@@ -155,6 +314,7 @@ export class RdioScannerAdminSystemComponent {
         sites?.removeAt(index);
 
         sites?.markAsDirty();
+        this._lastSitesVersion++;
     }
 
     removeTalkgroup(index: number): void {
@@ -163,6 +323,7 @@ export class RdioScannerAdminSystemComponent {
         talkgroups?.removeAt(index);
 
         talkgroups?.markAsDirty();
+        this._lastTalkgroupsVersion++;
     }
 
     removeUnit(index: number): void {
@@ -171,6 +332,7 @@ export class RdioScannerAdminSystemComponent {
         units?.removeAt(index);
 
         units?.markAsDirty();
+        this._lastUnitsVersion++;
     }
 
     // Bulk selection methods
@@ -282,6 +444,7 @@ export class RdioScannerAdminSystemComponent {
 
         this.form.markAsDirty();
         this.unselectAllTalkgroups();
+        this._lastTalkgroupsVersion++;
     }
 
     getTalkgroupsErrorSummary(): string {
@@ -320,5 +483,45 @@ export class RdioScannerAdminSystemComponent {
         }
 
         return errors.join(', ');
+    }
+
+    // Pagination methods
+    onTalkgroupsSearchChange(searchTerm: string): void {
+        this.talkgroupsSearchTerm = searchTerm;
+        this.talkgroupsPage = 0; // Reset to first page on search
+    }
+
+    onTalkgroupsPageChange(page: number): void {
+        this.talkgroupsPage = page;
+    }
+
+    get talkgroupsTotalPages(): number {
+        return Math.ceil(this.filteredTalkgroups.length / this.talkgroupsPageSize);
+    }
+
+    onUnitsSearchChange(searchTerm: string): void {
+        this.unitsSearchTerm = searchTerm;
+        this.unitsPage = 0;
+    }
+
+    onUnitsPageChange(page: number): void {
+        this.unitsPage = page;
+    }
+
+    get unitsTotalPages(): number {
+        return Math.ceil(this.filteredUnits.length / this.unitsPageSize);
+    }
+
+    onSitesSearchChange(searchTerm: string): void {
+        this.sitesSearchTerm = searchTerm;
+        this.sitesPage = 0;
+    }
+
+    onSitesPageChange(page: number): void {
+        this.sitesPage = page;
+    }
+
+    get sitesTotalPages(): number {
+        return Math.ceil(this.filteredSites.length / this.sitesPageSize);
     }
 }

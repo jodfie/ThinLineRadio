@@ -41,7 +41,7 @@ type CallFrequency struct {
 type CallMeta struct {
 	SiteId          uint64
 	SiteLabel       string
-	SiteRef         uint
+	SiteRef         string // Site ID as string to preserve leading zeros
 	SystemId        uint64
 	SystemLabel     string
 	SystemRef       uint
@@ -72,7 +72,7 @@ type Call struct {
 	Frequency     uint
 	Meta          CallMeta
 	Patches       []uint
-	SiteRef       uint
+	SiteRef       string // Site ID as string to preserve leading zeros
 	System        *System
 	Talkgroup     *Talkgroup
 	Timestamp     time.Time
@@ -82,6 +82,7 @@ type Call struct {
 	Transcript    string
 	TranscriptConfidence float64
 	TranscriptionStatus string
+	ApiKeyId      *uint64 // API key used for upload (for preferred API key logic)
 
 	// Add back simple fields for compatibility with v6 uploads
 	SystemId    uint `json:"system"`
@@ -177,7 +178,7 @@ func (call *Call) MarshalJSON() ([]byte, error) {
 		callMap["frequencies"] = freqs
 	}
 
-	if call.SiteRef > 0 {
+	if call.SiteRef != "" {
 		callMap["site"] = call.SiteRef
 	}
 
@@ -268,6 +269,87 @@ func (calls *Calls) CheckDuplicate(call *Call, msTimeFrame uint, db *Database) (
 	}
 
 	return count > 0, nil
+}
+
+// CheckDuplicateBySiteAndFrequency performs advanced duplicate detection using site priority
+// and optional frequency validation. Returns (isDuplicate, reason, error).
+func (calls *Calls) CheckDuplicateBySiteAndFrequency(call *Call, msTimeFrame uint, db *Database) (bool, string, error) {
+	formatError := errorFormatter("calls", "checkduplicatebysiteandfrequency")
+
+	// Validate we have required data
+	if call.System == nil || call.Talkgroup == nil {
+		return false, "", formatError(fmt.Errorf("call missing system or talkgroup"), "")
+	}
+
+	// Determine if incoming call is from preferred site
+	isPreferredSite := false
+	if call.System.Sites != nil && call.SiteRef != "" {
+		if site, ok := call.System.Sites.GetSiteByRef(call.SiteRef); ok {
+			isPreferredSite = site.Preferred
+		}
+	}
+
+	// Query for existing calls in the time window
+	d := time.Duration(msTimeFrame) * time.Millisecond
+	from := call.Timestamp.Add(-d)
+	to := call.Timestamp.Add(d)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Get existing calls with site information
+	query := fmt.Sprintf(`SELECT "callId", "siteRef" FROM "calls" WHERE ("timestamp" BETWEEN %d and %d) AND "systemId" = %d AND "talkgroupId" = %d`, 
+		from.UnixMilli(), to.UnixMilli(), call.System.Id, call.Talkgroup.Id)
+	
+	rows, err := db.Sql.QueryContext(ctx, query)
+	if err != nil {
+		return false, "", formatError(err, query)
+	}
+	defer rows.Close()
+
+	// Check each existing call
+	hasPreferredSiteCall := false
+	for rows.Next() {
+		var existingCallId uint64
+		var existingSiteRef sql.NullString
+		
+		if err := rows.Scan(&existingCallId, &existingSiteRef); err != nil {
+			continue
+		}
+
+		// Check if existing call is from preferred site
+		if call.System.Sites != nil && existingSiteRef.Valid {
+			if existingSite, ok := call.System.Sites.GetSiteByRef(existingSiteRef.String); ok {
+				if existingSite.Preferred {
+					hasPreferredSiteCall = true
+					break
+				}
+			}
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return false, "", formatError(err, "")
+	}
+
+	// Apply site priority logic
+	if isPreferredSite {
+		// Incoming call is from preferred site
+		if hasPreferredSiteCall {
+			// Another preferred site call already exists - reject as duplicate
+			return true, "preferred site call already exists", nil
+		}
+		// No preferred site call exists yet - accept this one
+		return false, "", nil
+	} else {
+		// Incoming call is from secondary site
+		if hasPreferredSiteCall {
+			// Preferred site call exists - reject secondary site call
+			return true, "preferred site takes priority", nil
+		}
+		// No preferred site call - accept secondary site call
+		return false, "", nil
+	}
 }
 
 func (calls *Calls) GetCall(id uint64) (*Call, error) {
@@ -731,13 +813,28 @@ func (calls *Calls) WriteCall(call *Call, db *Database) (uint64, error) {
 		call.TranscriptionStatus = "pending"
 	}
 
+	// Determine site by frequency if not already set
+	if call.SiteRef == "" && call.System != nil && call.System.Sites != nil && frequencyValue > 0 {
+		if site, ok := call.System.Sites.GetSiteByFrequency(frequencyValue); ok {
+			call.SiteRef = site.SiteRef
+		}
+	}
+
+	// Convert SiteRef string to integer for database
+	siteRefInt := 0
+	if call.SiteRef != "" {
+		if val, err := strconv.Atoi(call.SiteRef); err == nil {
+			siteRefInt = val
+		}
+	}
+
 	if db.Config.DbType == DbTypePostgresql {
-		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus") VALUES ($1, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, $2, %t, $3, %.2f, '%s') RETURNING "callId"`, call.AudioFilename, call.AudioMime, call.SiteRef, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, escapeQuotes(call.TranscriptionStatus))
+		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus") VALUES ($1, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, $2, %t, $3, %.2f, '%s') RETURNING "callId"`, call.AudioFilename, call.AudioMime, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, escapeQuotes(call.TranscriptionStatus))
 
 		err = tx.QueryRow(query, call.Audio, toneSequenceJson, call.Transcript).Scan(&call.Id)
 
 	} else {
-		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus") VALUES (?, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, ?, %t, ?, %.2f, '%s')`, call.AudioFilename, call.AudioMime, call.SiteRef, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, escapeQuotes(call.TranscriptionStatus))
+		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus") VALUES (?, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, ?, %t, ?, %.2f, '%s')`, call.AudioFilename, call.AudioMime, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, escapeQuotes(call.TranscriptionStatus))
 
 		if res, err = tx.Exec(query, call.Audio, toneSequenceJson, call.Transcript); err == nil {
 			if id, err := res.LastInsertId(); err == nil {

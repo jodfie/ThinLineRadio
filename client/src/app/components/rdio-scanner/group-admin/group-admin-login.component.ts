@@ -55,6 +55,13 @@ export class RdioScannerGroupAdminLoginComponent implements OnInit, OnDestroy {
       email: ['', [Validators.required, Validators.email]],
       password: ['', [Validators.required]]
     });
+    
+    // Automatically convert email to lowercase as user types
+    this.loginForm.get('email')?.valueChanges.subscribe(value => {
+      if (value && value !== value.toLowerCase()) {
+        this.loginForm.get('email')?.setValue(value.toLowerCase(), { emitEvent: false });
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -123,7 +130,10 @@ export class RdioScannerGroupAdminLoginComponent implements OnInit, OnDestroy {
       this.loading = true;
       this.error = '';
 
-      const formData: any = { ...this.loginForm.value };
+      const formData: any = {
+        email: this.loginForm.value.email.toLowerCase(), // Ensure email is lowercase
+        password: this.loginForm.value.password
+      };
       
       // Add Turnstile token if enabled
       if (this.turnstileEnabled && this.turnstileToken) {

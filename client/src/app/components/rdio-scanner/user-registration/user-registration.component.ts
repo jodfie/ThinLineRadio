@@ -78,6 +78,13 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
       zipCode: ['', [Validators.required]],
       accessCode: ['']  // Unified field for invitation and registration codes
     }, { validators: this.passwordMatchValidator });
+    
+    // Automatically convert email to lowercase as user types
+    this.registrationForm.get('email')?.valueChanges.subscribe(value => {
+      if (value && value !== value.toLowerCase()) {
+        this.registrationForm.get('email')?.setValue(value.toLowerCase(), { emitEvent: false });
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -330,6 +337,10 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
     if (!/[0-9]/.test(password)) {
       errors.requireNumber = true;
     }
+    // Check for special character
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      errors.requireSpecial = true;
+    }
     
     return Object.keys(errors).length > 0 ? errors : null;
   }
@@ -340,7 +351,7 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
       this.error = '';
 
       const formData = {
-        email: this.registrationForm.value.email,
+        email: this.registrationForm.value.email.toLowerCase(), // Ensure email is lowercase
         password: this.registrationForm.value.password,
         firstName: this.registrationForm.value.firstName,
         lastName: this.registrationForm.value.lastName,

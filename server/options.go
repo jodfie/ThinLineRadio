@@ -33,9 +33,11 @@ type Options struct {
 	Branding                    string `json:"branding"`
 	DefaultSystemDelay          uint   `json:"defaultSystemDelay"`
 	DimmerDelay                 uint   `json:"dimmerDelay"`
-	DisableDuplicateDetection   bool   `json:"disableDuplicateDetection"`
-	DuplicateDetectionTimeFrame uint   `json:"duplicateDetectionTimeFrame"`
-	Email                       string `json:"email"`
+	DisableDuplicateDetection      bool   `json:"disableDuplicateDetection"`
+	DuplicateDetectionMode         string `json:"duplicateDetectionMode"`         // "legacy" or "advanced"
+	DuplicateDetectionTimeFrame    uint   `json:"duplicateDetectionTimeFrame"`    // Legacy mode timeframe
+	AdvancedDetectionTimeFrame     uint   `json:"advancedDetectionTimeFrame"`     // Advanced mode timeframe
+	Email                          string `json:"email"`
 	KeypadBeeps                 string `json:"keypadBeeps"`
 	MaxClients                  uint   `json:"maxClients"`
 	PlaybackGoesLive            bool   `json:"playbackGoesLive"`
@@ -147,10 +149,12 @@ type TranscriptionConfig struct {
 }
 
 const (
-	AUDIO_CONVERSION_DISABLED          = 0
-	AUDIO_CONVERSION_ENABLED           = 1
-	AUDIO_CONVERSION_ENABLED_NORM      = 2
-	AUDIO_CONVERSION_ENABLED_LOUD_NORM = 3
+	AUDIO_CONVERSION_DISABLED              = 0
+	AUDIO_CONVERSION_ENABLED               = 1
+	AUDIO_CONVERSION_CONSERVATIVE_NORM     = 2 // -16 LUFS (Broadcast standard)
+	AUDIO_CONVERSION_STANDARD_NORM         = 3 // -12 LUFS (Modern streaming, recommended)
+	AUDIO_CONVERSION_AGGRESSIVE_NORM       = 4 // -10 LUFS (Dispatcher/public safety optimized)
+	AUDIO_CONVERSION_MAXIMUM_NORM          = 5 // -8 LUFS (Very loud, heavily compressed)
 )
 
 // getRelayServerAuthKey returns the authorization key for relay server API requests
@@ -218,11 +222,30 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		options.DisableDuplicateDetection = defaults.options.disableDuplicateDetection
 	}
 
+	switch v := m["duplicateDetectionMode"].(type) {
+	case string:
+		// Validate mode is "legacy" or "advanced"
+		if v == "legacy" || v == "advanced" {
+			options.DuplicateDetectionMode = v
+		} else {
+			options.DuplicateDetectionMode = defaults.options.duplicateDetectionMode
+		}
+	default:
+		options.DuplicateDetectionMode = defaults.options.duplicateDetectionMode
+	}
+
 	switch v := m["duplicateDetectionTimeFrame"].(type) {
 	case float64:
 		options.DuplicateDetectionTimeFrame = uint(v)
 	default:
 		options.DuplicateDetectionTimeFrame = defaults.options.duplicateDetectionTimeFrame
+	}
+
+	switch v := m["advancedDetectionTimeFrame"].(type) {
+	case float64:
+		options.AdvancedDetectionTimeFrame = uint(v)
+	default:
+		options.AdvancedDetectionTimeFrame = defaults.options.advancedDetectionTimeFrame
 	}
 
 	switch v := m["email"].(type) {
@@ -796,7 +819,9 @@ func (options *Options) Read(db *Database) error {
 	options.DefaultSystemDelay = defaults.options.defaultSystemDelay
 	options.DimmerDelay = defaults.options.dimmerDelay
 	options.DisableDuplicateDetection = defaults.options.disableDuplicateDetection
+	options.DuplicateDetectionMode = defaults.options.duplicateDetectionMode
 	options.DuplicateDetectionTimeFrame = defaults.options.duplicateDetectionTimeFrame
+	options.AdvancedDetectionTimeFrame = defaults.options.advancedDetectionTimeFrame
 	options.Email = defaults.options.email
 	options.KeypadBeeps = defaults.options.keypadBeeps
 	options.MaxClients = defaults.options.maxClients
@@ -906,11 +931,30 @@ func (options *Options) Read(db *Database) error {
 					options.DisableDuplicateDetection = v
 				}
 			}
+		case "duplicateDetectionMode":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case string:
+					// Validate mode is "legacy" or "advanced"
+					if v == "legacy" || v == "advanced" {
+						options.DuplicateDetectionMode = v
+					} else {
+						options.DuplicateDetectionMode = defaults.options.duplicateDetectionMode
+					}
+				}
+			}
 		case "duplicateDetectionTimeFrame":
 			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
 				switch v := f.(type) {
 				case float64:
 					options.DuplicateDetectionTimeFrame = uint(v)
+				}
+			}
+		case "advancedDetectionTimeFrame":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					options.AdvancedDetectionTimeFrame = uint(v)
 				}
 			}
 		case "email":
@@ -1447,7 +1491,9 @@ func (options *Options) Write(db *Database) error {
 	set("defaultSystemDelay", options.DefaultSystemDelay)
 	set("dimmerDelay", options.DimmerDelay)
 	set("disableDuplicateDetection", options.DisableDuplicateDetection)
+	set("duplicateDetectionMode", options.DuplicateDetectionMode)
 	set("duplicateDetectionTimeFrame", options.DuplicateDetectionTimeFrame)
+	set("advancedDetectionTimeFrame", options.AdvancedDetectionTimeFrame)
 	set("email", options.Email)
 	set("keypadBeeps", options.KeypadBeeps)
 	set("maxClients", options.MaxClients)

@@ -1,19 +1,28 @@
 <ng-container *ngIf="form" [formGroup]="form">
     <div class="row">
         <p>
-            <span class="mat-body">Id</span><br>
-            <span class="mat-caption">Site identifier in decimal format.</span>
+            <span class="mat-body">Site ID</span><br>
+            <span class="mat-caption">Site identifier (e.g., "001", "021"). Preserves leading zeros.</span>
         </p>
         <mat-form-field floatLabel="auto">
-            <input type="number" min="1" step="1" matInput formControlName="siteRef" placeholder="Id">
+            <input type="text" matInput formControlName="siteRef" placeholder="001">
             <mat-error *ngIf="form?.get('siteRef')?.hasError('duplicate')">
-                Id is already defined
-            </mat-error>
-            <mat-error *ngIf="form?.get('siteRef')?.hasError('min')">
-                Id is invalid
+                Site ID is already defined
             </mat-error>
             <mat-error *ngIf="form?.get('siteRef')?.hasError('required')">
-                Id is required
+                Site ID is required
+            </mat-error>
+        </mat-form-field>
+    </div>
+    <div class="row">
+        <p>
+            <span class="mat-body">RFSS</span><br>
+            <span class="mat-caption">Radio Frequency Sub-System ID (for P25 systems).</span>
+        </p>
+        <mat-form-field floatLabel="auto">
+            <input type="number" min="0" step="1" matInput formControlName="rfss" placeholder="0">
+            <mat-error *ngIf="form?.get('rfss')?.hasError('min')">
+                RFSS must be 0 or greater
             </mat-error>
         </mat-form-field>
     </div>
@@ -28,6 +37,41 @@
                 Label is required
             </mat-error>
         </mat-form-field>
+    </div>
+    <div class="row">
+        <p>
+            <span class="mat-body">Preferred Site</span><br>
+            <span class="mat-caption">Mark as preferred site for advanced duplicate detection. Only one site per system should be preferred.</span>
+        </p>
+        <div>
+            <mat-slide-toggle color="primary" formControlName="preferred"></mat-slide-toggle>
+        </div>
+    </div>
+    <div class="row">
+        <p>
+            <span class="mat-body">Frequencies (MHz)</span><br>
+            <span class="mat-caption">Optional frequencies for this site (e.g., 154.12345). Used for frequency validation in advanced mode.</span>
+        </p>
+        <div style="width: 100%;">
+            <div *ngFor="let freq of frequencies.controls; let i = index" style="display: flex; align-items: center; margin-bottom: 8px;">
+                <mat-form-field style="flex: 1; margin-right: 8px;">
+                    <input type="number" matInput [formControl]="$any(freq)" 
+                           placeholder="154.12345" step="0.00001" min="0">
+                    <mat-error *ngIf="$any(freq).hasError('required')">
+                        Frequency is required
+                    </mat-error>
+                    <mat-error *ngIf="$any(freq).hasError('min')">
+                        Frequency must be positive
+                    </mat-error>
+                </mat-form-field>
+                <button type="button" mat-icon-button color="warn" (click)="removeFrequency(i)">
+                    <mat-icon>delete</mat-icon>
+                </button>
+            </div>
+            <button type="button" mat-button color="accent" (click)="addFrequency()">
+                <mat-icon>add</mat-icon> Add Frequency
+            </button>
+        </div>
     </div>
     <div class="row bottom">
         <button type="button" mat-button color="warn" (click)="remove.emit()">

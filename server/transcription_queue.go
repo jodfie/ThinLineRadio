@@ -46,16 +46,14 @@ type TranscriptionQueue struct {
 
 // NewTranscriptionQueue creates a new transcription queue with worker pool
 func NewTranscriptionQueue(controller *Controller, config TranscriptionConfig) *TranscriptionQueue {
-	// Force whisper-api to use 1 worker (works best)
-	// Other providers can use configurable workers
-	var workerCount int
-	if config.Provider == "whisper-api" || config.Provider == "" {
+	// Use configured worker pool size for all providers
+	// WARNING: For Whisper API (local Whisper), using more than 1 worker may cause
+	// transcription failures if insufficient VRAM is available. Users should start
+	// with 1 worker and increase only if they have adequate resources (8GB+ VRAM).
+	workerCount := config.WorkerPoolSize
+	if workerCount == 0 {
+		// Default to 1 for safety (can be increased by users with adequate resources)
 		workerCount = 1
-	} else {
-		workerCount = config.WorkerPoolSize
-		if workerCount == 0 {
-			workerCount = 5 // Default worker pool size for other providers
-		}
 	}
 
 	queue := &TranscriptionQueue{
@@ -270,6 +268,11 @@ func (queue *TranscriptionQueue) worker(workerId int) {
 		// After transcription completes, check if we should attach pending tones to this call
 		// or if this call has its own tones with voice (trigger alert)
 		go func() {
+			// CRITICAL: Always unlock pending tones, even if we can't load the call from DB
+			// Store job data to ensure unlock happens regardless of DB load success
+			jobSystemId := job.SystemId
+			jobTalkgroupId := job.TalkgroupId
+
 			// Load the call to check for pending tones
 			call, err := queue.controller.Calls.GetCall(job.CallId)
 			if err == nil && call != nil {
@@ -327,6 +330,54 @@ func (queue *TranscriptionQueue) worker(workerId int) {
 					// No voice - if this call has tones, they should have been stored as pending earlier
 					// No alert needed for tone-only calls
 					queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("transcription completed for call %d: no voice detected (tone-only), no alert created", job.CallId))
+				}
+
+				// UNLOCK PENDING TONES: Transcription is complete, allow new tones to merge
+				// This is critical - if we don't unlock, the next voice call won't be able to attach pending tones
+				if call.System != nil && call.Talkgroup != nil {
+					key := fmt.Sprintf("%d:%d", call.System.Id, call.Talkgroup.Id)
+					queue.controller.pendingTonesMutex.Lock()
+					if pending, exists := queue.controller.pendingTones[key]; exists && pending != nil && pending.Locked {
+						pending.Locked = false
+						queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("transcription worker %d: unlocked pending tones for talkgroup %d (call %d transcription complete, hasVoice=%t)", workerId, call.Talkgroup.TalkgroupRef, job.CallId, hasVoice))
+
+						// If there are "next pending" tones that arrived during the lock, merge them now
+						nextKey := key + ":next"
+						if nextPending, nextExists := queue.controller.pendingTones[nextKey]; nextExists && nextPending != nil {
+							queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("merging next pending tones into current pending for talkgroup %d (lock cleared after call %d)", call.Talkgroup.TalkgroupRef, job.CallId))
+
+							// Merge next pending tone sequences into current pending
+							pending.ToneSequence = queue.controller.mergePendingTones(pending.ToneSequence, nextPending.ToneSequence)
+
+							// Clear next pending slot
+							delete(queue.controller.pendingTones, nextKey)
+						}
+					}
+					queue.controller.pendingTonesMutex.Unlock()
+				}
+			} else {
+				// FALLBACK: If we couldn't load the call from DB, still unlock using job data
+				// This prevents pending tones from being permanently locked
+				if jobSystemId > 0 && jobTalkgroupId > 0 {
+					key := fmt.Sprintf("%d:%d", jobSystemId, jobTalkgroupId)
+					queue.controller.pendingTonesMutex.Lock()
+					if pending, exists := queue.controller.pendingTones[key]; exists && pending != nil && pending.Locked {
+						pending.Locked = false
+						queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("transcription worker %d: unlocked pending tones for system:talkgroup %d:%d (call %d transcription complete, fallback unlock)", workerId, jobSystemId, jobTalkgroupId, job.CallId))
+
+						// If there are "next pending" tones that arrived during the lock, merge them now
+						nextKey := key + ":next"
+						if nextPending, nextExists := queue.controller.pendingTones[nextKey]; nextExists && nextPending != nil {
+							queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("merging next pending tones into current pending for system:talkgroup %d:%d (lock cleared after call %d, fallback)", jobSystemId, jobTalkgroupId, job.CallId))
+
+							// Merge next pending tone sequences into current pending
+							pending.ToneSequence = queue.controller.mergePendingTones(pending.ToneSequence, nextPending.ToneSequence)
+
+							// Clear next pending slot
+							delete(queue.controller.pendingTones, nextKey)
+						}
+					}
+					queue.controller.pendingTonesMutex.Unlock()
 				}
 			}
 		}()

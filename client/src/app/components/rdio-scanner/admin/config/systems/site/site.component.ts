@@ -18,7 +18,7 @@
  */
 
 import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { FormGroup } from '@angular/forms';
+import { FormArray, FormControl, FormGroup, Validators } from '@angular/forms';
 
 @Component({
     selector: 'rdio-scanner-admin-site',
@@ -28,4 +28,18 @@ export class RdioScannerAdminSiteComponent {
     @Input() form: FormGroup | undefined;
 
     @Output() remove = new EventEmitter<void>();
+
+    get frequencies(): FormArray {
+        return this.form?.get('frequencies') as FormArray;
+    }
+
+    addFrequency(): void {
+        this.frequencies.push(new FormControl(null, [Validators.required, Validators.min(0)]));
+        this.form?.markAsDirty();
+    }
+
+    removeFrequency(index: number): void {
+        this.frequencies.removeAt(index);
+        this.form?.markAsDirty();
+    }
 }

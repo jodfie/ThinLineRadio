@@ -9,8 +9,26 @@
         </button>
     </div>
 </div>
-<mat-accordion displayMode="flat" cdkDropList [cdkDropListAutoScrollStep]=64 [cdkDropListData]="systems" (cdkDropListDropped)="drop($event)">
-    <mat-expansion-panel *ngFor="let system of systems; index as i" [formGroup]="system"
+
+<!-- Search Bar -->
+<div class="row" style="margin: 12px 0;">
+    <mat-form-field floatLabel="auto" style="width: 100%;">
+        <mat-label>Search systems</mat-label>
+        <input matInput [value]="systemsSearchTerm" (input)="onSystemsSearchChange($any($event.target).value)" 
+               placeholder="Search by label or ID">
+        <mat-icon matSuffix>search</mat-icon>
+    </mat-form-field>
+</div>
+
+<!-- Results Count -->
+<div *ngIf="systemsSearchTerm" class="row" style="margin: 0 0 12px 0;">
+    <span class="mat-caption">
+        Showing {{ filteredSystems.length }} of {{ systems.length }} systems
+    </span>
+</div>
+
+<mat-accordion displayMode="flat" cdkDropList [cdkDropListAutoScrollStep]=64 [cdkDropListData]="paginatedSystems" (cdkDropListDropped)="drop($event)">
+    <mat-expansion-panel *ngFor="let system of paginatedSystems; index as i" [formGroup]="system"
         (afterCollapse)="systemComponent.closeAll()" cdkDrag>
         <mat-expansion-panel-header>
             <mat-panel-title>
@@ -22,7 +40,24 @@
                 </span>
             </mat-panel-title>
         </mat-expansion-panel-header>
-        <rdio-scanner-admin-system #systemComponent [form]="system" [groups]="groups" [tags]="tags" (add)="add()" (remove)="remove(i)">
+        <rdio-scanner-admin-system #systemComponent [form]="system" [groups]="groups" [tags]="tags" [apikeys]="apikeys" (add)="add()" (remove)="remove(i)">
         </rdio-scanner-admin-system>
     </mat-expansion-panel>
 </mat-accordion>
+
+<!-- Pagination Controls -->
+<div *ngIf="filteredSystems.length > systemsPageSize" class="row" style="margin: 16px 0; display: flex; justify-content: center; align-items: center; gap: 8px;">
+    <button type="button" mat-icon-button (click)="onSystemsPageChange(0)" [disabled]="systemsPage === 0">
+        <mat-icon>first_page</mat-icon>
+    </button>
+    <button type="button" mat-icon-button (click)="onSystemsPageChange(systemsPage - 1)" [disabled]="systemsPage === 0">
+        <mat-icon>chevron_left</mat-icon>
+    </button>
+    <span class="mat-body">Page {{ systemsPage + 1 }} of {{ systemsTotalPages }}</span>
+    <button type="button" mat-icon-button (click)="onSystemsPageChange(systemsPage + 1)" [disabled]="systemsPage >= systemsTotalPages - 1">
+        <mat-icon>chevron_right</mat-icon>
+    </button>
+    <button type="button" mat-icon-button (click)="onSystemsPageChange(systemsTotalPages - 1)" [disabled]="systemsPage >= systemsTotalPages - 1">
+        <mat-icon>last_page</mat-icon>
+    </button>
+</div>

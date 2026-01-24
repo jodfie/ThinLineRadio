@@ -109,20 +109,16 @@
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>New Password</mat-label>
       <input matInput type="password" formControlName="newPassword" required>
-      <mat-error *ngIf="resetPasswordForm.get('newPassword')?.hasError('required')">
-        New password is required
-      </mat-error>
-      <mat-error *ngIf="resetPasswordForm.get('newPassword')?.hasError('minlength')">
-        Password must be at least 8 characters
-      </mat-error>
-      <mat-error *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireUpper')">
-        Password must contain at least one uppercase letter
-      </mat-error>
-      <mat-error *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireLower')">
-        Password must contain at least one lowercase letter
-      </mat-error>
-      <mat-error *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireNumber')">
-        Password must contain at least one number
+      <mat-error *ngIf="resetPasswordForm.get('newPassword')?.touched && resetPasswordForm.get('newPassword')?.invalid">
+        <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('required')">Password is required</span>
+        <span *ngIf="!resetPasswordForm.get('newPassword')?.hasError('required')">
+          Missing: 
+          <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('minlength')">8+ chars, </span>
+          <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireUpper')">uppercase, </span>
+          <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireLower')">lowercase, </span>
+          <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireNumber')">number, </span>
+          <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireSpecial')">special char</span>
+        </span>
       </mat-error>
     </mat-form-field>
 

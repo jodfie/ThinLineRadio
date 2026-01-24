@@ -84,13 +84,14 @@ type RadioReferenceTalkgroupCategory struct {
 }
 
 type RadioReferenceSite struct {
-	ID         string  `xml:"id" json:"id"`     // This will store siteNumber formatted as 3 digits
-	Name       string  `xml:"name" json:"name"` // This will store siteDescr
-	Latitude   float64 `xml:"latitude" json:"latitude"`
-	Longitude  float64 `xml:"longitude" json:"longitude"`
-	CountyID   int     `xml:"countyId" json:"countyId"`     // This will store siteCtid
-	CountyName string  `xml:"countyName" json:"countyName"` // This will store countyName
-	RFSS       int     `xml:"rfss" json:"rfss"`             // This will store rfss
+	ID          string    `xml:"id" json:"id"`     // This will store siteNumber formatted as 3 digits
+	Name        string    `xml:"name" json:"name"` // This will store siteDescr
+	Latitude    float64   `xml:"latitude" json:"latitude"`
+	Longitude   float64   `xml:"longitude" json:"longitude"`
+	CountyID    int       `xml:"countyId" json:"countyId"`     // This will store siteCtid
+	CountyName  string    `xml:"countyName" json:"countyName"` // This will store countyName
+	RFSS        int       `xml:"rfss" json:"rfss"`             // This will store rfss
+	Frequencies []float64 `xml:"frequencies" json:"frequencies"` // Site frequencies
 }
 
 type RadioReferenceFrequency struct {
@@ -1061,6 +1062,9 @@ func (rr *RadioReferenceService) GetSystemSites(systemID int) ([]RadioReferenceS
 		return nil, err
 	}
 
+	// Log the raw XML response for debugging
+	log.Printf("=== RAW RADIO REFERENCE SITES XML (first 2000 chars) ===\n%s\n=== END RAW XML ===", string(resp[:min(len(resp), 2000)]))
+
 	var fault SOAPFault
 	if err := xml.Unmarshal(resp, &fault); err == nil && fault.FaultCode != "" {
 		return nil, fmt.Errorf("SOAP fault: %s - %s", fault.FaultCode, fault.FaultString)
@@ -1124,6 +1128,9 @@ func (rr *RadioReferenceService) GetSystemSites(systemID int) ([]RadioReferenceS
 func parseSiteList(bodyContent []byte) ([]RadioReferenceSite, error) {
 	var sites []RadioReferenceSite
 
+	// Log the body content we're parsing
+	log.Printf("=== PARSING SITE LIST - Body Content (first 3000 chars) ===\n%s\n=== END BODY CONTENT ===", string(bodyContent[:min(len(bodyContent), 3000)]))
+
 	// Parse the XML response
 	doc, err := xmlquery.Parse(bytes.NewReader(bodyContent))
 	if err != nil {
@@ -1132,6 +1139,7 @@ func parseSiteList(bodyContent []byte) ([]RadioReferenceSite, error) {
 
 	// Find all item elements that contain site data
 	itemNodes := xmlquery.Find(doc, "//item")
+	log.Printf("Found %d site item nodes", len(itemNodes))
 
 	for _, itemNode := range itemNodes {
 		site := RadioReferenceSite{}
@@ -1181,12 +1189,40 @@ func parseSiteList(bodyContent []byte) ([]RadioReferenceSite, error) {
 			}
 		}
 
+		// Extract county name
+		if countyNameNode := xmlquery.FindOne(itemNode, "countyName"); countyNameNode != nil {
+			site.CountyName = countyNameNode.InnerText()
+		}
+
+		// Extract frequencies from siteFreqs/item nodes
+		// The structure is: <siteFreqs><item><lcn>1</lcn><freq>769.25625</freq>...
+		siteFreqsNode := xmlquery.FindOne(itemNode, "siteFreqs")
+		if siteFreqsNode != nil {
+			freqItems := xmlquery.Find(siteFreqsNode, "item")
+			log.Printf("Site %s: Found %d frequency items", site.Name, len(freqItems))
+			
+			for _, freqItem := range freqItems {
+				// Each item contains lcn, freq, use, colorCode, ch_id
+				if freqValueNode := xmlquery.FindOne(freqItem, "freq"); freqValueNode != nil {
+					freqText := freqValueNode.InnerText()
+					if freq, err := strconv.ParseFloat(freqText, 64); err == nil && freq > 0 {
+						site.Frequencies = append(site.Frequencies, freq)
+					}
+				}
+			}
+			log.Printf("Site %s: Successfully parsed %d frequencies", site.Name, len(site.Frequencies))
+		} else {
+			log.Printf("Site %s: No siteFreqs node found", site.Name)
+		}
+
 		// Only add sites that have at least a number and name
 		if site.ID != "" && site.Name != "" {
+			log.Printf("Adding site: ID=%s, Name=%s, Frequencies=%d", site.ID, site.Name, len(site.Frequencies))
 			sites = append(sites, site)
 		}
 	}
 
+	log.Printf("Parsed total of %d sites", len(sites))
 	return sites, nil
 }
 

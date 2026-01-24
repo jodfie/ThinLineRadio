@@ -234,7 +234,9 @@ export interface Options {
 	defaultSystemDelay?: number;
 	dimmerDelay?: number;
 	disableDuplicateDetection?: boolean;
+	duplicateDetectionMode?: string;
 	duplicateDetectionTimeFrame?: number;
+	advancedDetectionTimeFrame?: number;
 	email?: string;
 	keypadBeeps?: string;
 	maxClients?: number;
@@ -316,7 +318,10 @@ export interface Site {
     id?: number | null;
     label?: string;
     order?: number;
-    siteRef?: number;
+    siteRef?: string;        // Site ID as string to preserve leading zeros (e.g., "001", "021")
+    rfss?: number;           // Radio Frequency Sub-System ID
+    frequencies?: number[];  // MHz frequencies for this site
+    preferred?: boolean;     // Is this the preferred site?
 }
 
 export interface System {
@@ -334,6 +339,9 @@ export interface System {
     talkgroups?: Talkgroup[];
     type?: string;
     units?: Unit[];
+    preferredApiKeyId?: number | null;  // Optional preferred API key for uploads
+    noAudioAlertsEnabled?: boolean;     // Enable no-audio alerts for this system
+    noAudioThresholdMinutes?: number;   // Minutes without audio before alerting
 }
 
 export interface Tag {
@@ -361,6 +369,8 @@ export interface Talkgroup {
     type?: string;
     toneDetectionEnabled?: boolean;
     toneSets?: any[];
+    preferredApiKeyId?: number | null;  // Optional preferred API key for uploads
+    excludeFromPreferredSite?: boolean; // Exclude from preferred site detection (for interop/patched talkgroups)
 }
 
 export interface Unit {
@@ -1067,7 +1077,7 @@ export class RdioScannerAdminService implements OnDestroy {
             provider: 'whisper-api',
             language: 'en',
             prompt: '',
-            workerPoolSize: 1, // Whisper works best with 1 worker
+            workerPoolSize: 1, // Default 1 for safety; users with adequate VRAM can increase
             minCallDuration: 0, // 0 = transcribe all calls
             whisperAPIURL: 'http://localhost:8000',
             whisperAPIKey: '',
@@ -1086,7 +1096,9 @@ export class RdioScannerAdminService implements OnDestroy {
 			defaultSystemDelay: this.ngFormBuilder.control(options?.defaultSystemDelay, [Validators.required, Validators.min(0)]),
 			dimmerDelay: this.ngFormBuilder.control(options?.dimmerDelay, [Validators.required, Validators.min(0)]),
             disableDuplicateDetection: this.ngFormBuilder.control(options?.disableDuplicateDetection),
+            duplicateDetectionMode: this.ngFormBuilder.control(options?.duplicateDetectionMode || 'legacy'),
             duplicateDetectionTimeFrame: this.ngFormBuilder.control(options?.duplicateDetectionTimeFrame, [Validators.required, Validators.min(0)]),
+            advancedDetectionTimeFrame: this.ngFormBuilder.control(options?.advancedDetectionTimeFrame, [Validators.required, Validators.min(0)]),
             email: this.ngFormBuilder.control(options?.email),
             keypadBeeps: this.ngFormBuilder.control(options?.keypadBeeps, Validators.required),
             maxClients: this.ngFormBuilder.control(options?.maxClients, [Validators.required, Validators.min(1)]),
@@ -1135,7 +1147,7 @@ export class RdioScannerAdminService implements OnDestroy {
                 provider: this.ngFormBuilder.control(transcriptionConfig?.provider || 'whisper-api'),
                 language: this.ngFormBuilder.control(transcriptionConfig?.language || 'en'),
                 prompt: this.ngFormBuilder.control(transcriptionConfig?.prompt || ''),
-                workerPoolSize: this.ngFormBuilder.control(transcriptionConfig?.workerPoolSize || 1), // Whisper uses 1, other providers can override
+                workerPoolSize: this.ngFormBuilder.control(transcriptionConfig?.workerPoolSize || 1, [Validators.min(1), Validators.max(10)]), // Default 1 for safety; configurable by user
                 minCallDuration: this.ngFormBuilder.control(transcriptionConfig?.minCallDuration || 0, [Validators.min(0)]),
                 whisperAPIURL: this.ngFormBuilder.control(transcriptionConfig?.whisperAPIURL || 'http://localhost:8000'),
                 whisperAPIKey: this.ngFormBuilder.control(transcriptionConfig?.whisperAPIKey || ''),
@@ -1169,7 +1181,10 @@ export class RdioScannerAdminService implements OnDestroy {
             id: this.ngFormBuilder.control(site?.id),
             label: this.ngFormBuilder.control(site?.label, Validators.required),
             order: this.ngFormBuilder.control(site?.order),
-            siteRef: this.ngFormBuilder.control(site?.siteRef, [Validators.required, Validators.min(1), this.validateSiteRef()]),
+            siteRef: this.ngFormBuilder.control(site?.siteRef, [Validators.required, this.validateSiteRef()]),
+            rfss: this.ngFormBuilder.control(site?.rfss, [Validators.min(0)]),
+            frequencies: this.ngFormBuilder.array(site?.frequencies?.map(f => this.ngFormBuilder.control(f, [Validators.min(0)])) || []),
+            preferred: this.ngFormBuilder.control(site?.preferred || false),
         });
     }
 
@@ -1188,6 +1203,9 @@ export class RdioScannerAdminService implements OnDestroy {
             talkgroups: this.ngFormBuilder.array(system?.talkgroups?.map((talkgroup) => this.newTalkgroupForm(talkgroup)) || []),
             type: this.ngFormBuilder.control(system?.type || ''),
             units: this.ngFormBuilder.array(system?.units?.map((unit) => this.newUnitForm(unit)) || []),
+            preferredApiKeyId: this.ngFormBuilder.control(system?.preferredApiKeyId),
+            noAudioAlertsEnabled: this.ngFormBuilder.control(system?.noAudioAlertsEnabled !== false), // Default to true
+            noAudioThresholdMinutes: this.ngFormBuilder.control(system?.noAudioThresholdMinutes || 30), // Default to 30
         });
     }
 
@@ -1241,6 +1259,8 @@ export class RdioScannerAdminService implements OnDestroy {
             type: this.ngFormBuilder.control(talkgroup?.type || ''),
             toneDetectionEnabled: this.ngFormBuilder.control(talkgroup?.toneDetectionEnabled || false),
             toneSets: toneSetsArray,
+            preferredApiKeyId: this.ngFormBuilder.control(talkgroup?.preferredApiKeyId),
+            excludeFromPreferredSite: this.ngFormBuilder.control(talkgroup?.excludeFromPreferredSite || false),
         });
     }
 
@@ -1497,7 +1517,7 @@ export class RdioScannerAdminService implements OnDestroy {
 
     private validateSiteRef(): ValidatorFn {
         return (control: AbstractControl): ValidationErrors | null => {
-            if (control.value === null || typeof control.value !== 'number') {
+            if (control.value === null || control.value === '') {
                 return null;
             }
 

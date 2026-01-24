@@ -136,20 +136,16 @@
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>Password</mat-label>
         <input matInput type="password" formControlName="password" required>
-        <mat-error *ngIf="registrationForm.get('password')?.hasError('required')">
-          Password is required
-        </mat-error>
-        <mat-error *ngIf="registrationForm.get('password')?.hasError('minlength')">
-          Password must be at least 8 characters
-        </mat-error>
-        <mat-error *ngIf="registrationForm.get('password')?.hasError('requireUpper')">
-          Password must contain at least one uppercase letter
-        </mat-error>
-        <mat-error *ngIf="registrationForm.get('password')?.hasError('requireLower')">
-          Password must contain at least one lowercase letter
-        </mat-error>
-        <mat-error *ngIf="registrationForm.get('password')?.hasError('requireNumber')">
-          Password must contain at least one number
+        <mat-error *ngIf="registrationForm.get('password')?.touched && registrationForm.get('password')?.invalid">
+          <span *ngIf="registrationForm.get('password')?.hasError('required')">Password is required</span>
+          <span *ngIf="!registrationForm.get('password')?.hasError('required')">
+            Missing: 
+            <span *ngIf="registrationForm.get('password')?.hasError('minlength')">8+ chars, </span>
+            <span *ngIf="registrationForm.get('password')?.hasError('requireUpper')">uppercase, </span>
+            <span *ngIf="registrationForm.get('password')?.hasError('requireLower')">lowercase, </span>
+            <span *ngIf="registrationForm.get('password')?.hasError('requireNumber')">number, </span>
+            <span *ngIf="registrationForm.get('password')?.hasError('requireSpecial')">special char</span>
+          </span>
         </mat-error>
       </mat-form-field>
 
@@ -191,7 +187,19 @@
     <div class="success-message" *ngIf="success">
       <mat-icon>check_circle</mat-icon>
       <h3>Account Created Successfully!</h3>
-      <p>Please check your email for a verification link to activate your account.</p>
+      
+      <!-- Prominent email verification notice -->
+      <div class="verification-notice" style="padding: 20px; background-color: #e3f2fd; border: 2px solid #2196f3; border-radius: 8px; margin: 20px 0;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+          <mat-icon style="color: #1976d2; font-size: 32px; width: 32px; height: 32px;">mark_email_unread</mat-icon>
+          <h4 style="margin: 0; color: #1565c0; font-size: 18px;">Please Check Your Email</h4>
+        </div>
+        <p style="margin: 0; color: #0d47a1; font-size: 15px; line-height: 1.6;">
+          We've sent a verification link to <strong>{{ registrationForm.get('email')?.value }}</strong>. 
+          Please check your inbox (and spam folder) and click the verification link to activate your account.
+        </p>
+      </div>
+      
       <p *ngIf="generatedPin" class="pin-message">
         Your listener PIN is <strong>{{ generatedPin }}</strong>. Keep this safe—you'll use it to connect the client.
       </p>

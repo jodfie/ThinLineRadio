@@ -64,6 +64,19 @@ export class RdioScannerUserLoginComponent implements OnInit, OnDestroy {
       newPassword: ['', [Validators.required, Validators.minLength(8), this.passwordStrengthValidator]],
       confirmPassword: ['', [Validators.required]]
     }, { validators: this.passwordMatchValidator });
+    
+    // Automatically convert email to lowercase as user types
+    this.loginForm.get('email')?.valueChanges.subscribe(value => {
+      if (value && value !== value.toLowerCase()) {
+        this.loginForm.get('email')?.setValue(value.toLowerCase(), { emitEvent: false });
+      }
+    });
+    
+    this.forgotPasswordForm.get('email')?.valueChanges.subscribe(value => {
+      if (value && value !== value.toLowerCase()) {
+        this.forgotPasswordForm.get('email')?.setValue(value.toLowerCase(), { emitEvent: false });
+      }
+    });
   }
 
   passwordMatchValidator(form: FormGroup) {
@@ -92,6 +105,10 @@ export class RdioScannerUserLoginComponent implements OnInit, OnDestroy {
     }
     if (!/[0-9]/.test(password)) {
       errors.requireNumber = true;
+    }
+    // Check for special character
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      errors.requireSpecial = true;
     }
     
     return Object.keys(errors).length > 0 ? errors : null;
@@ -145,7 +162,10 @@ export class RdioScannerUserLoginComponent implements OnInit, OnDestroy {
       this.loading = true;
       this.error = '';
 
-      const formData = this.loginForm.value;
+      const formData = {
+        email: this.loginForm.value.email.toLowerCase(), // Ensure email is lowercase
+        password: this.loginForm.value.password
+      };
       
       this.http.post('/api/user/login', formData).subscribe({
         next: (response: any) => {
@@ -195,7 +215,9 @@ export class RdioScannerUserLoginComponent implements OnInit, OnDestroy {
       this.loading = true;
       this.error = '';
 
-      const formData = this.forgotPasswordForm.value;
+      const formData = {
+        email: this.forgotPasswordForm.value.email.toLowerCase() // Ensure email is lowercase
+      };
       
       this.http.post('/api/user/forgot-password', formData).subscribe({
         next: (response: any) => {

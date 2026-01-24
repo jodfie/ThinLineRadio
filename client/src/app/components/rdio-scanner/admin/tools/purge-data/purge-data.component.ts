@@ -11,7 +11,8 @@ import { Log, LogsQuery, LogsQueryOptions, CallSearchResult, CallsQuery, CallsQu
     styleUrls: ['./purge-data.component.scss']
 })
 export class RdioScannerAdminPurgeDataComponent {
-    purging = false;
+    purgingCalls = false;
+    purgingLogs = false;
     
     // Selective delete for logs
     logs = new BehaviorSubject(new Array<Log | null>(10));
@@ -44,45 +45,28 @@ export class RdioScannerAdminPurgeDataComponent {
     }
 
     async purgeCalls(): Promise<void> {
-        if (this.purging) {
+        if (this.purgingCalls) {
             return;
         }
 
-        // First confirmation
-        const firstConfirm = confirm(
-            'WARNING: This will permanently delete ALL calls from the database.\n\n' +
-            'This action cannot be undone.\n\n' +
-            'Are you sure you want to continue?'
-        );
-
-        if (!firstConfirm) {
-            return;
-        }
-
-        // Second confirmation
-        const secondConfirm = confirm(
-            'FINAL CONFIRMATION:\n\n' +
-            'You are about to delete ALL calls. This will remove all audio recordings, transcripts, and call metadata.\n\n' +
-            'Type "YES" (you will be prompted) to confirm, or click Cancel to abort.'
-        );
-
-        if (!secondConfirm) {
-            return;
-        }
-
-        // Third confirmation with typed confirmation
+        // Single confirmation with typed confirmation
         const typedConfirm = prompt(
+            'WARNING: This will permanently delete ALL calls from the database.\n\n' +
+            'This will remove all audio recordings, transcripts, and call metadata.\n' +
+            'This action cannot be undone.\n\n' +
             'Please type "PURGE ALL CALLS" (without quotes) to confirm deletion:'
         );
 
         if (typedConfirm !== 'PURGE ALL CALLS') {
-            this.snackBar.open('Purge cancelled. Confirmation text did not match.', 'Close', {
-                duration: 3000
-            });
+            if (typedConfirm !== null) {
+                this.snackBar.open('Purge cancelled. Confirmation text did not match.', 'Close', {
+                    duration: 3000
+                });
+            }
             return;
         }
 
-        this.purging = true;
+        this.purgingCalls = true;
 
         try {
             const result = await this.adminService.purgeData('calls');
@@ -98,50 +82,33 @@ export class RdioScannerAdminPurgeDataComponent {
                 { duration: 5000, panelClass: ['error-snackbar'] }
             );
         } finally {
-            this.purging = false;
+            this.purgingCalls = false;
         }
     }
 
     async purgeLogs(): Promise<void> {
-        if (this.purging) {
+        if (this.purgingLogs) {
             return;
         }
 
-        // First confirmation
-        const firstConfirm = confirm(
-            'WARNING: This will permanently delete ALL logs from the database.\n\n' +
-            'This action cannot be undone.\n\n' +
-            'Are you sure you want to continue?'
-        );
-
-        if (!firstConfirm) {
-            return;
-        }
-
-        // Second confirmation
-        const secondConfirm = confirm(
-            'FINAL CONFIRMATION:\n\n' +
-            'You are about to delete ALL logs. This will remove all system log entries including errors, warnings, and info messages.\n\n' +
-            'Type "YES" (you will be prompted) to confirm, or click Cancel to abort.'
-        );
-
-        if (!secondConfirm) {
-            return;
-        }
-
-        // Third confirmation with typed confirmation
+        // Single confirmation with typed confirmation
         const typedConfirm = prompt(
+            'WARNING: This will permanently delete ALL logs from the database.\n\n' +
+            'This will remove all system log entries including errors, warnings, and info messages.\n' +
+            'This action cannot be undone.\n\n' +
             'Please type "PURGE ALL LOGS" (without quotes) to confirm deletion:'
         );
 
         if (typedConfirm !== 'PURGE ALL LOGS') {
-            this.snackBar.open('Purge cancelled. Confirmation text did not match.', 'Close', {
-                duration: 3000
-            });
+            if (typedConfirm !== null) {
+                this.snackBar.open('Purge cancelled. Confirmation text did not match.', 'Close', {
+                    duration: 3000
+                });
+            }
             return;
         }
 
-        this.purging = true;
+        this.purgingLogs = true;
 
         try {
             const result = await this.adminService.purgeData('logs');
@@ -157,7 +124,7 @@ export class RdioScannerAdminPurgeDataComponent {
                 { duration: 5000, panelClass: ['error-snackbar'] }
             );
         } finally {
-            this.purging = false;
+            this.purgingLogs = false;
         }
     }
 
@@ -287,7 +254,7 @@ export class RdioScannerAdminPurgeDataComponent {
             return;
         }
 
-        this.purging = true;
+        this.purgingLogs = true;
         const ids = Array.from(this.selectedLogIds);
 
         try {
@@ -306,7 +273,7 @@ export class RdioScannerAdminPurgeDataComponent {
                 { duration: 5000, panelClass: ['error-snackbar'] }
             );
         } finally {
-            this.purging = false;
+            this.purgingLogs = false;
         }
     }
 
@@ -357,7 +324,7 @@ export class RdioScannerAdminPurgeDataComponent {
             return;
         }
 
-        this.purging = true;
+        this.purgingCalls = true;
         const ids = Array.from(this.selectedCallIds);
 
         try {
@@ -376,7 +343,7 @@ export class RdioScannerAdminPurgeDataComponent {
                 { duration: 5000, panelClass: ['error-snackbar'] }
             );
         } finally {
-            this.purging = false;
+            this.purgingCalls = false;
         }
     }
 

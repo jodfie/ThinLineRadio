@@ -625,14 +625,13 @@ func (dirwatch *Dirwatch) parseMask(call *Call) {
 
 	switch v := metaval["site"].(type) {
 	case string:
-		if i, err := strconv.Atoi(v); err == nil {
-			if call.System != nil && call.System.Sites != nil {
-				if site, ok := call.System.Sites.GetSiteByRef(uint(i)); ok {
-					call.SiteRef = site.SiteRef
-				}
-			} else {
-				call.Meta.SiteRef = uint(i)
+		// Site ID is now a string to preserve leading zeros
+		if call.System != nil && call.System.Sites != nil {
+			if site, ok := call.System.Sites.GetSiteByRef(v); ok {
+				call.SiteRef = site.SiteRef
 			}
+		} else {
+			call.Meta.SiteRef = v
 		}
 	default:
 		switch v := metaval["sitelbl"].(type) {

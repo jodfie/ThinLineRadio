@@ -63,6 +63,7 @@ export interface RadioReferenceSite {
     countyId: number;
     countyName: string;
     rfss: number;
+    frequencies?: number[]; // Site frequencies
 }
 
 @Component({
@@ -139,8 +140,93 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
     
     // Talkgroup selection
     private selectedTalkgroupIds: Set<number> = new Set<number>();
+    
+    // Site selection
+    private selectedSiteIds: Set<number> = new Set<number>();
+    allSites: RadioReferenceSite[] = [];
+    filteredSites: RadioReferenceSite[] = [];
 
     constructor(private adminService: RdioScannerAdminService) { }
+
+    // State persistence key
+    private readonly STORAGE_KEY = 'rdio-scanner-rr-import-state';
+
+    // Save current state to localStorage
+    private saveState(): void {
+        const state = {
+            importType: this.importType,
+            targetSystemId: this.targetSystemId,
+            selectedCountryId: this.selectedCountryId,
+            selectedStateId: this.selectedStateId,
+            selectedCountyId: this.selectedCountyId,
+            selectedSystem: this.selectedSystem,
+            countries: this.countries,
+            states: this.states,
+            counties: this.counties,
+            systems: this.systems,
+            talkgroupCategories: this.talkgroupCategories,
+            selectedCategories: this.selectedCategories,
+            allTalkgroups: this.allTalkgroups,
+            allSites: this.allSites,
+            importData: this.importData,
+        };
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state));
+    }
+
+    // Restore state from localStorage
+    private restoreState(): boolean {
+        const saved = localStorage.getItem(this.STORAGE_KEY);
+        if (!saved) return false;
+
+        try {
+            const state = JSON.parse(saved);
+            
+            // Restore import settings
+            this.importType = state.importType || 'talkgroups';
+            this.targetSystemId = state.targetSystemId;
+            
+            // Restore location selections
+            this.selectedCountryId = state.selectedCountryId;
+            this.selectedStateId = state.selectedStateId;
+            this.selectedCountyId = state.selectedCountyId;
+            
+            // Restore selected system
+            this.selectedSystem = state.selectedSystem;
+            
+            // Restore dropdown data
+            this.countries = state.countries || [];
+            this.states = state.states || [];
+            this.counties = state.counties || [];
+            this.systems = state.systems || [];
+            
+            // Restore categories
+            this.talkgroupCategories = state.talkgroupCategories || [];
+            this.selectedCategories = state.selectedCategories || [];
+            
+            // Restore loaded data
+            this.allTalkgroups = state.allTalkgroups || [];
+            this.allSites = state.allSites || [];
+            this.importData = state.importData || [];
+            
+            // Re-apply filters if data was loaded
+            if (this.allTalkgroups.length > 0) {
+                this.applyFilters();
+            }
+            if (this.allSites.length > 0) {
+                this.applySiteFilters();
+            }
+            
+            return true;
+        } catch (e) {
+            console.error('Failed to restore Radio Reference state:', e);
+            return false;
+        }
+    }
+
+    // Clear saved state
+    clearSavedState(): void {
+        localStorage.removeItem(this.STORAGE_KEY);
+    }
 
     onCredentialsChange(): void {
         // Clear connection status when credentials change
@@ -171,6 +257,9 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
     ngOnInit(): void {
         // Only load data if user is authenticated
         if (this.adminService.authenticated) {
+            // Try to restore previous state first
+            const stateRestored = this.restoreState();
+            
             this.loadConfig(); // Load configuration including RadioReference credentials
             this.checkWebSocketStatus();
             
@@ -178,11 +267,16 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
             setInterval(() => {
                 this.checkWebSocketStatus();
             }, 10000); // Check every 10 seconds
+
+            if (stateRestored) {
+                console.log('Radio Reference state restored from previous session');
+            }
         }
     }
 
     onTargetSystemIdChange(value: any): void {
         this.targetSystemId = this.normalizeSystemId(value);
+        this.saveState(); // Save state
     }
 
     async loadConfig(): Promise<void> {
@@ -258,6 +352,7 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         try {
             const res = await this.adminService.rrGetCountries();
             this.countries = res?.items || [];
+            this.saveState(); // Save state
         } catch (error) {
             console.error('Error loading countries:', error);
         }
@@ -272,6 +367,8 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
             console.log('No country selected');
         }
         
+        this.saveState(); // Save state
+        
         this.states = [];
         this.counties = [];
         this.systems = [];
@@ -284,6 +381,7 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         if (this.selectedCountryId) {
             const res = await this.adminService.rrGetStates(this.selectedCountryId);
             this.states = res?.items || [];
+            this.saveState(); // Save state after loading states
         }
     }
 
@@ -295,9 +393,12 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         this.allTalkgroups = [];
         this.filteredTalkgroups = [];
         
+        this.saveState(); // Save state
+        
         if (this.selectedStateId) {
             const res = await this.adminService.rrGetCounties(this.selectedStateId);
             this.counties = res?.items || [];
+            this.saveState(); // Save state after loading counties
         }
     }
 
@@ -310,6 +411,9 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         if (this.selectedCountyId) {
             const res = await this.adminService.rrGetSystems(this.selectedCountyId);
             this.systems = res?.items || [];
+            this.saveState(); // Save state after loading systems
+        } else {
+            this.saveState(); // Save state even if no county selected
         }
     }
 
@@ -357,6 +461,8 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
                 this.loadSites();
             }
         }
+        
+        this.saveState(); // Save state
     }
 
     selectSystem(system: RadioReferenceSystem): void {
@@ -373,6 +479,8 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         } else if (this.importType === 'sites' && this.importData.length === 0) {
             this.loadSites();
         }
+        
+        this.saveState(); // Save state
     }
 
     async importDataFromRR(): Promise<void> {
@@ -666,21 +774,34 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
 
         // Import sites - update existing or create new
         this.importData.forEach((site: RadioReferenceSite, index: number) => {
-            // Check if site already exists (match by siteRef)
-            const existingSite = targetSystem.sites.find((s: any) => s.siteRef === site.id);
+            // Check if site already exists (match by siteRef as string)
+            const existingSite = targetSystem.sites.find((s: any) => s.siteRef === site.id.toString());
             
             if (existingSite) {
-                // UPDATE existing site - only update label from Radio Reference
+                // UPDATE existing site - update label, RFSS, and frequencies from Radio Reference
                 existingSite.label = site.name;
+                existingSite.rfss = site.rfss || 0;
+                
+                // Update frequencies if available (keep as numbers for server)
+                if (site.frequencies && site.frequencies.length > 0) {
+                    existingSite.frequencies = [...site.frequencies];
+                }
+                
                 // Don't touch order or any custom settings
                 updated++;
             } else {
                 // CREATE new site (don't set id - let database auto-generate)
                 const newSite: any = {
-                    siteRef: site.id,
+                    siteRef: site.id.toString(), // Store as string to preserve leading zeros
+                    rfss: site.rfss || 0,
                     label: site.name,
                     order: targetSystem.sites.length + 1
                 };
+
+                // Add frequencies if available (keep as numbers for server)
+                if (site.frequencies && site.frequencies.length > 0) {
+                    newSite.frequencies = [...site.frequencies];
+                }
 
                 targetSystem.sites.push(newSite);
                 created++;
@@ -737,6 +858,8 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
             this.selectedCategories = [];
             this.selectAllCategories = false;
             this.selectedTalkgroupIds.clear();
+        } finally {
+            this.saveState(); // Save state
         }
     }
 
@@ -746,14 +869,17 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         try {
             this.isImporting = true;
             this.errorMessage = '';
+            this.selectedSiteIds.clear();
             
             // Get sites for the selected system
             const response = await this.adminService.getRadioReferenceSites(this.selectedSystem.id);
             
             if (response && response.success && response.data) {
-                this.importData = response.data;
+                this.allSites = response.data;
+                this.applySiteFilters(); // Apply filters to populate filteredSites
             } else {
-                this.importData = [];
+                this.allSites = [];
+                this.filteredSites = [];
                 if (response && response.error) {
                     this.errorMessage = response.error;
                 }
@@ -763,7 +889,10 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         } catch (error) {
             this.isImporting = false;
             this.errorMessage = 'Failed to load sites: ' + error;
-            this.importData = [];
+            this.allSites = [];
+            this.filteredSites = [];
+        } finally {
+            this.saveState(); // Save state
         }
     }
 
@@ -855,6 +984,7 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
             this.filteredTalkgroups = [];
         } finally {
             this.isLoading = false;
+            this.saveState(); // Save state
         }
     }
 
@@ -889,6 +1019,8 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         
         // Load talkgroups for selected categories
         this.loadTalkgroups();
+        
+        this.saveState(); // Save state
     }
 
     toggleSelectAllCategories(): void {
@@ -919,6 +1051,8 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         
         // Load talkgroups
         this.loadTalkgroups();
+        
+        this.saveState(); // Save state
     }
 
     isCategorySelected(category: { id: number, name: string, description: string }): boolean {
@@ -960,8 +1094,13 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
     }
 
     onSearchChange(): void {
-        this.applyFilters();
-        this.selectedTalkgroupIds.clear();
+        if (this.importType === 'talkgroups') {
+            this.applyFilters();
+            this.selectedTalkgroupIds.clear();
+        } else if (this.importType === 'sites') {
+            this.applySiteFilters();
+            this.selectedSiteIds.clear();
+        }
     }
 
     onGroupFilterChange(): void {
@@ -999,8 +1138,16 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
 
     getCurrentPageInfo(): string {
         const start = this.currentPage * this.pageSize + 1;
-        const end = Math.min((this.currentPage + 1) * this.pageSize, this.filteredTalkgroups.length);
-        const total = this.filteredTalkgroups.length;
+        let end, total;
+        
+        if (this.importType === 'sites') {
+            end = Math.min((this.currentPage + 1) * this.pageSize, this.filteredSites.length);
+            total = this.filteredSites.length;
+        } else {
+            end = Math.min((this.currentPage + 1) * this.pageSize, this.filteredTalkgroups.length);
+            total = this.filteredTalkgroups.length;
+        }
+        
         return `${start}-${end} of ${total}`;
     }
 
@@ -1051,6 +1198,105 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
 
     getSelectedTalkgroupCount(): number {
         return this.selectedTalkgroupIds.size;
+    }
+
+    // Site selection and management methods
+    isSiteSelected(site: RadioReferenceSite): boolean {
+        return this.selectedSiteIds.has(site.id);
+    }
+
+    onSiteCheckboxChange(site: RadioReferenceSite, checked: boolean): void {
+        if (checked) {
+            this.selectedSiteIds.add(site.id);
+        } else {
+            this.selectedSiteIds.delete(site.id);
+        }
+    }
+
+    areAllVisibleSitesSelected(): boolean {
+        const visible = this.getPaginatedSites();
+        return visible.length > 0 && visible.every(s => this.selectedSiteIds.has(s.id));
+    }
+
+    areSomeVisibleSitesSelected(): boolean {
+        const visible = this.getPaginatedSites();
+        const selectedCount = visible.filter(s => this.selectedSiteIds.has(s.id)).length;
+        return selectedCount > 0 && selectedCount < visible.length;
+    }
+
+    toggleSelectAllVisibleSites(checked: boolean): void {
+        const visible = this.getPaginatedSites();
+        if (checked) {
+            visible.forEach(s => this.selectedSiteIds.add(s.id));
+        } else {
+            visible.forEach(s => this.selectedSiteIds.delete(s.id));
+        }
+    }
+
+    selectAllSites(): void {
+        this.filteredSites.forEach(s => this.selectedSiteIds.add(s.id));
+    }
+
+    selectAllVisibleSites(): void {
+        this.toggleSelectAllVisibleSites(true);
+    }
+
+    clearSelectedSites(): void {
+        this.selectedSiteIds.clear();
+        this.successMessage = '';
+    }
+
+    getSelectedSiteCount(): number {
+        return this.selectedSiteIds.size;
+    }
+
+    getPaginatedSites(): RadioReferenceSite[] {
+        const startIndex = this.currentPage * this.pageSize;
+        return this.filteredSites.slice(startIndex, startIndex + this.pageSize);
+    }
+
+    addSelectedSitesToImportList(): void {
+        if (this.getSelectedSiteCount() === 0) {
+            this.errorMessage = 'Please select at least one site to add to import list';
+            return;
+        }
+
+        // Get the selected sites from filteredSites
+        const sitesToAdd = this.filteredSites.filter(site => this.selectedSiteIds.has(site.id));
+
+        // Add to import data, avoiding duplicates
+        sitesToAdd.forEach(site => {
+            if (!this.importData.some((s: any) => s.id === site.id)) {
+                this.importData.push(site);
+            }
+        });
+
+        this.successMessage = `Added ${sitesToAdd.length} site(s) to import list. Total: ${this.importData.length}`;
+        this.errorMessage = '';
+        this.clearSelectedSites();
+        this.saveState();
+    }
+
+    removeSiteFromImportList(site: RadioReferenceSite): void {
+        this.importData = this.importData.filter((s: any) => s.id !== site.id);
+        this.saveState();
+    }
+
+    applySiteFilters(): void {
+        let filtered = this.allSites;
+
+        // Search filter (search by ID, name, county)
+        if (this.searchTerm) {
+            const term = this.searchTerm.toLowerCase();
+            filtered = filtered.filter(site =>
+                site.id.toString().includes(term) ||
+                site.name.toLowerCase().includes(term) ||
+                site.countyName.toLowerCase().includes(term)
+            );
+        }
+
+        this.filteredSites = filtered;
+        this.currentPage = 0;
     }
 
     addSelectedTalkgroupsToImportList(): void {
@@ -1132,7 +1378,12 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         this.tagFilter = '';
         this.encryptedFilter = null;
         this.encryptedFilterSelection = 'all';
-        this.applyFilters();
+        
+        if (this.importType === 'sites') {
+            this.applySiteFilters();
+        } else {
+            this.applyFilters();
+        }
     }
 
     exportToCsv(): void {

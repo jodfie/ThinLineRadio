@@ -343,9 +343,8 @@ func ParseMultipartContent(call *Call, p *multipart.Part, b []byte) {
 		}
 
 	case "site":
-		if i, err := strconv.Atoi(string(b)); err == nil && i > 0 {
-			call.SiteRef = uint(i)
-		}
+		// Site ID is now a string to preserve leading zeros
+		call.SiteRef = string(b)
 
 	case "siteId":
 		if i, err := strconv.Atoi(string(b)); err == nil && i > 0 {
@@ -415,9 +414,8 @@ func ParseMultipartContent(call *Call, p *multipart.Part, b []byte) {
 		}
 
 	case "siteRef":
-		if i, err := strconv.Atoi(string(b)); err == nil && i > 0 {
-			call.Meta.SiteRef = uint(i)
-		}
+		// Site ID is now a string to preserve leading zeros
+		call.Meta.SiteRef = string(b)
 
 	case "units":
 		var f any

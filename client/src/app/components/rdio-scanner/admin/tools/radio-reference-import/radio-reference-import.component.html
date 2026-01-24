@@ -4,6 +4,15 @@
     <p class="mat-body-1" style="color: #f44336; font-size: 1.05em; margin-top: 8px; font-weight: 500;">
         It is recommended to import on your server when accessing it via localhost, connecting through a tunnel or url could create issues.
     </p>
+    <div style="margin-top: 12px;">
+        <button mat-button color="accent" (click)="clearSavedState()" style="font-size: 0.9em;">
+            <mat-icon style="font-size: 18px; height: 18px; width: 18px;">delete_sweep</mat-icon>
+            Clear Saved State
+        </button>
+        <span class="mat-caption" style="margin-left: 8px; color: #999;">
+            (This page automatically saves your selections)
+        </span>
+    </div>
 </section>
 
 <section>
@@ -408,9 +417,12 @@
             </button>
         </div>
 
-        <div class="results-info" *ngIf="importData.length > 0">
+        <div class="results-info" *ngIf="filteredSites.length > 0">
             <span class="mat-body-2">
-                Found {{ importData.length }} sites for this system
+                Showing {{ getCurrentPageInfo() }} sites
+                <span *ngIf="filteredSites.length !== allSites.length">
+                    (filtered from {{ allSites.length }} total)
+                </span>
             </span>
         </div>
 
@@ -423,8 +435,47 @@
             <span class="mat-body-2">Loading sites...</span>
         </div>
 
-        <div class="sites-table" *ngIf="!isImporting && importData.length > 0">
-            <mat-table [dataSource]="importData" class="mat-elevation-z1">
+        <!-- Site selection actions -->
+        <div class="selection-actions" *ngIf="!isImporting && filteredSites.length > 0" style="margin: 16px 0; display: flex; gap: 12px; align-items: center;">
+            <button mat-raised-button color="primary" (click)="selectAllSites()">
+                <mat-icon>done_all</mat-icon>
+                Select All ({{ filteredSites.length }})
+            </button>
+            <button mat-raised-button color="primary" (click)="selectAllVisibleSites()">
+                <mat-icon>done</mat-icon>
+                Select Page
+            </button>
+            <button mat-button (click)="clearSelectedSites()">
+                <mat-icon>clear</mat-icon>
+                Clear Selection
+            </button>
+            <button mat-raised-button color="accent" (click)="addSelectedSitesToImportList()" [disabled]="getSelectedSiteCount() === 0">
+                <mat-icon>add</mat-icon>
+                Add Selected to Import ({{ getSelectedSiteCount() }})
+            </button>
+        </div>
+
+        <div class="sites-table" *ngIf="!isImporting && filteredSites.length > 0">
+            <mat-table [dataSource]="getPaginatedSites()" class="mat-elevation-z1">
+                <!-- Select Column -->
+                <ng-container matColumnDef="select">
+                    <mat-header-cell *matHeaderCellDef>
+                        <mat-checkbox
+                            color="primary"
+                            [checked]="areAllVisibleSitesSelected()"
+                            [indeterminate]="areSomeVisibleSitesSelected()"
+                            (change)="toggleSelectAllVisibleSites($event.checked)">
+                        </mat-checkbox>
+                    </mat-header-cell>
+                    <mat-cell *matCellDef="let site">
+                        <mat-checkbox
+                            color="primary"
+                            [checked]="isSiteSelected(site)"
+                            (change)="onSiteCheckboxChange(site, $event.checked)">
+                        </mat-checkbox>
+                    </mat-cell>
+                </ng-container>
+
                 <!-- RFSS Column -->
                 <ng-container matColumnDef="siteRfss">
                     <mat-header-cell *matHeaderCellDef>RFSS</mat-header-cell>
@@ -461,14 +512,42 @@
                     <mat-cell *matCellDef="let site">{{ site.longitude || 'N/A' }}</mat-cell>
                 </ng-container>
 
-                <mat-header-row *matHeaderRowDef="['siteRfss', 'siteSite', 'siteName', 'siteCounty', 'siteLat', 'siteLon']"></mat-header-row>
-                <mat-row *matRowDef="let row; columns: ['siteRfss', 'siteSite', 'siteName', 'siteCounty', 'siteLat', 'siteLon'];"></mat-row>
+                <!-- Frequencies Column -->
+                <ng-container matColumnDef="siteFrequencies">
+                    <mat-header-cell *matHeaderCellDef>Frequencies</mat-header-cell>
+                    <mat-cell *matCellDef="let site">
+                        <span *ngIf="site.frequencies && site.frequencies.length > 0">
+                            {{ site.frequencies.length }} freq(s)
+                        </span>
+                        <span *ngIf="!site.frequencies || site.frequencies.length === 0" style="color: #999;">
+                            None
+                        </span>
+                    </mat-cell>
+                </ng-container>
+
+                <mat-header-row *matHeaderRowDef="['select', 'siteRfss', 'siteSite', 'siteName', 'siteCounty', 'siteLat', 'siteLon', 'siteFrequencies']"></mat-header-row>
+                <mat-row *matRowDef="let row; columns: ['select', 'siteRfss', 'siteSite', 'siteName', 'siteCounty', 'siteLat', 'siteLon', 'siteFrequencies'];"></mat-row>
             </mat-table>
+
+            <!-- Paginator -->
+            <mat-paginator
+                [length]="filteredSites.length"
+                [pageSize]="pageSize"
+                [pageSizeOptions]="[25, 50, 100, 250]"
+                [pageIndex]="currentPage"
+                (page)="onPageChange($event)"
+                showFirstLastButtons>
+            </mat-paginator>
         </div>
 
-        <div class="no-data" *ngIf="!isImporting && importData.length === 0">
+        <div class="no-data" *ngIf="!isImporting && allSites.length === 0">
             <mat-icon style="font-size: 48px; color: #ccc;">location_on</mat-icon>
-            <p class="mat-body-2">No sites loaded. Select a system and click "Load Selected".</p>
+            <p class="mat-body-2">No sites loaded. Select a system and click "Load Sites".</p>
+        </div>
+
+        <div class="no-data" *ngIf="!isImporting && allSites.length > 0 && filteredSites.length === 0">
+            <mat-icon style="font-size: 48px; color: #ccc;">search_off</mat-icon>
+            <p class="mat-body-2">No sites match your search criteria.</p>
         </div>
     </div>
 
@@ -479,7 +558,8 @@
     <h4 class="mat-h4">Review Data to Import</h4>
     <div class="import-preview">
         <div class="scroll">
-            <mat-table #importTable [dataSource]="importData" class="mat-elevation-z1">
+            <!-- Talkgroups Table -->
+            <mat-table *ngIf="importType === 'talkgroups'" #importTable [dataSource]="importData" class="mat-elevation-z1">
                 <ng-container matColumnDef="id">
                     <mat-header-cell *matHeaderCellDef>ID</mat-header-cell>
                     <mat-cell *matCellDef="let item">{{ item.id }}</mat-cell>
@@ -521,6 +601,63 @@
 
                 <mat-header-row *matHeaderRowDef="importColumns"></mat-header-row>
                 <mat-row *matRowDef="let row; columns: importColumns;"></mat-row>
+            </mat-table>
+
+            <!-- Sites Table -->
+            <mat-table *ngIf="importType === 'sites'" #importTable [dataSource]="importData" class="mat-elevation-z1">
+                <ng-container matColumnDef="rfss">
+                    <mat-header-cell *matHeaderCellDef>RFSS</mat-header-cell>
+                    <mat-cell *matCellDef="let site">{{ site.rfss || 'N/A' }}</mat-cell>
+                </ng-container>
+
+                <ng-container matColumnDef="id">
+                    <mat-header-cell *matHeaderCellDef>Site ID</mat-header-cell>
+                    <mat-cell *matCellDef="let site">{{ site.id }}</mat-cell>
+                </ng-container>
+
+                <ng-container matColumnDef="name">
+                    <mat-header-cell *matHeaderCellDef>Name</mat-header-cell>
+                    <mat-cell *matCellDef="let site">{{ site.name }}</mat-cell>
+                </ng-container>
+
+                <ng-container matColumnDef="county">
+                    <mat-header-cell *matHeaderCellDef>County</mat-header-cell>
+                    <mat-cell *matCellDef="let site">{{ site.countyName || 'N/A' }}</mat-cell>
+                </ng-container>
+
+                <ng-container matColumnDef="latitude">
+                    <mat-header-cell *matHeaderCellDef>Latitude</mat-header-cell>
+                    <mat-cell *matCellDef="let site">{{ site.latitude }}</mat-cell>
+                </ng-container>
+
+                <ng-container matColumnDef="longitude">
+                    <mat-header-cell *matHeaderCellDef>Longitude</mat-header-cell>
+                    <mat-cell *matCellDef="let site">{{ site.longitude }}</mat-cell>
+                </ng-container>
+
+                <ng-container matColumnDef="frequencies">
+                    <mat-header-cell *matHeaderCellDef>Frequencies</mat-header-cell>
+                    <mat-cell *matCellDef="let site">
+                        <span *ngIf="site.frequencies && site.frequencies.length > 0">
+                            {{ site.frequencies.join(', ') }}
+                        </span>
+                        <span *ngIf="!site.frequencies || site.frequencies.length === 0" style="color: #999;">
+                            None
+                        </span>
+                    </mat-cell>
+                </ng-container>
+
+                <ng-container matColumnDef="action">
+                    <mat-header-cell *matHeaderCellDef></mat-header-cell>
+                    <mat-cell *matCellDef="let site">
+                        <button mat-icon-button color="warn" (click)="removeSiteFromImportList(site)">
+                            <mat-icon>delete</mat-icon>
+                        </button>
+                    </mat-cell>
+                </ng-container>
+
+                <mat-header-row *matHeaderRowDef="['rfss', 'id', 'name', 'county', 'latitude', 'longitude', 'frequencies', 'action']"></mat-header-row>
+                <mat-row *matRowDef="let row; columns: ['rfss', 'id', 'name', 'county', 'latitude', 'longitude', 'frequencies', 'action'];"></mat-row>
             </mat-table>
         </div>
 

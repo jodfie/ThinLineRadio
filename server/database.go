@@ -285,6 +285,16 @@ func (db *Database) migrate() error {
 		return formatError(err, "")
 	}
 
+	// Enhanced duplicate detection with site frequencies, preferred sites, and API key preferences
+	if err := migrateEnhancedDuplicateDetection(db); err != nil {
+		return formatError(err, "")
+	}
+
+	// System health alert options (Beta 8/9)
+	if err := migrateSystemHealthAlertOptions(db); err != nil {
+		return formatError(err, "")
+	}
+
 	return nil
 }
 

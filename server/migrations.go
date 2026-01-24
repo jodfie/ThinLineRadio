@@ -1661,6 +1661,19 @@ func migrateToneDetection(db *Database) error {
 	queries := []string{
 		`ALTER TABLE "talkgroups" ADD COLUMN IF NOT EXISTS "toneDetectionEnabled" boolean NOT NULL DEFAULT false`,
 		`ALTER TABLE "talkgroups" ADD COLUMN IF NOT EXISTS "toneSets" text NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE "talkgroups" ADD COLUMN IF NOT EXISTS "excludeFromPreferredSite" boolean NOT NULL DEFAULT false`,
+	}
+	for _, query := range queries {
+		if _, err := db.Sql.Exec(query); err != nil {
+			// Column might already exist, that's okay
+			log.Printf("migration note: %v", err)
+		}
+	}
+
+	// Add noAudioAlertsEnabled column to systems table
+	queries = []string{
+		`ALTER TABLE "systems" ADD COLUMN IF NOT EXISTS "noAudioAlertsEnabled" boolean NOT NULL DEFAULT true`,
+		`ALTER TABLE "systems" ADD COLUMN IF NOT EXISTS "noAudioThresholdMinutes" integer NOT NULL DEFAULT 30`,
 	}
 	for _, query := range queries {
 		if _, err := db.Sql.Exec(query); err != nil {
@@ -2140,5 +2153,155 @@ func migrateTagsColor(db *Database) error {
 	if _, err := db.Sql.Exec(query); err != nil {
 		log.Printf("migration note: %v", err)
 	}
+	return nil
+}
+
+// migrateEnhancedDuplicateDetection adds fields for advanced duplicate detection
+// - Site frequencies and preferred flag
+// - System and talkgroup preferred API keys
+// - Duplicate detection mode option
+func migrateEnhancedDuplicateDetection(db *Database) error {
+	formatError := errorFormatter("migration", "migrateEnhancedDuplicateDetection")
+
+	log.Println("migrating enhanced duplicate detection features...")
+
+	// Add frequencies column to sites table (JSON array of floats)
+	query := `ALTER TABLE "sites" ADD COLUMN IF NOT EXISTS "frequencies" TEXT NOT NULL DEFAULT '[]'`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+
+	// Add preferred flag to sites table
+	query = `ALTER TABLE "sites" ADD COLUMN IF NOT EXISTS "preferred" BOOLEAN NOT NULL DEFAULT false`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+
+	// Add RFSS column to sites table
+	query = `ALTER TABLE "sites" ADD COLUMN IF NOT EXISTS "rfss" INTEGER NOT NULL DEFAULT 0`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+
+	// Change siteRef from INTEGER to TEXT to preserve leading zeros (e.g., "001", "021")
+	// SQLite doesn't support ALTER COLUMN TYPE directly, so we need to:
+	// 1. Add a new column
+	// 2. Copy data
+	// 3. Drop old column
+	// 4. Rename new column
+	query = `ALTER TABLE "sites" ADD COLUMN IF NOT EXISTS "siteRef_new" TEXT NOT NULL DEFAULT ''`
+	if _, err := db.Sql.Exec(query); err != nil {
+		log.Printf("migration note: %v", err)
+	}
+
+	// Copy existing siteRef values to new column (convert numbers to strings)
+	query = `UPDATE "sites" SET "siteRef_new" = CAST("siteRef" AS TEXT) WHERE "siteRef_new" = ''`
+	if _, tmpErr := db.Sql.Exec(query); tmpErr != nil {
+		log.Printf("migration note: %v", tmpErr)
+	}
+
+	// Check if we need to do the column swap
+	var oldColExists bool
+	tmpErr := db.Sql.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sites') WHERE name='siteRef' AND type != 'TEXT'`).Scan(&oldColExists)
+	if tmpErr == nil && oldColExists {
+		// Drop old siteRef column (only if it's not TEXT yet)
+		// Note: This requires SQLite 3.35.0+ for DROP COLUMN support
+		query = `ALTER TABLE "sites" DROP COLUMN "siteRef"`
+		if _, err := db.Sql.Exec(query); err != nil {
+			log.Printf("migration note: could not drop old siteRef column (SQLite version may be too old): %v", err)
+			log.Printf("migration note: keeping both columns - please manually update your database")
+		} else {
+			// Rename new column to siteRef
+			query = `ALTER TABLE "sites" RENAME COLUMN "siteRef_new" TO "siteRef"`
+			if _, err := db.Sql.Exec(query); err != nil {
+				log.Printf("migration note: %v", err)
+			}
+		}
+	}
+
+	// Add preferredApiKeyId to systems table
+	query = `ALTER TABLE "systems" ADD COLUMN IF NOT EXISTS "preferredApiKeyId" INTEGER`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+
+	// Add preferredApiKeyId to talkgroups table
+	query = `ALTER TABLE "talkgroups" ADD COLUMN IF NOT EXISTS "preferredApiKeyId" INTEGER`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+
+	// Add duplicate detection mode option (defaults to "legacy" for backward compatibility)
+	query = `INSERT INTO "options" ("key", "value") 
+	         SELECT 'duplicateDetectionMode', '"legacy"'
+	         WHERE NOT EXISTS (SELECT 1 FROM "options" WHERE "key" = 'duplicateDetectionMode')`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+
+	// Add advanced detection time frame option (defaults to 1000ms)
+	query = `INSERT INTO "options" ("key", "value") 
+	         SELECT 'advancedDetectionTimeFrame', '1000'
+	         WHERE NOT EXISTS (SELECT 1 FROM "options" WHERE "key" = 'advancedDetectionTimeFrame')`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+
+	// Create indexes for performance
+	query = `CREATE INDEX IF NOT EXISTS "idx_systems_preferred_apikey" ON "systems" ("preferredApiKeyId")`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+
+	query = `CREATE INDEX IF NOT EXISTS "idx_talkgroups_preferred_apikey" ON "talkgroups" ("preferredApiKeyId")`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+
+	log.Println("enhanced duplicate detection migration completed successfully")
+
+	return nil
+}
+
+// migrateSystemHealthAlertOptions adds default values for system health alert settings
+// These options were added in Beta 8/9 but never had a migration to initialize them
+func migrateSystemHealthAlertOptions(db *Database) error {
+	log.Println("migrating system health alert options...")
+
+	// List of all system health alert options with their default values
+	options := map[string]string{
+		"systemHealthAlertsEnabled":           "true",
+		"transcriptionFailureAlertsEnabled":   "true",
+		"toneDetectionAlertsEnabled":          "true",
+		"noAudioAlertsEnabled":                "true",
+		"transcriptionFailureThreshold":       "10",
+		"transcriptionFailureTimeWindow":      "24",
+		"toneDetectionIssueThreshold":         "5",
+		"toneDetectionTimeWindow":             "24",
+		"noAudioThresholdMinutes":             "30",
+		"noAudioMultiplier":                   "1.5",
+		"noAudioTimeWindow":                   "24",
+		"noAudioHistoricalDataDays":           "7",
+		"transcriptionFailureRepeatMinutes":   "60",
+		"toneDetectionRepeatMinutes":          "60",
+		"noAudioRepeatMinutes":                "30",
+		"alertRetentionDays":                  "5",
+	}
+
+	// Insert each option if it doesn't already exist
+	for key, value := range options {
+		query := fmt.Sprintf(`INSERT INTO "options" ("key", "value") 
+		         SELECT '%s', '%s'
+		         WHERE NOT EXISTS (SELECT 1 FROM "options" WHERE "key" = '%s')`,
+			escapeQuotes(key), value, escapeQuotes(key))
+
+		if _, err := db.Sql.Exec(query); err != nil {
+			// Log but don't fail migration if individual option fails
+			log.Printf("migration note for option %s: %v", key, err)
+		}
+	}
+
+	log.Println("system health alert options migration completed successfully")
+
 	return nil
 }

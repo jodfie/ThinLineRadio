@@ -10,7 +10,7 @@
         <mat-icon class="warning-icon">warning</mat-icon>
         <div class="warning-text">
             <strong>WARNING:</strong> These operations are destructive and permanent. 
-            All data will be immediately deleted and cannot be recovered.
+            Each button only deletes the selected data type (calls or logs). Data cannot be recovered.
         </div>
     </div>
 
@@ -24,11 +24,11 @@
                 mat-raised-button 
                 color="warn" 
                 (click)="purgeCalls()"
-                [disabled]="purging">
-                <mat-icon *ngIf="!purging">delete_forever</mat-icon>
-                <mat-spinner diameter="20" *ngIf="purging"></mat-spinner>
-                <span *ngIf="!purging">Purge All Calls</span>
-                <span *ngIf="purging">Purging...</span>
+                [disabled]="purgingCalls">
+                <mat-icon *ngIf="!purgingCalls">delete_forever</mat-icon>
+                <mat-spinner diameter="20" *ngIf="purgingCalls"></mat-spinner>
+                <span *ngIf="!purgingCalls">Purge All Calls</span>
+                <span *ngIf="purgingCalls">Purging...</span>
             </button>
         </div>
 
@@ -41,11 +41,11 @@
                 mat-raised-button 
                 color="warn" 
                 (click)="purgeLogs()"
-                [disabled]="purging">
-                <mat-icon *ngIf="!purging">delete_forever</mat-icon>
-                <mat-spinner diameter="20" *ngIf="purging"></mat-spinner>
-                <span *ngIf="!purging">Purge All Logs</span>
-                <span *ngIf="purging">Purging...</span>
+                [disabled]="purgingLogs">
+                <mat-icon *ngIf="!purgingLogs">delete_forever</mat-icon>
+                <mat-spinner diameter="20" *ngIf="purgingLogs"></mat-spinner>
+                <span *ngIf="!purgingLogs">Purge All Logs</span>
+                <span *ngIf="purgingLogs">Purging...</span>
             </button>
         </div>
     </div>
@@ -81,7 +81,7 @@
                         mat-raised-button 
                         color="warn" 
                         (click)="deleteSelectedLogs()"
-                        [disabled]="purging || selectedLogIds.size === 0">
+                        [disabled]="purgingLogs || selectedLogIds.size === 0">
                         <mat-icon>delete</mat-icon>
                         Delete Selected ({{ selectedLogIds.size }})
                     </button>
@@ -202,7 +202,7 @@
                         mat-raised-button 
                         color="warn" 
                         (click)="deleteSelectedCalls()"
-                        [disabled]="purging || selectedCallIds.size === 0">
+                        [disabled]="purgingCalls || selectedCallIds.size === 0">
                         <mat-icon>delete</mat-icon>
                         Delete Selected ({{ selectedCallIds.size }})
                     </button>

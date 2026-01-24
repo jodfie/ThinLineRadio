@@ -11,15 +11,20 @@
   <div class="row">
     <p>
       <span class="mat-body">Audio Conversion</span><br>
-      <span class="mat-caption">Convert incoming audio files to H.264 m4a with ffmpeg.</span>
+      <span class="mat-caption">Convert incoming audio files with ffmpeg. Loudness normalization makes all channels sound equally loud (both boosts quiet channels and reduces loud ones to target level).</span>
     </p>
     <mat-form-field floatLabel="auto">
       <mat-select formControlName="audioConversion" placeholder="Audio Conversion">
         <mat-option [value]="0">Disabled</mat-option>
         <mat-option [value]="1">Enabled without normalization</mat-option>
-        <mat-option [value]="2">Enabled with normalization</mat-option>
-        <mat-option [value]="3">Enabled with loud normalization</mat-option>
+        <mat-option [value]="2">Conservative normalization (-16 LUFS) - Broadcast standard</mat-option>
+        <mat-option [value]="3">Standard normalization (-12 LUFS) - Recommended</mat-option>
+        <mat-option [value]="4">Aggressive normalization (-10 LUFS) - Dispatcher optimized</mat-option>
+        <mat-option [value]="5">Maximum normalization (-8 LUFS) - Very loud</mat-option>
       </mat-select>
+      <mat-hint *ngIf="form?.get('audioConversion')?.value >= 2" style="color: #666; font-size: 0.85em; margin-top: 8px;">
+        Normalization equalizes volume across all channels. Louder settings (-12 to -8 LUFS) boost quiet channels more and reduce loud channels more to maintain consistency.
+      </mat-hint>
     </mat-form-field>
   </div>
   <div class="row">
@@ -99,25 +104,73 @@
   <div class="row">
     <p>
       <span class="mat-body">Disable Duplicate Call Detection</span><br>
-      <span class="mat-caption">Disable duplicate audio file detection.</span>
+      <span class="mat-caption">Completely disable duplicate call detection.</span>
     </p>
     <div>
       <mat-slide-toggle color="primary" formControlName="disableDuplicateDetection"></mat-slide-toggle>
     </div>
   </div>
-  <div class="row">
+  
+  <!-- Show mode selector when duplicate detection is enabled -->
+  <div class="row" *ngIf="!form.get('disableDuplicateDetection')?.value">
     <p>
-      <span class="mat-body">Duplicate Call Detection Time Frame</span><br>
-      <span class="mat-caption">New incoming calls will be rejected if a call already exists in the database with
-                a start time of +/- this delay in milliseconds.</span>
+      <span class="mat-body">Duplicate Detection Mode</span><br>
+      <span class="mat-caption">
+        <strong>Legacy:</strong> Time-based detection only (current behavior).<br>
+        <strong>Advanced:</strong> Site-priority with frequency validation and API key control.
+      </span>
     </p>
     <mat-form-field>
-      <input type="number" min="0" step="1" matInput formControlName="duplicateDetectionTimeFrame">
+      <mat-select formControlName="duplicateDetectionMode">
+        <mat-option value="legacy">Legacy (Time-based)</mat-option>
+        <mat-option value="advanced">Advanced (Site/Frequency/API Key)</mat-option>
+      </mat-select>
+    </mat-form-field>
+  </div>
+
+  <!-- Legacy Mode Time Frame (always shown) -->
+  <div class="row" *ngIf="!form.get('disableDuplicateDetection')?.value">
+    <p>
+      <span class="mat-body">Legacy Mode Time Frame</span><br>
+      <span class="mat-caption">
+        Time window in milliseconds (±) for legacy duplicate detection.
+        Rejects calls with same system/talkgroup within this window.
+        <span *ngIf="form.get('duplicateDetectionMode')?.value === 'advanced'">
+          Also used as fallback when advanced mode can't be applied.
+        </span>
+      </span>
+    </p>
+    <mat-form-field>
+      <input type="number" min="0" step="1" matInput 
+             formControlName="duplicateDetectionTimeFrame"
+             placeholder="Milliseconds">
       <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('required')">
-        Duplicate call time frame is required
+        Time frame is required
       </mat-error>
       <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('min')">
-        Duplicate call time frame is invalid
+        Time frame must be 0 or greater
+      </mat-error>
+    </mat-form-field>
+  </div>
+
+  <!-- Advanced Mode Time Frame (only shown when advanced mode is selected) -->
+  <div class="row" *ngIf="!form.get('disableDuplicateDetection')?.value && form.get('duplicateDetectionMode')?.value === 'advanced'">
+    <p>
+      <span class="mat-body">Advanced Mode Time Frame</span><br>
+      <span class="mat-caption">
+        Time window in milliseconds (±) for advanced site/frequency-based duplicate detection.
+        Used to find conflicting calls from preferred/secondary sites.
+      </span>
+    </p>
+    <mat-form-field>
+      <input type="number" min="0" step="1" matInput 
+             formControlName="advancedDetectionTimeFrame"
+             placeholder="Milliseconds">
+      <mat-error *ngIf="form?.get('advancedDetectionTimeFrame')?.hasError('required')">
+        Time frame is required
+      </mat-error>
+      <mat-error *ngIf="form?.get('advancedDetectionTimeFrame')?.hasError('min')">
+        Time frame must be 0 or greater
       </mat-error>
     </mat-form-field>
   </div>
@@ -410,6 +463,29 @@
     <mat-form-field floatLabel="auto">
       <input type="number" min="0" step="0.5" matInput formControlName="minCallDuration" placeholder="0">
       <mat-hint>0 = transcribe all calls</mat-hint>
+    </mat-form-field>
+  </div>
+
+  <div class="row" *ngIf="form?.get('transcriptionEnabled')?.value" formGroupName="transcriptionConfig">
+    <p>
+      <span class="mat-body">Worker Pool Size (Transcription Threads)</span><br>
+      <span class="mat-caption">
+        Number of concurrent transcription workers. Higher values process calls faster but require more VRAM/resources.
+        <br><br>
+        <strong style="color: #f57c00;">⚠️ WARNING:</strong> For Whisper API (local Whisper), using more than 1 worker may cause transcription failures if your system doesn't have sufficient VRAM. 
+        <strong>Recommended: Start with 1 worker and increase only if you have 8GB+ VRAM and experience no failures.</strong>
+        <br><br>
+        Cloud providers (Azure, Google, AssemblyAI) can typically handle 5+ workers without issues.
+      </span>
+    </p>
+    <mat-form-field floatLabel="auto">
+      <input type="number" min="1" max="10" step="1" matInput formControlName="workerPoolSize" placeholder="1">
+      <mat-hint *ngIf="form?.get('transcriptionConfig')?.get('provider')?.value === 'whisper-api' || !form?.get('transcriptionConfig')?.get('provider')?.value">
+        Whisper API: 1 worker recommended (increase only if you have sufficient VRAM)
+      </mat-hint>
+      <mat-hint *ngIf="form?.get('transcriptionConfig')?.get('provider')?.value !== 'whisper-api' && form?.get('transcriptionConfig')?.get('provider')?.value">
+        Cloud providers: 3-5 workers recommended
+      </mat-hint>
     </mat-form-field>
   </div>
 

@@ -283,8 +283,12 @@ func (api *Api) HandleCall(key string, call *Call, w http.ResponseWriter) {
 
 	if apikey, ok := api.Controller.Apikeys.GetApikey(key); ok {
 		if apikey.HasAccess(call) {
+			// Store API key ID in call metadata for preferred API key logic
+			apikeyId := apikey.Id
+			call.ApiKeyId = &apikeyId
+			
 			// Ensure site information is properly resolved before ingestion
-			if call != nil && call.SiteRef == 0 && call.Meta.SiteRef > 0 {
+			if call != nil && call.SiteRef == "" && call.Meta.SiteRef != "" {
 				// Try to resolve by siteRef first
 				if call.System != nil && call.System.Sites != nil {
 					if site, ok := call.System.Sites.GetSiteByRef(call.Meta.SiteRef); ok {

@@ -42,6 +42,7 @@ type Controller struct {
 	Api                   *Api
 	Apikeys               *Apikeys
 	Calls                 *Calls
+	CallQueue             *CallQueue
 	Clients               *Clients
 	Config                *Config
 	Database              *Database
@@ -142,6 +143,7 @@ func NewController(config *Config) *Controller {
 	controller.Admin = NewAdmin(controller)
 	controller.Api = NewApi(controller)
 	controller.Calls = NewCalls(controller)
+	controller.CallQueue = NewCallQueue()
 	controller.Database = NewDatabase(config)
 	controller.Users = NewUsers()
 	controller.UserGroups = NewUserGroups()
@@ -244,7 +246,6 @@ func (controller *Controller) IngestCall(call *Call) {
 		group       *Group
 		groupId     uint64
 		groupLabel  string
-		id          uint64
 		ok          bool
 		populated   bool
 		system      *System
@@ -443,12 +444,21 @@ func (controller *Controller) IngestCall(call *Call) {
 
 			tagId = tag.Id
 
+			// Find the max Order value among existing talkgroups to assign new talkgroup at the end
+			maxOrder := uint(0)
+			for _, existingTg := range system.Talkgroups.List {
+				if existingTg.Order > maxOrder {
+					maxOrder = existingTg.Order
+				}
+			}
+
 			talkgroup = &Talkgroup{
 				GroupIds:     []uint64{groupId},
 				Label:        fmt.Sprintf("%d", talkgroupId),
 				Name:         fmt.Sprintf("%d", talkgroupId),
 				TalkgroupRef: talkgroupId,
 				TagId:        tagId,
+				Order:        maxOrder + 1, // Assign order at the end of the list
 			}
 
 			// Update label and name if provided (v6 style)
@@ -644,16 +654,162 @@ func (controller *Controller) IngestCall(call *Call) {
 		return
 	}
 
+	// Determine site by frequency if not already set
+	if call.SiteRef == "" && system != nil && system.Sites != nil && call.Frequency > 0 {
+		if site, ok := system.Sites.GetSiteByFrequency(call.Frequency); ok {
+			call.SiteRef = site.SiteRef
+		}
+	}
+
 	if !controller.Options.DisableDuplicateDetection {
-		if dup, err := controller.Calls.CheckDuplicate(call, controller.Options.DuplicateDetectionTimeFrame, controller.Database); err == nil {
-			if dup {
-				logCall(call, LogLevelWarn, "duplicate call rejected")
+		var isDuplicate bool
+		var err error
+		var useAdvanced bool
+
+		// Determine if we can use Advanced mode
+		// Requires: Advanced mode enabled AND system has proper site configuration
+		if controller.Options.DuplicateDetectionMode == "advanced" {
+			// Check if system has required configuration for advanced mode
+			if call.System != nil && call.System.Sites != nil && len(call.System.Sites.List) > 0 {
+				// Check if at least one site is marked as preferred
+				hasPreferredSite := false
+				for _, site := range call.System.Sites.List {
+					if site.Preferred {
+						hasPreferredSite = true
+						break
+					}
+				}
+
+				// Only use advanced mode if system has sites with at least one preferred
+				// Otherwise fall back to legacy mode for this call
+				if hasPreferredSite {
+					useAdvanced = true
+				}
+			}
+		}
+
+		if useAdvanced {
+			// Check if talkgroup excludes preferred site detection
+			// This is useful for interop/patched talkgroups that may receive calls from multiple physical systems
+			if call.Talkgroup != nil && call.Talkgroup.ExcludeFromPreferredSite {
+				useAdvanced = false
+				logCall(call, LogLevelInfo, "talkgroup excluded from preferred site detection, using legacy mode")
+			}
+		}
+
+		if useAdvanced {
+			// Advanced mode with queue-based waiting for preferred sites and/or API keys
+
+			// Determine if incoming call is from preferred site
+			isPreferredSite := false
+			if call.System.Sites != nil && call.SiteRef != "" {
+				if site, ok := call.System.Sites.GetSiteByRef(call.SiteRef); ok {
+					isPreferredSite = site.Preferred
+				}
+			}
+
+			// Determine if incoming call is from preferred API key
+			// Talkgroup-level preferred API key takes priority over system-level
+			isPreferredApiKey := false
+			if call.ApiKeyId != nil {
+				if call.Talkgroup != nil && call.Talkgroup.PreferredApiKeyId != nil {
+					isPreferredApiKey = (*call.ApiKeyId == *call.Talkgroup.PreferredApiKeyId)
+				} else if call.System != nil && call.System.PreferredApiKeyId != nil {
+					isPreferredApiKey = (*call.ApiKeyId == *call.System.PreferredApiKeyId)
+				}
+			}
+
+			// Call is "preferred" if it matches EITHER preferred site OR preferred API key
+			isPreferred := isPreferredSite || isPreferredApiKey
+
+			// Check for existing calls in database
+			var reason string
+			isDuplicate, reason, err = controller.Calls.CheckDuplicateBySiteAndFrequency(
+				call,
+				controller.Options.AdvancedDetectionTimeFrame,
+				controller.Database,
+			)
+
+			if err != nil {
+				logError(fmt.Errorf("advanced duplicate detection failed, using legacy: %w", err))
+				useAdvanced = false // Fall back to legacy
+			} else if isDuplicate {
+				logCall(call, LogLevelWarn, fmt.Sprintf("duplicate (advanced): %s", reason))
+				return
+			} else if isPreferred {
+				// Preferred call (site or API key) - accept immediately and cancel any queued non-preferred calls
+				timeWindow := time.Duration(controller.Options.AdvancedDetectionTimeFrame) * time.Millisecond
+				cancelled := controller.CallQueue.CancelPending(
+					call.System.Id,
+					call.Talkgroup.Id,
+					call.Timestamp,
+					timeWindow,
+				)
+				if cancelled > 0 {
+					preferredType := "site"
+					if isPreferredApiKey && !isPreferredSite {
+						preferredType = "API key"
+					} else if isPreferredApiKey && isPreferredSite {
+						preferredType = "site+API key"
+					}
+					logCall(call, LogLevelInfo, fmt.Sprintf("preferred %s call accepted, cancelled %d queued call(s)", preferredType, cancelled))
+				}
+				// Continue processing this preferred call immediately
+			} else {
+				// Non-preferred call - queue it and wait for preferred
+				logCall(call, LogLevelInfo, fmt.Sprintf("non-preferred call queued, waiting %dms for preferred site/API key", controller.Options.AdvancedDetectionTimeFrame))
+
+				waitDuration := time.Duration(controller.Options.AdvancedDetectionTimeFrame) * time.Millisecond
+				controller.CallQueue.Add(call, waitDuration, func(queuedCall *Call) {
+					// Timer expired - no preferred call arrived, process the non-preferred call
+					logCall(queuedCall, LogLevelInfo, "non-preferred call processing after wait period")
+					controller.processCallAfterDuplicateCheck(queuedCall)
+				})
+				return // Don't process now, will process after timer
+			}
+		}
+
+		// Legacy mode (explicit legacy setting, or fallback when advanced not configured/available)
+		// Uses legacy timeframe
+		if !useAdvanced || err != nil {
+			isDuplicate, err = controller.Calls.CheckDuplicate(
+				call,
+				controller.Options.DuplicateDetectionTimeFrame,
+				controller.Database,
+			)
+			if err == nil && isDuplicate {
+				logCall(call, LogLevelWarn, "duplicate (legacy)")
 				return
 			}
-		} else {
+		}
+
+		if err != nil {
 			logError(err)
 			return
 		}
+	}
+
+	// Continue processing after duplicate detection
+	controller.processCallAfterDuplicateCheck(call)
+}
+
+// processCallAfterDuplicateCheck processes a call after duplicate detection has passed
+// This is used both for immediate processing and for queued secondary calls
+func (controller *Controller) processCallAfterDuplicateCheck(call *Call) {
+	var system *System
+
+	logCall := func(call *Call, level string, msg string) {
+		if call.System != nil && call.Talkgroup != nil {
+			controller.Logs.LogEvent(level, fmt.Sprintf("[%s] [%s] %s", call.System.Label, call.Talkgroup.Label, msg))
+		}
+	}
+
+	logError := func(err error) {
+		logCall(call, "error", err.Error())
+	}
+
+	if call.System != nil {
+		system = call.System
 	}
 
 	// Store original audio before encoding - tone detection needs raw/uncompressed audio
@@ -676,11 +832,11 @@ func (controller *Controller) IngestCall(call *Call) {
 	}
 
 	// Now encode audio to Opus/AAC for storage
-	if err := controller.FFMpeg.Convert(call, controller.Systems, controller.Tags, controller.Options.AudioConversion, controller.Config); err != nil {
-		controller.Logs.LogEvent(LogLevelWarn, err.Error())
+	if convertErr := controller.FFMpeg.Convert(call, controller.Systems, controller.Tags, controller.Options.AudioConversion, controller.Config); convertErr != nil {
+		controller.Logs.LogEvent(LogLevelWarn, convertErr.Error())
 	}
 
-	if id, err = controller.Calls.WriteCall(call, controller.Database); err == nil {
+	if id, err := controller.Calls.WriteCall(call, controller.Database); err == nil {
 		call.Id = id
 		// After writing, query the database to get the talkgroup ID that was actually written
 		// This ensures we have the correct database ID for logging (like v6 did)
@@ -699,7 +855,7 @@ func (controller *Controller) IngestCall(call *Call) {
 				}
 			}
 		}
-		logCall(call, LogLevelInfo, "success")
+		logCall(call, "info", "success")
 
 		// Ensure Units are populated from Meta.UnitRefs before emitting
 		// This ensures source information is available when calls are sent
@@ -1008,7 +1164,7 @@ func (controller *Controller) storePendingTones(call *Call, toneSequence *ToneSe
 			controller.pendingTones[nextKey] = &PendingToneSequence{
 				ToneSequence: toneSequence,
 				CallId:       call.Id,
-				Timestamp:    time.Now().UnixMilli(),
+				Timestamp:    call.Timestamp.UnixMilli(), // Use call timestamp, not processing time
 				SystemId:     call.System.Id,
 				TalkgroupId:  call.Talkgroup.Id,
 				Locked:       false, // Next pending is not locked yet
@@ -1027,7 +1183,7 @@ func (controller *Controller) storePendingTones(call *Call, toneSequence *ToneSe
 				controller.pendingTones[nextKey] = &PendingToneSequence{
 					ToneSequence: toneSequence,
 					CallId:       call.Id,
-					Timestamp:    time.Now().UnixMilli(),
+					Timestamp:    call.Timestamp.UnixMilli(), // Use call timestamp, not processing time
 					SystemId:     call.System.Id,
 					TalkgroupId:  call.Talkgroup.Id,
 					Locked:       false,
@@ -1037,8 +1193,9 @@ func (controller *Controller) storePendingTones(call *Call, toneSequence *ToneSe
 				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("merging next pending: call %d (existing) + call %d (new)", nextPending.CallId, call.Id))
 				mergedSequence := controller.mergePendingTones(nextPending.ToneSequence, toneSequence)
 				nextPending.ToneSequence = mergedSequence
-				nextPending.CallId = call.Id                   // Update to most recent call
-				nextPending.Timestamp = time.Now().UnixMilli() // Update timestamp
+				nextPending.CallId = call.Id // Update to most recent call
+				// IMPORTANT: Keep the original timestamp! Don't update to now, or it may be AFTER the voice call that's already transcribing
+				// nextPending.Timestamp = time.Now().UnixMilli() // DON'T DO THIS - it breaks timestamp comparison
 				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("merged next pending tones for talkgroup %d", call.Talkgroup.TalkgroupRef))
 			}
 		}
@@ -1055,7 +1212,7 @@ func (controller *Controller) storePendingTones(call *Call, toneSequence *ToneSe
 		controller.pendingTones[key] = &PendingToneSequence{
 			ToneSequence: toneSequence,
 			CallId:       call.Id,
-			Timestamp:    time.Now().UnixMilli(),
+			Timestamp:    call.Timestamp.UnixMilli(), // Use call timestamp, not processing time
 			SystemId:     call.System.Id,
 			TalkgroupId:  call.Talkgroup.Id,
 		}
@@ -1075,7 +1232,7 @@ func (controller *Controller) storePendingTones(call *Call, toneSequence *ToneSe
 
 		// Start a timer to check if tones are orphaned (no new tones within 60 seconds)
 		// If they're still pending after 60 seconds, send an alert for "tones detected but no voice call"
-		go controller.checkOrphanedTones(key, call.Id, time.Now().UnixMilli())
+		go controller.checkOrphanedTones(key, call.Id, call.Timestamp.UnixMilli())
 	} else {
 		// Check if existing pending tones are too old (expired)
 		existingAge := time.Now().UnixMilli() - existing.Timestamp
@@ -1089,7 +1246,7 @@ func (controller *Controller) storePendingTones(call *Call, toneSequence *ToneSe
 			controller.pendingTones[key] = &PendingToneSequence{
 				ToneSequence: toneSequence,
 				CallId:       call.Id,
-				Timestamp:    time.Now().UnixMilli(),
+				Timestamp:    call.Timestamp.UnixMilli(), // Use call timestamp, not processing time
 				SystemId:     call.System.Id,
 				TalkgroupId:  call.Talkgroup.Id,
 			}
@@ -1132,7 +1289,8 @@ func (controller *Controller) storePendingTones(call *Call, toneSequence *ToneSe
 		// Update to use the most recent tone sequence structure but with combined tones
 		existing.ToneSequence.Tones = combinedTones
 		existing.CallId = call.Id // Use the most recent call ID
-		existing.Timestamp = time.Now().UnixMilli()
+		// IMPORTANT: Keep the original timestamp! Don't update to now, or it may be AFTER the voice call that's already transcribing
+		// existing.Timestamp = time.Now().UnixMilli() // DON'T DO THIS - it breaks timestamp comparison
 
 		// Accumulate ALL matched tone sets across calls (don't overwrite, merge)
 		// Create a map to track unique tone set IDs
@@ -1340,6 +1498,15 @@ func (controller *Controller) checkAndAttachPendingTones(call *Call) bool {
 		controller.pendingTonesMutex.Lock()
 		delete(controller.pendingTones, key)
 		controller.pendingTonesMutex.Unlock()
+		return false
+	}
+
+	// CRITICAL: Only attach pending tones to calls that came AFTER the tone call
+	// Pending tones should never attach to pre-announcements or calls with earlier timestamps
+	// Use timestamps instead of IDs because tone calls may have CallId=0 (not yet saved to database)
+	callTimestamp := call.Timestamp.UnixMilli()
+	if callTimestamp < pending.Timestamp {
+		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("skipping pending tone attachment: call %d (timestamp %d) came before pending tones (timestamp %d)", call.Id, callTimestamp, pending.Timestamp))
 		return false
 	}
 
@@ -1886,35 +2053,37 @@ func (controller *Controller) queueTranscriptionIfNeeded(call *Call) {
 				return
 			}
 
-			// For tone-enabled talkgroups, always bypass global minimum and check remaining audio instead
-			// This applies whether or not tones were detected - these talkgroups need to transcribe short clips
-			if toneDetectionEnabled {
-				// If call has detected tones, calculate remaining audio after removal
-				if call.HasTones && call.ToneSequence != nil && len(call.ToneSequence.Tones) > 0 {
-					// Calculate total tone duration
-					toneDuration := 0.0
-					for _, tone := range call.ToneSequence.Tones {
-						toneDuration += tone.Duration
-					}
-
-					// Calculate remaining audio duration after tones would be removed
-					remainingDuration := audioDuration - toneDuration
-					const minRemainingDuration = 2.0
-
-					if remainingDuration < minRemainingDuration {
-						controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("skipping transcription for call %d on tone-enabled talkgroup: remaining audio after tone removal (%.1fs) is less than minimum (%.1fs)", call.Id, remainingDuration, minRemainingDuration))
-						// Mark as completed so pending tones don't wait forever
-						updateQuery := fmt.Sprintf(`UPDATE "calls" SET "transcriptionStatus" = 'completed' WHERE "callId" = %d`, call.Id)
-						controller.Database.Sql.Exec(updateQuery)
-						return
-					}
-
-					controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("call %d on tone-enabled talkgroup: bypassing global minimum duration (%.1fs < %.1fs), using remaining audio check (%.1fs remaining after %.1fs tones)", call.Id, audioDuration, minDuration, remainingDuration, toneDuration))
-				} else {
-					// No tones detected but still on tone-enabled talkgroup - bypass global minimum completely
-					controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("call %d on tone-enabled talkgroup: bypassing global minimum duration (%.1fs < %.1fs), no tones detected", call.Id, audioDuration, minDuration))
+			// For tone-enabled talkgroups with detected tones, check remaining audio
+			if toneDetectionEnabled && call.HasTones && call.ToneSequence != nil && len(call.ToneSequence.Tones) > 0 {
+				// Calculate total tone duration
+				toneDuration := 0.0
+				for _, tone := range call.ToneSequence.Tones {
+					toneDuration += tone.Duration
 				}
-				// Continue to alert checks below (bypassed global minimum)
+
+				// Calculate remaining audio duration after tones would be removed
+				remainingDuration := audioDuration - toneDuration
+				const minRemainingDuration = 2.0
+
+				if remainingDuration < minRemainingDuration {
+					// Tone-only call - don't queue for transcription (avoids locking pending tones)
+					controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("skipping transcription for call %d on tone-enabled talkgroup: remaining audio after tone removal (%.1fs) is less than minimum (%.1fs) - tone-only", call.Id, remainingDuration, minRemainingDuration))
+					updateQuery := fmt.Sprintf(`UPDATE "calls" SET "transcriptionStatus" = 'completed' WHERE "callId" = %d`, call.Id)
+					controller.Database.Sql.Exec(updateQuery)
+					return
+				}
+
+				// Has > 2s remaining after tones - bypass global minimum and transcribe
+				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("call %d on tone-enabled talkgroup: bypassing global minimum (%.1fs < %.1fs), %.1fs remaining after %.1fs tones", call.Id, audioDuration, minDuration, remainingDuration, toneDuration))
+				// Continue to alert checks (bypassed global minimum)
+			} else if toneDetectionEnabled && audioDuration >= minDuration {
+				// Tone-enabled talkgroup without tones but meets global minimum - allow
+				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("call %d on tone-enabled talkgroup: meets global minimum (%.1fs >= %.1fs)", call.Id, audioDuration, minDuration))
+				// Continue to alert checks
+			} else if toneDetectionEnabled && audioDuration < minDuration {
+				// Tone-enabled talkgroup without tones, shorter than minimum - still allow (might be voice after tone call)
+				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("call %d on tone-enabled talkgroup: bypassing global minimum (%.1fs < %.1fs), no tones in this call", call.Id, audioDuration, minDuration))
+				// Continue to alert checks
 			} else if audioDuration < minDuration {
 				// Normal check for non-tone-enabled talkgroups or calls without tones
 				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("skipping transcription for call %d: duration %.1fs is less than minimum %.1fs", call.Id, audioDuration, minDuration))

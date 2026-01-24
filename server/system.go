@@ -27,17 +27,20 @@ import (
 )
 
 type System struct {
-	Id           uint64
-	AutoPopulate bool
-	Blacklists   Blacklists
-	Delay        uint
-	Kind         string
-	Label        string
-	Order        uint
-	Sites        *Sites
-	SystemRef    uint
-	Talkgroups   *Talkgroups
-	Units        *Units
+	Id                      uint64
+	AutoPopulate            bool
+	Blacklists              Blacklists
+	Delay                   uint
+	Kind                    string
+	Label                   string
+	Order                   uint
+	Sites                   *Sites
+	SystemRef               uint
+	Talkgroups              *Talkgroups
+	Units                   *Units
+	PreferredApiKeyId       *uint64 // Optional preferred API key for uploads
+	NoAudioAlertsEnabled    bool    // Enable no-audio alerts for this system
+	NoAudioThresholdMinutes uint    // Minutes without audio before alerting
 }
 
 func NewSystem() *System {
@@ -106,6 +109,31 @@ func (system *System) FromMap(m map[string]any) *System {
 		system.Units.FromMap(v)
 	}
 
+	// Parse preferredApiKeyId (optional/nullable)
+	switch v := m["preferredApiKeyId"].(type) {
+	case float64:
+		id := uint64(v)
+		system.PreferredApiKeyId = &id
+	case nil:
+		system.PreferredApiKeyId = nil
+	}
+
+	// Parse noAudioAlertsEnabled (defaults to true if not specified)
+	switch v := m["noAudioAlertsEnabled"].(type) {
+	case bool:
+		system.NoAudioAlertsEnabled = v
+	default:
+		system.NoAudioAlertsEnabled = true // Default to enabled
+	}
+
+	// Parse noAudioThresholdMinutes (defaults to 30 if not specified)
+	switch v := m["noAudioThresholdMinutes"].(type) {
+	case float64:
+		system.NoAudioThresholdMinutes = uint(v)
+	default:
+		system.NoAudioThresholdMinutes = 30 // Default to 30 minutes
+	}
+
 	return system
 }
 
@@ -135,6 +163,19 @@ func (system *System) MarshalJSON() ([]byte, error) {
 	if system.Order > 0 {
 		m["order"] = system.Order
 	}
+
+	// Include preferredApiKeyId if set
+	if system.PreferredApiKeyId != nil {
+		m["preferredApiKeyId"] = *system.PreferredApiKeyId
+	} else {
+		m["preferredApiKeyId"] = nil
+	}
+
+	// Always include noAudioAlertsEnabled
+	m["noAudioAlertsEnabled"] = system.NoAudioAlertsEnabled
+
+	// Always include noAudioThresholdMinutes
+	m["noAudioThresholdMinutes"] = system.NoAudioThresholdMinutes
 
 	return json.Marshal(m)
 }
@@ -434,14 +475,32 @@ func (systems *Systems) GetScopedSystems(client *Client, groups *Groups, tags *T
 				return labelA < labelB
 			})
 		} else {
-			// Sort by custom order field
-			sort.Slice(talkgroupsMap, func(i int, j int) bool {
+			// Stable sort by custom order field with secondary sort by talkgroupId
+			sort.SliceStable(talkgroupsMap, func(i int, j int) bool {
+				orderA := 0
+				orderB := 0
+
 				if a, err := strconv.Atoi(fmt.Sprintf("%v", talkgroupsMap[i]["order"])); err == nil {
-					if b, err := strconv.Atoi(fmt.Sprintf("%v", talkgroupsMap[j]["order"])); err == nil {
-						return a < b
-					}
+					orderA = a
 				}
-				return false
+				if b, err := strconv.Atoi(fmt.Sprintf("%v", talkgroupsMap[j]["order"])); err == nil {
+					orderB = b
+				}
+
+				if orderA != orderB {
+					return orderA < orderB
+				}
+
+				// Secondary sort by talkgroupId for stable ordering
+				idA := 0
+				idB := 0
+				if a, err := strconv.Atoi(fmt.Sprintf("%v", talkgroupsMap[i]["talkgroupId"])); err == nil {
+					idA = a
+				}
+				if b, err := strconv.Atoi(fmt.Sprintf("%v", talkgroupsMap[j]["talkgroupId"])); err == nil {
+					idB = b
+				}
+				return idA < idB
 			})
 		}
 
@@ -490,7 +549,7 @@ func (systems *Systems) Read(db *Database) error {
 		return formatError(err, "")
 	}
 
-	query = `SELECT "systemId", "autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type" FROM "systems"`
+	query = `SELECT "systemId", "autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes" FROM "systems"`
 	if rows, err = tx.Query(query); err != nil {
 		tx.Rollback()
 		return formatError(err, query)
@@ -498,9 +557,16 @@ func (systems *Systems) Read(db *Database) error {
 
 	for rows.Next() {
 		system := NewSystem()
+		var preferredApiKeyId sql.NullInt64
 
-		if err = rows.Scan(&system.Id, &system.AutoPopulate, &system.Blacklists, &system.Delay, &system.Label, &system.Order, &system.SystemRef, &system.Kind); err != nil {
+		if err = rows.Scan(&system.Id, &system.AutoPopulate, &system.Blacklists, &system.Delay, &system.Label, &system.Order, &system.SystemRef, &system.Kind, &preferredApiKeyId, &system.NoAudioAlertsEnabled, &system.NoAudioThresholdMinutes); err != nil {
 			break
+		}
+
+		// Handle nullable preferredApiKeyId
+		if preferredApiKeyId.Valid {
+			id := uint64(preferredApiKeyId.Int64)
+			system.PreferredApiKeyId = &id
 		}
 
 		systems.List = append(systems.List, system)
@@ -651,13 +717,19 @@ func (systems *Systems) Write(db *Database) error {
 			}
 		}
 
+		// Format preferredApiKeyId for SQL (NULL or number)
+		preferredApiKeyIdSQL := "NULL"
+		if system.PreferredApiKeyId != nil {
+			preferredApiKeyIdSQL = fmt.Sprintf("%d", *system.PreferredApiKeyId)
+		}
+
 		if count == 0 {
 			if system.Id > 0 {
 				// Preserve the explicit ID when inserting
-				query = fmt.Sprintf(`INSERT INTO "systems" ("systemId", "autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type") VALUES (%d, %t, '%s', %d, '%s', %d, %d, '%s')`, system.Id, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind)
+				query = fmt.Sprintf(`INSERT INTO "systems" ("systemId", "autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes") VALUES (%d, %t, '%s', %d, '%s', %d, %d, '%s', %s, %t, %d)`, system.Id, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind, preferredApiKeyIdSQL, system.NoAudioAlertsEnabled, system.NoAudioThresholdMinutes)
 			} else {
 				// Let database assign auto-increment ID
-				query = fmt.Sprintf(`INSERT INTO "systems" ("autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type") VALUES (%t, '%s', %d, '%s', %d, %d, '%s')`, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind)
+				query = fmt.Sprintf(`INSERT INTO "systems" ("autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes") VALUES (%t, '%s', %d, '%s', %d, %d, '%s', %s, %t, %d)`, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind, preferredApiKeyIdSQL, system.NoAudioAlertsEnabled, system.NoAudioThresholdMinutes)
 			}
 
 			if db.Config.DbType == DbTypePostgresql {
@@ -689,7 +761,7 @@ func (systems *Systems) Write(db *Database) error {
 			}
 
 		} else {
-			query = fmt.Sprintf(`UPDATE "systems" SET "autoPopulate" = %t, "blacklists" = '%s', "delay" = %d, "label" = '%s', "order" = %d, "systemRef" = %d, "type" = '%s' WHERE "systemId" = %d`, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind, system.Id)
+			query = fmt.Sprintf(`UPDATE "systems" SET "autoPopulate" = %t, "blacklists" = '%s', "delay" = %d, "label" = '%s', "order" = %d, "systemRef" = %d, "type" = '%s', "preferredApiKeyId" = %s, "noAudioAlertsEnabled" = %t, "noAudioThresholdMinutes" = %d WHERE "systemId" = %d`, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind, preferredApiKeyIdSQL, system.NoAudioAlertsEnabled, system.NoAudioThresholdMinutes, system.Id)
 			if _, err = tx.Exec(query); err != nil {
 				break
 			}

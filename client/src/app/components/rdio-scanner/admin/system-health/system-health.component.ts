@@ -66,6 +66,10 @@ export class RdioScannerAdminSystemHealthComponent implements OnInit, OnDestroy 
     failedCalls: FailedCall[] = [];
     loadingFailedCalls = false;
     
+    // Systems list for per-system settings
+    systems: any[] = [];
+    loadingSystems = false;
+    
     // System health alert settings
     settings = {
         transcriptionFailureAlertsEnabled: true,
@@ -110,6 +114,7 @@ export class RdioScannerAdminSystemHealthComponent implements OnInit, OnDestroy 
         this.loadAlerts();
         this.loadSystemHealthAlertsEnabled();
         this.loadSystemHealthAlertSettings();
+        this.loadSystems();
         // Auto-refresh every 60 seconds
         this.refreshInterval = setInterval(() => {
             this.loadAlerts();
@@ -500,6 +505,53 @@ export class RdioScannerAdminSystemHealthComponent implements OnInit, OnDestroy 
 
     isPlaying(callId: number): boolean {
         return this.playingCallId === callId && this.audioElement !== null && !this.audioElement.paused;
+    }
+
+    async loadSystems(): Promise<void> {
+        this.loadingSystems = true;
+        try {
+            const config = await this.adminService.getConfig();
+            this.systems = config.systems || [];
+        } catch (error: any) {
+            console.error('Failed to load systems:', error);
+            this.snackBar.open('Failed to load systems', 'Close', {
+                duration: 4000,
+                horizontalPosition: 'center',
+                verticalPosition: 'bottom'
+            });
+        } finally {
+            this.loadingSystems = false;
+        }
+    }
+
+    async saveSystemNoAudioSetting(system: any): Promise<void> {
+        try {
+            // Load full config, update the specific system, and save
+            const config = await this.adminService.getConfig();
+            if (!config.systems) {
+                throw new Error('No systems found in configuration');
+            }
+            const systemIndex = config.systems.findIndex((s: any) => s.id === system.id);
+            if (systemIndex !== -1) {
+                config.systems[systemIndex] = system;
+                await this.adminService.saveConfig(config);
+                this.snackBar.open(`Updated no-audio settings for ${system.label}`, '', {
+                    duration: 2000,
+                    horizontalPosition: 'center',
+                    verticalPosition: 'bottom',
+                    panelClass: ['success-snackbar']
+                });
+            }
+        } catch (error: any) {
+            console.error(`Failed to save system settings:`, error);
+            this.snackBar.open(`Failed to save: ${error.message || 'Unknown error'}`, 'Close', {
+                duration: 4000,
+                horizontalPosition: 'center',
+                verticalPosition: 'bottom'
+            });
+            // Reload systems to revert UI
+            await this.loadSystems();
+        }
     }
 }
 

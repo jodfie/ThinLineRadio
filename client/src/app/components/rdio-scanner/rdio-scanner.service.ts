@@ -1535,10 +1535,15 @@ export class RdioScannerService implements OnDestroy {
                 const group = this.categories.find((cat) => tg.groups.includes(cat.label));
                 const tag = this.categories.find((cat) => cat.label === tg.tag);
 
-                tgMap[tg.id] = (this.livefeedMap[sys.id] && this.livefeedMap[sys.id][tg.id])
+                // Check if this talkgroup exists in the saved livefeed map
+                const existsInSavedMap = this.livefeedMap[sys.id] && this.livefeedMap[sys.id][tg.id];
+
+                tgMap[tg.id] = existsInSavedMap
                     ? this.livefeedMap[sys.id][tg.id]
                     : {
-                        active: !(group?.status === RdioScannerCategoryStatus.Off || tag?.status === RdioScannerCategoryStatus.Off),
+                        // NEW FIX: Default to inactive (false) for new talkgroups/systems
+                        // Users must manually enable them in Channel Select
+                        active: false,
                     } as RdioScannerLivefeed;
 
                 return tgMap;

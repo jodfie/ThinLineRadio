@@ -1222,9 +1222,42 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
             if (this.call) {
                 this.callPrevious = this.call;
 
+                // Move the finished call to history immediately
+                if (!this.callHistory.find((call: RdioScannerCall) => call?.id === this.callPrevious?.id)) {
+                    this.callHistory.pop();
+                    this.callHistory.unshift(this.callPrevious);
+                }
+
                 this.call = undefined;
+                this.callPrevious = undefined;
+                
+                // Clear display when call ends - reset to defaults
+                this.callDate = undefined;
+                this.callError = '0';
+                this.callFrequency = this.formatFrequency(0);
+                this.callProgress = new Date(0, 0, 0, 0, 0, 0);
+                this.callSpike = '0';
+                this.callSystem = 'System';
+                this.callTag = 'Tag';
+                this.callTalkgroup = 'Talkgroup';
+                this.callTalkgroupId = '0';
+                this.callTalkgroupName = `ThinLine Radio v${packageInfo.version}`;
+                this.callTime = 0;
+                this.callUnit = '0';
+                this.callSite = '';
+                this.callSiteId = '';
+                this.avoided = false;
+                this.delayed = false;
+                this.patched = false;
+                this.tempAvoid = 0;
+                this.type = '';
+                this.isFavorite = false;
+                
                 // Turn dimmer off when call stops
                 this.updateDimmer();
+                
+                // Update LED style to reflect no active call
+                this.updateLedStyle();
             }
 
             if (event.call) {
@@ -1530,16 +1563,6 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
                 this.callTalkgroupId = isAfs ? this.formatAfs(this.call.talkgroup) : this.call.talkgroup.toString();
 
                 this.callUnit = this.call.systemData?.units?.find((u) => u.id === this.call?.source)?.label ?? `${this.call.source ?? ''}`;
-            }
-
-            if (
-                this.callPrevious &&
-                this.callPrevious.id !== this.call.id &&
-                !this.callHistory.find((call: RdioScannerCall) => call?.id === this.callPrevious?.id)
-            ) {
-                this.callHistory.pop();
-
-                this.callHistory.unshift(this.callPrevious);
             }
         }
 

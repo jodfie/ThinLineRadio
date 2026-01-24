@@ -153,20 +153,16 @@
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>New Password</mat-label>
           <input matInput type="password" formControlName="newPassword" required>
-          <mat-error *ngIf="resetPasswordForm.get('newPassword')?.hasError('required')">
-            New password is required
-          </mat-error>
-          <mat-error *ngIf="resetPasswordForm.get('newPassword')?.hasError('minlength')">
-            Password must be at least 8 characters
-          </mat-error>
-          <mat-error *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireUpper')">
-            Password must contain at least one uppercase letter
-          </mat-error>
-          <mat-error *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireLower')">
-            Password must contain at least one lowercase letter
-          </mat-error>
-          <mat-error *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireNumber')">
-            Password must contain at least one number
+          <mat-error *ngIf="resetPasswordForm.get('newPassword')?.touched && resetPasswordForm.get('newPassword')?.invalid">
+            <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('required')">Password is required</span>
+            <span *ngIf="!resetPasswordForm.get('newPassword')?.hasError('required')">
+              Missing: 
+              <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('minlength')">8+ chars, </span>
+              <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireUpper')">uppercase, </span>
+              <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireLower')">lowercase, </span>
+              <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireNumber')">number, </span>
+              <span *ngIf="resetPasswordForm.get('newPassword')?.hasError('requireSpecial')">special char</span>
+            </span>
           </mat-error>
         </mat-form-field>
 
@@ -342,20 +338,16 @@
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Password</mat-label>
           <input matInput type="password" formControlName="password" required>
-          <mat-error *ngIf="registerForm.get('password')?.hasError('required')">
-            Password is required
-          </mat-error>
-          <mat-error *ngIf="registerForm.get('password')?.hasError('minlength')">
-            Password must be at least 8 characters
-          </mat-error>
-          <mat-error *ngIf="registerForm.get('password')?.hasError('requireUpper')">
-            Password must contain at least one uppercase letter
-          </mat-error>
-          <mat-error *ngIf="registerForm.get('password')?.hasError('requireLower')">
-            Password must contain at least one lowercase letter
-          </mat-error>
-          <mat-error *ngIf="registerForm.get('password')?.hasError('requireNumber')">
-            Password must contain at least one number
+          <mat-error *ngIf="registerForm.get('password')?.touched && registerForm.get('password')?.invalid">
+            <span *ngIf="registerForm.get('password')?.hasError('required')">Password is required</span>
+            <span *ngIf="!registerForm.get('password')?.hasError('required')">
+              Missing: 
+              <span *ngIf="registerForm.get('password')?.hasError('minlength')">8+ chars, </span>
+              <span *ngIf="registerForm.get('password')?.hasError('requireUpper')">uppercase, </span>
+              <span *ngIf="registerForm.get('password')?.hasError('requireLower')">lowercase, </span>
+              <span *ngIf="registerForm.get('password')?.hasError('requireNumber')">number, </span>
+              <span *ngIf="registerForm.get('password')?.hasError('requireSpecial')">special char</span>
+            </span>
           </mat-error>
         </mat-form-field>
 
@@ -399,9 +391,22 @@
 
         <div class="success-message" *ngIf="success">
           <mat-icon>check_circle</mat-icon>
-          <p>{{ successMessage }}</p>
-          <button mat-button type="button" (click)="resendVerification()">
-            Resend verification email
+          <h3>Account Created Successfully!</h3>
+          
+          <!-- Prominent email verification notice -->
+          <div class="verification-notice" style="padding: 20px; background-color: #e3f2fd; border: 2px solid #2196f3; border-radius: 8px; margin: 20px 0;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+              <mat-icon style="color: #1976d2; font-size: 32px; width: 32px; height: 32px;">mark_email_unread</mat-icon>
+              <h4 style="margin: 0; color: #1565c0; font-size: 18px;">Please Check Your Email</h4>
+            </div>
+            <p style="margin: 0; color: #0d47a1; font-size: 15px; line-height: 1.6;">
+              We've sent a verification link to <strong>{{ registerForm.get('email')?.value }}</strong>. 
+              Please check your inbox (and spam folder) and click the verification link to activate your account.
+            </p>
+          </div>
+          
+          <button mat-button type="button" (click)="resendVerification()" style="margin-top: 10px;">
+            Didn't receive the email? Resend verification email
           </button>
         </div>
 

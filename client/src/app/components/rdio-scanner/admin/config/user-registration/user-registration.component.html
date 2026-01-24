@@ -20,16 +20,6 @@
         </mat-hint>
       </mat-form-field>
 
-      <mat-form-field appearance="outline" class="full-width" *ngIf="userRegistrationForm.get('registrationMode')?.value === 'public'">
-        <mat-label>Public Registration Mode</mat-label>
-        <mat-select formControlName="publicRegistrationMode">
-          <mat-option value="codes">Codes Only</mat-option>
-          <mat-option value="email">Email Invites Only</mat-option>
-          <mat-option value="both">Both (Codes and Email)</mat-option>
-        </mat-select>
-        <mat-hint>When public registration is enabled, choose how users can register</mat-hint>
-      </mat-form-field>
-
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>Enable Stripe Paywall</mat-label>
         <mat-select formControlName="stripePaywallEnabled">

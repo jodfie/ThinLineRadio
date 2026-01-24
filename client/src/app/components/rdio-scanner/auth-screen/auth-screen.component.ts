@@ -162,6 +162,31 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
       newPassword: ['', [Validators.required, Validators.minLength(8), this.passwordStrengthValidator]],
       confirmPassword: ['', [Validators.required]]
     }, { validators: this.passwordMatchValidator });
+    
+    // Automatically convert email to lowercase as user types
+    this.loginForm.get('email')?.valueChanges.subscribe(value => {
+      if (value && value !== value.toLowerCase()) {
+        this.loginForm.get('email')?.setValue(value.toLowerCase(), { emitEvent: false });
+      }
+    });
+    
+    this.registerForm.get('email')?.valueChanges.subscribe(value => {
+      if (value && value !== value.toLowerCase()) {
+        this.registerForm.get('email')?.setValue(value.toLowerCase(), { emitEvent: false });
+      }
+    });
+    
+    this.groupAdminForm.get('email')?.valueChanges.subscribe(value => {
+      if (value && value !== value.toLowerCase()) {
+        this.groupAdminForm.get('email')?.setValue(value.toLowerCase(), { emitEvent: false });
+      }
+    });
+    
+    this.forgotPasswordForm.get('email')?.valueChanges.subscribe(value => {
+      if (value && value !== value.toLowerCase()) {
+        this.forgotPasswordForm.get('email')?.setValue(value.toLowerCase(), { emitEvent: false });
+      }
+    });
   }
 
   private loadInitialConfig(initialConfig: any): void {
@@ -417,6 +442,11 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
       errors.requireNumber = true;
     }
     
+    // Check for special character
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      errors.requireSpecial = true;
+    }
+    
     return Object.keys(errors).length > 0 ? errors : null;
   }
 
@@ -463,7 +493,9 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
       this.loading = true;
       this.error = '';
 
-      const formData = this.forgotPasswordForm.value;
+      const formData = {
+        email: this.forgotPasswordForm.value.email.toLowerCase() // Ensure email is lowercase
+      };
       
       this.http.post('/api/user/forgot-password', formData).subscribe({
         next: (response: any) => {
@@ -535,7 +567,10 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
       this.groupAdminLoading = true;
       this.groupAdminError = '';
 
-      const formData: any = { ...this.groupAdminForm.value };
+      const formData: any = {
+        email: this.groupAdminForm.value.email.toLowerCase(), // Ensure email is lowercase
+        password: this.groupAdminForm.value.password
+      };
       
       // Add Turnstile token if enabled
       if (this.turnstileEnabled && this.turnstileToken) {
@@ -604,7 +639,10 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
       this.loading = true;
       this.error = '';
 
-      const formData: any = { ...this.loginForm.value };
+      const formData: any = {
+        email: this.loginForm.value.email.toLowerCase(), // Ensure email is lowercase
+        password: this.loginForm.value.password
+      };
       
       // Add Turnstile token if enabled
       if (this.turnstileEnabled && this.turnstileToken) {
@@ -674,7 +712,7 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
       this.error = '';
 
       const formData: any = {
-        email: this.registerForm.get('email')?.value,
+        email: this.registerForm.get('email')?.value.toLowerCase(), // Ensure email is lowercase
         password: this.registerForm.get('password')?.value,
         firstName: this.registerForm.get('firstName')?.value,
         lastName: this.registerForm.get('lastName')?.value,

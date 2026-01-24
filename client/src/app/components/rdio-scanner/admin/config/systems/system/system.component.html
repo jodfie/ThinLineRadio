@@ -93,6 +93,24 @@
             </mat-select>
         </mat-form-field>
     </div>
+    <div class="row">
+        <p>
+            <span class="mat-body">Preferred API Key</span><br>
+            <span class="mat-caption">
+                Optional: Prioritize calls from a specific API key (works with Advanced Mode). 
+                Preferred API key calls are accepted immediately. Non-preferred calls wait for preferred, then process if none arrives. 
+                Leave empty to treat all valid API keys equally.
+            </span>
+        </p>
+        <mat-form-field floatLabel="auto">
+            <mat-select formControlName="preferredApiKeyId" placeholder="Any API Key">
+                <mat-option [value]="null">Any API Key (No Restriction)</mat-option>
+                <mat-option *ngFor="let apikey of apikeys" [value]="apikey.id">
+                    {{ apikey.ident || 'API Key ' + apikey.id }}
+                </mat-option>
+            </mat-select>
+        </mat-form-field>
+    </div>
     <mat-accordion displayMode="flat">
         <mat-expansion-panel>
             <mat-expansion-panel-header>
@@ -106,9 +124,27 @@
                     <p class="mat-caption">System sites, you can drag and drop sites to rearrange them.</p>
                     <button type="button" mat-button color="accent" (click)="addSite()">New Site</button>
                 </div>
-                <mat-accordion displayMode="flat" cdkDropList [cdkDropListAutoScrollStep]=64 [cdkDropListData]="sites"
+
+                <!-- Search Bar -->
+                <div class="row" style="margin: 12px 0;">
+                    <mat-form-field floatLabel="auto" style="width: 100%;">
+                        <mat-label>Search sites</mat-label>
+                        <input matInput [value]="sitesSearchTerm" (input)="onSitesSearchChange($any($event.target).value)" 
+                               placeholder="Search by label">
+                        <mat-icon matSuffix>search</mat-icon>
+                    </mat-form-field>
+                </div>
+
+                <!-- Results Count -->
+                <div *ngIf="sitesSearchTerm" class="row" style="margin: 0 0 12px 0;">
+                    <span class="mat-caption">
+                        Showing {{ filteredSites.length }} of {{ sites.length }} sites
+                    </span>
+                </div>
+
+                <mat-accordion displayMode="flat" cdkDropList [cdkDropListAutoScrollStep]=64 [cdkDropListData]="paginatedSites"
                     (cdkDropListDropped)="drop($event)">
-                    <mat-expansion-panel *ngFor="let site of sites; index as i" [formGroup]="site" cdkDrag>
+                    <mat-expansion-panel *ngFor="let site of paginatedSites; index as i" [formGroup]="site" cdkDrag>
                         <mat-expansion-panel-header>
                             <mat-panel-title>
                                 <mat-icon cdkDragHandle>drag_indicator</mat-icon>
@@ -121,6 +157,23 @@
                         </ng-template>
                     </mat-expansion-panel>
                 </mat-accordion>
+
+                <!-- Pagination Controls -->
+                <div *ngIf="filteredSites.length > sitesPageSize" class="row" style="margin: 16px 0; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                    <button type="button" mat-icon-button (click)="onSitesPageChange(0)" [disabled]="sitesPage === 0">
+                        <mat-icon>first_page</mat-icon>
+                    </button>
+                    <button type="button" mat-icon-button (click)="onSitesPageChange(sitesPage - 1)" [disabled]="sitesPage === 0">
+                        <mat-icon>chevron_left</mat-icon>
+                    </button>
+                    <span class="mat-body">Page {{ sitesPage + 1 }} of {{ sitesTotalPages }}</span>
+                    <button type="button" mat-icon-button (click)="onSitesPageChange(sitesPage + 1)" [disabled]="sitesPage >= sitesTotalPages - 1">
+                        <mat-icon>chevron_right</mat-icon>
+                    </button>
+                    <button type="button" mat-icon-button (click)="onSitesPageChange(sitesTotalPages - 1)" [disabled]="sitesPage >= sitesTotalPages - 1">
+                        <mat-icon>last_page</mat-icon>
+                    </button>
+                </div>
             </ng-template>
         </mat-expansion-panel>
     </mat-accordion>
@@ -147,6 +200,23 @@
                             Sort A-Z
                         </button>
                     </div>
+                </div>
+
+                <!-- Search Bar -->
+                <div class="row" style="margin: 12px 0;">
+                    <mat-form-field floatLabel="auto" style="width: 100%;">
+                        <mat-label>Search talkgroups</mat-label>
+                        <input matInput [value]="talkgroupsSearchTerm" (input)="onTalkgroupsSearchChange($any($event.target).value)" 
+                               placeholder="Search by label, name, or ID">
+                        <mat-icon matSuffix>search</mat-icon>
+                    </mat-form-field>
+                </div>
+                
+                <!-- Results Count -->
+                <div *ngIf="talkgroupsSearchTerm" class="row" style="margin: 0 0 12px 0;">
+                    <span class="mat-caption">
+                        Showing {{ filteredTalkgroups.length }} of {{ talkgroups.length }} talkgroups
+                    </span>
                 </div>
                 
                 <!-- Bulk Actions Section -->
@@ -202,8 +272,8 @@
                 </div>
 
                 <mat-accordion displayMode="flat" cdkDropList [cdkDropListAutoScrollStep]=64
-                    [cdkDropListData]="talkgroups" (cdkDropListDropped)="drop($event)">
-                    <mat-expansion-panel *ngFor="let talkgroup of talkgroups; index as i" [formGroup]="talkgroup"
+                    [cdkDropListData]="paginatedTalkgroups" (cdkDropListDropped)="drop($event)">
+                    <mat-expansion-panel *ngFor="let talkgroup of paginatedTalkgroups; index as i" [formGroup]="talkgroup"
                         cdkDrag>
                         <mat-expansion-panel-header>
                             <mat-panel-title>
@@ -228,6 +298,23 @@
                         </ng-template>
                     </mat-expansion-panel>
                 </mat-accordion>
+
+                <!-- Pagination Controls -->
+                <div *ngIf="filteredTalkgroups.length > talkgroupsPageSize" class="row" style="margin: 16px 0; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                    <button type="button" mat-icon-button (click)="onTalkgroupsPageChange(0)" [disabled]="talkgroupsPage === 0">
+                        <mat-icon>first_page</mat-icon>
+                    </button>
+                    <button type="button" mat-icon-button (click)="onTalkgroupsPageChange(talkgroupsPage - 1)" [disabled]="talkgroupsPage === 0">
+                        <mat-icon>chevron_left</mat-icon>
+                    </button>
+                    <span class="mat-body">Page {{ talkgroupsPage + 1 }} of {{ talkgroupsTotalPages }}</span>
+                    <button type="button" mat-icon-button (click)="onTalkgroupsPageChange(talkgroupsPage + 1)" [disabled]="talkgroupsPage >= talkgroupsTotalPages - 1">
+                        <mat-icon>chevron_right</mat-icon>
+                    </button>
+                    <button type="button" mat-icon-button (click)="onTalkgroupsPageChange(talkgroupsTotalPages - 1)" [disabled]="talkgroupsPage >= talkgroupsTotalPages - 1">
+                        <mat-icon>last_page</mat-icon>
+                    </button>
+                </div>
             </ng-template>
         </mat-expansion-panel>
     </mat-accordion>
@@ -245,9 +332,27 @@
                         screen.<br>You can drag and drop them to rearrange</p>
                     <button type="button" mat-button color="accent" (click)="addUnit()">New unit</button>
                 </div>
-                <mat-accordion displayMode="flat" cdkDropList [cdkDropListAutoScrollStep]=64 [cdkDropListData]="units"
+
+                <!-- Search Bar -->
+                <div class="row" style="margin: 12px 0;">
+                    <mat-form-field floatLabel="auto" style="width: 100%;">
+                        <mat-label>Search units</mat-label>
+                        <input matInput [value]="unitsSearchTerm" (input)="onUnitsSearchChange($any($event.target).value)" 
+                               placeholder="Search by label or ID">
+                        <mat-icon matSuffix>search</mat-icon>
+                    </mat-form-field>
+                </div>
+
+                <!-- Results Count -->
+                <div *ngIf="unitsSearchTerm" class="row" style="margin: 0 0 12px 0;">
+                    <span class="mat-caption">
+                        Showing {{ filteredUnits.length }} of {{ units.length }} units
+                    </span>
+                </div>
+
+                <mat-accordion displayMode="flat" cdkDropList [cdkDropListAutoScrollStep]=64 [cdkDropListData]="paginatedUnits"
                     (cdkDropListDropped)="drop($event)">
-                    <mat-expansion-panel *ngFor="let unit of units; index as i" [formGroup]="unit" cdkDrag>
+                    <mat-expansion-panel *ngFor="let unit of paginatedUnits; index as i" [formGroup]="unit" cdkDrag>
                         <mat-expansion-panel-header>
                             <mat-panel-title>
                                 <mat-icon cdkDragHandle>drag_indicator</mat-icon>
@@ -261,6 +366,23 @@
                         </ng-template>
                     </mat-expansion-panel>
                 </mat-accordion>
+
+                <!-- Pagination Controls -->
+                <div *ngIf="filteredUnits.length > unitsPageSize" class="row" style="margin: 16px 0; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                    <button type="button" mat-icon-button (click)="onUnitsPageChange(0)" [disabled]="unitsPage === 0">
+                        <mat-icon>first_page</mat-icon>
+                    </button>
+                    <button type="button" mat-icon-button (click)="onUnitsPageChange(unitsPage - 1)" [disabled]="unitsPage === 0">
+                        <mat-icon>chevron_left</mat-icon>
+                    </button>
+                    <span class="mat-body">Page {{ unitsPage + 1 }} of {{ unitsTotalPages }}</span>
+                    <button type="button" mat-icon-button (click)="onUnitsPageChange(unitsPage + 1)" [disabled]="unitsPage >= unitsTotalPages - 1">
+                        <mat-icon>chevron_right</mat-icon>
+                    </button>
+                    <button type="button" mat-icon-button (click)="onUnitsPageChange(unitsTotalPages - 1)" [disabled]="unitsPage >= unitsTotalPages - 1">
+                        <mat-icon>last_page</mat-icon>
+                    </button>
+                </div>
             </ng-template>
         </mat-expansion-panel>
     </mat-accordion>

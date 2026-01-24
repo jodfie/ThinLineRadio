@@ -49,6 +49,10 @@ export class RdioScannerAdminTalkgroupComponent {
         return this.form?.root.get('tags')?.value as Tag[];
     }
 
+    get apikeys(): any[] {
+        return this.form?.root.get('apikeys')?.value as any[] || [];
+    }
+
     constructor(
         private adminService: RdioScannerAdminService,
         private formBuilder: FormBuilder,

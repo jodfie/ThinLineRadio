@@ -1,5 +1,249 @@
 # Change log
 
+## Version 7.0 Beta 9 - Released TBD
+
+### Bug Fixes
+
+- **Fixed talkgroup sorting not persisting properly**
+  - Root cause: Admin panel FormArray was not being reordered to match display order
+  - When saving config after modifying other sections, talkgroups were saved in database ID order instead of custom sort order
+  - Client-side fix: FormArray is now reordered to match display order (sorted by Order field) on load
+  - Server-side fix: Changed all talkgroup sorts to stable sorts with secondary sort key (talkgroup ID) to prevent random shuffling
+  - AutoPopulate fix: New talkgroups now get Order = max(existing orders) + 1 instead of 0, preventing them from jumping to the top
+  - Fixed typo in talkgroup.ToMap() where Order field was incorrectly mapped as "talkgroup" instead of "order"
+  - Talkgroup custom sort order now persists correctly across saves, page refreshes, and server restarts
+  - Files modified: client/src/app/components/rdio-scanner/admin/config/systems/system/system.component.ts, server/controller.go, server/talkgroup.go, server/system.go
+
+- **Fixed new talkgroups/systems auto-enabling for all users (GitHub issue #85)**
+  - Root cause: Web client's `rebuildLivefeedMap()` was defaulting new talkgroups to enabled if their group/tag wasn't explicitly Off
+  - This caused newly created or auto-populated talkgroups to automatically appear in all users' live feeds
+  - **Web client fix**: New talkgroups now default to `active: false` in livefeed map, requiring users to manually enable them in Channel Select
+  - **Mobile app**: Already correctly defaulted new talkgroups to disabled state (`false`) in `_mergeTalkgroupStates()`
+  - Users must now explicitly enable new talkgroups/systems before they appear in live feed
+  - Prevents unexpected audio from new sources users haven't selected
+  - Files modified: client/src/app/components/rdio-scanner/rdio-scanner.service.ts
+
+### New Features
+
+- **Per-system no-audio alert configuration with simplified monitoring**
+  - Replaced complex adaptive monitoring with simple per-system threshold configuration
+  - Each system now has individual "No Audio Alerts" toggle and threshold (minutes) setting
+  - Configured in Admin → System Health → Per-System No Audio Settings
+  - Removed: Adaptive threshold calculation, historical data analysis, multipliers, time-of-day learning
+  - New simple logic: Alert if system hasn't received audio in X minutes (configurable per-system)
+  - Defaults: Enabled with 30-minute threshold for all systems
+  - Global "No Audio Alerts Enabled" toggle still acts as master switch
+  - Monitoring runs every 5 minutes and checks each enabled system
+  - Files modified: server/system.go, server/postgresql.go, server/migrations.go, server/system_alert.go, client/src/app/components/rdio-scanner/admin/admin.service.ts, client/src/app/components/rdio-scanner/admin/system-health/system-health.component.ts, client/src/app/components/rdio-scanner/admin/system-health/system-health.component.html
+
+- **Per-talkgroup exclusion from preferred site detection**
+  - New "Exclude from Preferred Site Detection" option for individual talkgroups
+  - Useful for interop/patched talkgroups that receive calls from multiple physical P25 systems
+  - When enabled, talkgroup bypasses advanced duplicate detection and uses legacy time-based detection
+  - Prevents unnecessary delays for talkgroups that can originate from sites outside preferred site configuration
+  - Configured in Admin → Config → Systems → Talkgroups
+  - Files modified: server/talkgroup.go, server/postgresql.go, server/migrations.go, server/controller.go, client/src/app/components/rdio-scanner/admin/admin.service.ts, client/src/app/components/rdio-scanner/admin/config/systems/talkgroup/talkgroup.component.html
+
+- **Automatic site identification by frequency**
+  - System automatically determines which site a call originated from by matching call frequency against configured site frequencies
+  - New `GetSiteByFrequency()` method searches within a system's sites for frequency matches
+  - Uses 10 kHz tolerance (0.01 MHz) for frequency matching to account for variations
+  - Applies during call ingestion and before database write
+  - Only searches within the specific system the call belongs to
+  - Populates `siteRef` field automatically when not provided by upload source
+  - Files modified: server/site.go, server/call.go, server/controller.go
+
+- **Advanced duplicate call detection system with intelligent site and API key prioritization**
+  - Introduces two duplicate detection modes: Legacy (time-based only) and Advanced (site + frequency + API key aware)
+  - **Legacy Mode**: Original behavior - rejects duplicate calls within configurable time window
+  - **Advanced Mode**: Enhanced detection using preferred sites, frequency validation, and API key enforcement
+  - **Preferred Sites**: Mark sites as preferred; calls from preferred sites are accepted immediately and cancel queued secondary site calls
+  - **Secondary Site Queueing**: Calls from non-preferred sites are held for configurable time (default 2 seconds); automatically processed if no preferred site call arrives
+  - **Preferred API Keys**: Assign preferred upload API keys to systems or talkgroups; preferred API key calls are prioritized over others
+  - **Frequency Validation**: Sites can have configured frequencies for validation in advanced mode
+  - **Smart Fallback**: Automatically falls back to legacy time-based detection if advanced configuration (sites, API keys) is not configured
+  - **Separate Time Windows**: Independent configurable time frames for legacy and advanced modes
+  - **Call Queue System**: New intelligent queueing system for delayed call ingestion with automatic cancellation
+  - Configuration: Admin → Config → Options → Duplicate Call Detection
+  - Files added: server/call_queue.go
+  - Files modified: server/controller.go, server/call.go, server/api.go, server/options.go, server/defaults.go, server/migrations.go, server/site.go, server/system.go, server/talkgroup.go, client/src/app/components/rdio-scanner/admin/admin.service.ts, client/src/app/components/rdio-scanner/admin/config/options/options.component.html, client/src/app/components/rdio-scanner/admin/config/systems/system/system.component.html, client/src/app/components/rdio-scanner/admin/config/systems/talkgroup/talkgroup.component.html
+
+- **Site configuration enhancements with P25 system support**
+  - **Site ID as string**: Changed from numeric to string format to preserve leading zeros (e.g., "001", "021", "050")
+  - **RFSS field**: Added Radio Frequency Sub-System ID field for P25 Phase 2 systems
+  - **Frequencies array**: Sites can now store multiple frequencies for frequency validation in advanced duplicate detection
+  - **Preferred site flag**: Mark one site per system as preferred for advanced duplicate detection
+  - Backward compatibility: Existing numeric site IDs automatically converted to strings during migration
+  - Database migration handles type conversion from INTEGER to TEXT for siteRef column
+  - Files modified: server/site.go, server/migrations.go, server/call.go, server/api.go, server/dirwatch.go, server/parsers.go, client/src/app/components/rdio-scanner/admin/admin.service.ts, client/src/app/components/rdio-scanner/admin/config/systems/site/site.component.html
+
+- **Radio Reference import improvements with comprehensive state persistence**
+  - **Full state persistence**: All selections, loaded data, and filters automatically saved and restored across page reloads
+  - **Persistent data**: Import type, target system, country, state, county, selected system, categories, talkgroups, and sites
+  - **Site import enhancements**: Added site selection with checkboxes, pagination (25/50/100/250 per page), and bulk selection options
+  - **Frequency import**: Sites imported from Radio Reference now include all frequencies from the siteFreqs data
+  - **RFSS import**: RFSS (Radio Frequency Sub-System) values are now imported and assigned to sites
+  - **Improved site review**: Separate review table for sites showing RFSS, Site ID, Name, County, Latitude, Longitude, and Frequencies
+  - **Site filtering**: Search sites by ID, name, or county with real-time filtering
+  - **Clear saved state**: Added button to manually clear saved state if needed
+  - **Better UX**: No need to re-query dropdowns or reselect options when returning to the import page
+  - Files modified: client/src/app/components/rdio-scanner/admin/tools/radio-reference-import/radio-reference-import.component.ts, client/src/app/components/rdio-scanner/admin/tools/radio-reference-import/radio-reference-import.component.html, server/radioreference.go
+
+### New Features
+
+- **Simplified user registration settings for better UX**
+  - Removed confusing "Public Registration Mode" sub-option dropdown (Codes Only / Email Invites Only / Both)
+  - Public registration now defaults to supporting both codes and email invites by default
+  - Cleaner, more intuitive admin interface with fewer configuration steps
+  - Files modified: client/src/app/components/rdio-scanner/admin/config/user-registration/user-registration.component.html, client/src/app/components/rdio-scanner/admin/config/user-registration/user-registration.component.ts
+
+### Bug Fixes
+
+- **Fixed tone detection for overlapping two-tone paging sequences**
+  - Relaxed sequencing requirements to support overlapping tones (common in two-tone paging)
+  - Changed from requiring "B-tone must end after A-tone ends" to "B-tone must start after A-tone starts"
+  - Now properly detects both sequential tones (A then B) and overlapping tones (A+B simultaneously)
+  - Allows B-tone to start anytime during A-tone's duration (full overlap support)
+  - Files modified: server/tone_detector.go
+
+- **Improved tone detection for closely-spaced frequencies**
+  - Added local maximum (peak) detection to FFT analysis
+  - Only processes local maxima instead of all bins above threshold
+  - Better separates closely-spaced tones (e.g., 556 Hz and 598 Hz with 42 Hz separation)
+  - Prevents false merging of distinct simultaneous tones
+  - Files modified: server/tone_detector.go
+
+- **Fixed tone tolerance calculation in debug output**
+  - Corrected tolerance calculation from `frequency * tolerance` to `tolerance * 500 Hz`
+  - Debug output now shows accurate tolerance values matching actual detection logic
+  - Example: 0.04 tolerance now correctly displays as ±20 Hz instead of ±22.24 Hz (for 556 Hz tone)
+  - Files modified: server/tone_detector.go
+
+- **Fixed SQL error when inserting calls with empty siteRef**
+  - Converts string `siteRef` to integer before database insertion
+  - Defaults to 0 when siteRef is empty or invalid
+  - Resolves "syntax error at or near )" error in PostgreSQL
+  - Files modified: server/call.go
+
+- **Fixed admin purge functionality display issues**
+  - "Purge All Logs" button now correctly shows it only deletes logs (not logs and calls)
+  - "Purge All Calls" button now correctly shows it only deletes calls (not calls and logs)  
+  - Clarified warning text to state each button only affects its specific data type
+  - Reduced confirmation steps from 3 to 1 (single typed confirmation with full warning text)
+  - Split purging state into separate `purgingCalls` and `purgingLogs` flags
+  - Prevents both buttons showing "Purging..." when only one operation is active
+  - Files modified: client/src/app/components/rdio-scanner/admin/tools/purge-data/purge-data.component.ts, client/src/app/components/rdio-scanner/admin/tools/purge-data/purge-data.component.html
+
+- **Fixed web app display after transmission ends**
+  - Talkgroup description and call info now properly clear when transmission finishes
+  - "SCANNING" animation displays correctly when live feed is active and no call is playing
+  - Finished call immediately moves to "Last 10 Transmissions" history
+  - All call display variables reset to defaults (system, tag, talkgroup, unit, etc.)
+  - Prevents stale call information from remaining on screen
+  - Files modified: client/src/app/components/rdio-scanner/main/main.component.ts
+
+- **Enhanced user registration and login experience with improved password security**
+  - Email addresses are now automatically converted to lowercase in all forms (registration, login, forgot password) to prevent case-sensitivity issues
+  - Lowercase conversion happens both as users type and when forms are submitted
+  - Added prominent email verification notice after successful registration with visual emphasis
+  - Users are now clearly directed to check their email inbox (and spam folder) for the verification link
+  - Email verification notice appears in both standalone registration page and main auth screen
+  - **Added special character requirement to passwords for improved security**
+  - Password requirements now include: 8+ characters, uppercase, lowercase, number, and special character
+  - Fixed password validation error overflow by displaying all missing requirements in a single compact line
+  - Error format: "Missing: 8+ chars, uppercase, lowercase, number, special char" (only shows what's missing)
+  - Prevents text overflow into confirm password field with comma-separated inline format
+  - "Passwords do not match" error now correctly appears only on the confirm password field
+  - Applied to all authentication forms: user registration, user login, group admin login, and password reset
+  - Files modified: client/src/app/components/rdio-scanner/user-registration/user-registration.component.ts, client/src/app/components/rdio-scanner/user-registration/user-registration.component.html, client/src/app/components/rdio-scanner/user-login/user-login.component.ts, client/src/app/components/rdio-scanner/user-login/user-login.component.html, client/src/app/components/rdio-scanner/auth-screen/auth-screen.component.ts, client/src/app/components/rdio-scanner/auth-screen/auth-screen.component.html, client/src/app/components/rdio-scanner/group-admin/group-admin-login.component.ts
+
+- **Restored configurable Whisper transcription worker pool size with safety warnings**
+  - Re-added worker pool size configuration for Whisper API transcription (previously removed in Beta 8)
+  - Users with sufficient VRAM (8GB+) can now run multiple concurrent Whisper workers for faster transcription processing
+  - Default remains at 1 worker for safety and stability
+  - **Prominent warnings added in admin UI** about potential transcription failures when using multiple workers with insufficient resources
+  - Recommended approach: Start with 1 worker, monitor for failures, and increase only if system has adequate VRAM
+  - Cloud providers (Azure, Google, AssemblyAI) can typically handle 3-5+ workers without issues
+  - Worker pool size configurable from 1-10 workers with provider-specific hints in UI
+  - Configuration: Admin → Config → Options → Transcription Settings → Worker Pool Size
+  - Files modified: client/src/app/components/rdio-scanner/admin/config/options/options.component.html, client/src/app/components/rdio-scanner/admin/admin.service.ts, server/transcription_queue.go
+
+- **Configurable loudness normalization presets with multiple loudness targets**
+  - Replaced basic/loud normalization with four industry-standard loudness presets
+  - **Conservative (-16 LUFS)**: Broadcast TV/radio standard (EBU R128), preserves high dynamic range, safest for all content
+  - **Standard (-12 LUFS)**: Modern streaming standard (YouTube, Spotify), 4 dB louder than conservative, recommended default
+  - **Aggressive (-10 LUFS)**: Dispatcher/public safety optimized, 6 dB louder with compressed dynamics for consistent volume
+  - **Maximum (-8 LUFS)**: Maximum loudness, 8 dB louder than conservative, heavily compressed with minimal dynamics
+  - **Bidirectional normalization**: Automatically boosts quiet channels AND reduces loud channels to target level for consistent listening experience
+  - **EBU R128 compliant**: Uses FFmpeg's `loudnorm` filter based on broadcast industry standards (LUFS = Loudness Units relative to Full Scale)
+  - **Dynamic range control**: Each preset balances loudness target with appropriate dynamic range preservation (LRA values from 11 to 5)
+  - **True peak limiting**: Prevents clipping and distortion with appropriate headroom for each loudness level
+  - **Enhanced over-modulated signal handling**: Added pre-limiter (`alimiter`) before loudnorm to catch extreme peaks, significantly improves handling of hot/distorted audio
+  - **Linear mode processing**: Uses linear mode (`linear=true`) for better quality and more accurate normalization
+  - **Dual mono optimization**: Optimized for mono scanner audio sources (`dual_mono=true`)
+  - **Fallback for older FFmpeg**: Automatically falls back to `dynaudnorm` filter if FFmpeg < 4.3 (with user warning to upgrade)
+  - Solves common issue where some channels are naturally quieter and hard to hear even with normalization
+  - Fixes reported issue where over-modulated signals weren't being properly reduced to target levels
+  - Provides flexibility for different use cases: monitoring (conservative), general listening (standard), dispatch operations (aggressive/maximum)
+  - Admin UI includes helpful descriptions and hints explaining how normalization affects both quiet and loud channels
+  - Configuration: Admin → Config → Options → Audio Conversion (select from dropdown)
+  - Files modified: server/options.go, server/ffmpeg.go, client/src/app/components/rdio-scanner/admin/config/options/options.component.html
+
+### Performance Improvements
+
+- **Admin systems and units page performance enhancements**
+  - **Pagination**: Systems, talkgroups, units, and sites now display in pages of 50 items each
+  - **Search functionality**: Added search bars to filter by label, name, or ID for instant results
+  - **Cached sorting**: Optimized sorting algorithms to prevent redundant array operations on every change detection
+  - **Reduced DOM nodes**: Only renders visible items per page, dramatically improving load times and responsiveness
+  - **Real-time filtering**: Search results update instantly with item counts displayed
+  - **Backward navigation**: Pagination controls include first/previous/next/last page buttons
+  - Significantly improves admin interface performance for systems with hundreds or thousands of talkgroups/units
+  - Files modified: client/src/app/components/rdio-scanner/admin/config/systems/systems.component.ts, client/src/app/components/rdio-scanner/admin/config/systems/systems.component.html, client/src/app/components/rdio-scanner/admin/config/systems/system/system.component.ts, client/src/app/components/rdio-scanner/admin/config/systems/system/system.component.html
+
+### Bug Fixes
+
+- **Fixed System Health Alert settings save failure (Issue #82)**
+  - Added missing database migration for system health alert option keys
+  - Users upgrading from older versions were missing required options table entries, causing 500 errors when saving settings
+  - Migration now initializes all 16 system health alert options with default values if they don't exist
+  - Fixes: systemHealthAlertsEnabled, transcriptionFailureAlertsEnabled, toneDetectionAlertsEnabled, noAudioAlertsEnabled, and related threshold/window/repeat settings
+  - Migration runs automatically on server startup for existing installations
+  - Issue reported: https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio/issues/82
+  - Files modified: server/migrations.go, server/database.go
+
+- **Fixed Radio Reference site frequency parsing**
+  - Corrected XML parsing to extract frequencies from `<siteFreqs><item><freq>` nodes
+  - Frequencies are now properly parsed and included in site data from Radio Reference API
+  - Added comprehensive logging for debugging frequency extraction
+  - Files modified: server/radioreference.go
+
+- **Fixed frequency data type in site imports**
+  - Corrected frequency storage format from strings to numbers for proper database handling
+  - Frequencies now correctly saved as JSON array of float64 values
+  - Resolves issue where frequencies appeared in import preview but disappeared after save
+  - Files modified: client/src/app/components/rdio-scanner/admin/tools/radio-reference-import/radio-reference-import.component.ts
+
+### Database Changes
+
+- Added `rfss` column to sites table (INTEGER, default 0)
+- Changed `siteRef` column type from INTEGER to TEXT to preserve leading zeros
+- Added `frequencies` column to sites table (TEXT, JSON array of floats)
+- Added `preferred` column to sites table (BOOLEAN, default false)
+- Added `preferredApiKeyId` column to systems table (INTEGER, nullable)
+- Added `preferredApiKeyId` column to talkgroups table (INTEGER, nullable)
+- Added `advancedDetectionTimeFrame` column to options table (INTEGER, default 1000)
+- Migration automatically converts existing numeric siteRef values to strings
+
+### Technical Notes
+
+- Call queue system uses in-memory storage with timer-based expiration and cancellation
+- Advanced duplicate detection checks database for existing calls before queueing
+- Preferred site/API key calls bypass queue and immediately cancel any pending secondary calls
+- Secondary calls are automatically processed after timeout if no preferred call arrives
+- Site ID string format supports any text format (recommended: zero-padded decimals like "001")
+- Frequency validation in advanced mode requires both site frequencies to be configured
+
 ## Version 7.0 Beta 8 - Released TBD
 
 ### New Features
@@ -147,6 +391,15 @@
   - Fixed "API unauthorized" error when clicking "Clear All" or individual dismiss buttons in System Health
   - Updated alert dismissal to use admin token authentication instead of WebSocket client authentication
   - Added POST handler to `/admin/systemhealth` endpoint for dismissing alerts
+
+- **Fixed pending tones never attaching to voice calls due to timestamp mismatch**
+  - Critical fix: Pending tone timestamps were using processing time instead of actual call transmission time
+  - This caused voice calls to be incorrectly rejected as "came before pending tones" even when they came after
+  - Example: Tone call at 12:00:00.000, processed and stored at 12:00:01.200, voice call at 12:00:00.500 would be rejected
+  - Now uses `call.Timestamp` (radio transmission time) instead of `time.Now()` (processing time) for pending tones
+  - Ensures timestamp comparisons accurately reflect the actual sequence of radio transmissions
+  - Fixes issue where pending tones would lock/unlock properly but never attach to any voice calls
+  - Files modified: server/controller.go (storePendingTones function)
   - Allows administrators to dismiss individual alerts or bulk dismiss alert groups
   - Files modified: server/admin.go, client/src/app/components/rdio-scanner/admin/admin.service.ts
 

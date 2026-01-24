@@ -26,18 +26,20 @@ import (
 )
 
 type Talkgroup struct {
-	Id                   uint64
-	Delay                uint
-	Frequency            uint
-	GroupIds             []uint64
-	Kind                 string
-	Label                string
-	Name                 string
-	Order                uint
-	TagId                uint64
-	TalkgroupRef         uint
-	ToneDetectionEnabled bool
-	ToneSets             []ToneSet
+	Id                      uint64
+	Delay                   uint
+	Frequency               uint
+	GroupIds                []uint64
+	Kind                    string
+	Label                   string
+	Name                    string
+	Order                   uint
+	TagId                   uint64
+	TalkgroupRef            uint
+	ToneDetectionEnabled    bool
+	ToneSets                []ToneSet
+	PreferredApiKeyId       *uint64 // Optional preferred API key for uploads
+	ExcludeFromPreferredSite bool   // Exclude from preferred site detection (for interop/patched talkgroups)
 }
 
 func NewTalkgroup() *Talkgroup {
@@ -123,6 +125,21 @@ func (talkgroup *Talkgroup) FromMap(m map[string]any) *Talkgroup {
 		}
 	}
 
+	// Parse preferredApiKeyId (optional/nullable)
+	switch v := m["preferredApiKeyId"].(type) {
+	case float64:
+		id := uint64(v)
+		talkgroup.PreferredApiKeyId = &id
+	case nil:
+		talkgroup.PreferredApiKeyId = nil
+	}
+
+	// Parse excludeFromPreferredSite
+	switch v := m["excludeFromPreferredSite"].(type) {
+	case bool:
+		talkgroup.ExcludeFromPreferredSite = v
+	}
+
 	return talkgroup
 }
 
@@ -148,7 +165,7 @@ func (talkgroup *Talkgroup) MarshalJSON() ([]byte, error) {
 	}
 
 	if talkgroup.Order > 0 {
-		m["talkgroup"] = talkgroup.Order
+		m["order"] = talkgroup.Order
 	}
 
 	if talkgroup.TagId > 0 {
@@ -162,6 +179,16 @@ func (talkgroup *Talkgroup) MarshalJSON() ([]byte, error) {
 			m["toneSets"] = json.RawMessage(toneSetsJson)
 		}
 	}
+
+	// Include preferredApiKeyId if set
+	if talkgroup.PreferredApiKeyId != nil {
+		m["preferredApiKeyId"] = *talkgroup.PreferredApiKeyId
+	} else {
+		m["preferredApiKeyId"] = nil
+	}
+
+	// Include excludeFromPreferredSite
+	m["excludeFromPreferredSite"] = talkgroup.ExcludeFromPreferredSite
 
 	return json.Marshal(m)
 }
@@ -253,10 +280,10 @@ func (talkgroups *Talkgroups) ReadTx(tx *sql.Tx, systemId uint64, dbType string)
 	formatError := errorFormatter("talkgroups", "read")
 
 	if dbType == DbTypePostgresql {
-		query = fmt.Sprintf(`SELECT t."talkgroupId", t."delay", t."frequency", t."label", t."name", t."order", t."tagId", t."talkgroupRef", t."type", t."toneDetectionEnabled", t."toneSets", STRING_AGG(CAST(COALESCE(tg."groupId", 0) AS text), ',') FROM "talkgroups" AS t LEFT JOIN "talkgroupGroups" AS tg ON tg."talkgroupId" = t."talkgroupId" WHERE t."systemId" = %d GROUP BY t."talkgroupId"`, systemId)
+		query = fmt.Sprintf(`SELECT t."talkgroupId", t."delay", t."frequency", t."label", t."name", t."order", t."tagId", t."talkgroupRef", t."type", t."toneDetectionEnabled", t."toneSets", t."preferredApiKeyId", t."excludeFromPreferredSite", STRING_AGG(CAST(COALESCE(tg."groupId", 0) AS text), ',') FROM "talkgroups" AS t LEFT JOIN "talkgroupGroups" AS tg ON tg."talkgroupId" = t."talkgroupId" WHERE t."systemId" = %d GROUP BY t."talkgroupId", t."preferredApiKeyId", t."excludeFromPreferredSite"`, systemId)
 
 	} else {
-		query = fmt.Sprintf(`SELECT t."talkgroupId", t."delay", t."frequency", t."label", t."name", t."order", t."tagId", t."talkgroupRef", t."type", t."toneDetectionEnabled", t."toneSets", GROUP_CONCAT(COALESCE(tg."groupId", 0)) FROM "talkgroups" AS t LEFT JOIN "talkgroupGroups" AS tg ON tg."talkgroupId" = t."talkgroupId" WHERE t."systemId" = %d GROUP BY t."talkgroupId"`, systemId)
+		query = fmt.Sprintf(`SELECT t."talkgroupId", t."delay", t."frequency", t."label", t."name", t."order", t."tagId", t."talkgroupRef", t."type", t."toneDetectionEnabled", t."toneSets", t."preferredApiKeyId", t."excludeFromPreferredSite", GROUP_CONCAT(COALESCE(tg."groupId", 0)) FROM "talkgroups" AS t LEFT JOIN "talkgroupGroups" AS tg ON tg."talkgroupId" = t."talkgroupId" WHERE t."systemId" = %d GROUP BY t."talkgroupId"`, systemId)
 	}
 
 	if rows, err = tx.Query(query); err != nil {
@@ -266,9 +293,16 @@ func (talkgroups *Talkgroups) ReadTx(tx *sql.Tx, systemId uint64, dbType string)
 	for rows.Next() {
 		talkgroup := NewTalkgroup()
 		var toneSetsJson string
+		var preferredApiKeyId sql.NullInt64
 
-		if err = rows.Scan(&talkgroup.Id, &talkgroup.Delay, &talkgroup.Frequency, &talkgroup.Label, &talkgroup.Name, &talkgroup.Order, &talkgroup.TagId, &talkgroup.TalkgroupRef, &talkgroup.Kind, &talkgroup.ToneDetectionEnabled, &toneSetsJson, &groupIds); err != nil {
+		if err = rows.Scan(&talkgroup.Id, &talkgroup.Delay, &talkgroup.Frequency, &talkgroup.Label, &talkgroup.Name, &talkgroup.Order, &talkgroup.TagId, &talkgroup.TalkgroupRef, &talkgroup.Kind, &talkgroup.ToneDetectionEnabled, &toneSetsJson, &preferredApiKeyId, &talkgroup.ExcludeFromPreferredSite, &groupIds); err != nil {
 			break
+		}
+
+		// Handle nullable preferredApiKeyId
+		if preferredApiKeyId.Valid {
+			id := uint64(preferredApiKeyId.Int64)
+			talkgroup.PreferredApiKeyId = &id
 		}
 
 		// Parse tone sets
@@ -293,8 +327,13 @@ func (talkgroups *Talkgroups) ReadTx(tx *sql.Tx, systemId uint64, dbType string)
 		return formatError(err, "")
 	}
 
-	sort.Slice(talkgroups.List, func(i int, j int) bool {
-		return talkgroups.List[i].Order < talkgroups.List[j].Order
+	// Stable sort: primary by Order, secondary by Id to ensure consistent ordering
+	sort.SliceStable(talkgroups.List, func(i int, j int) bool {
+		if talkgroups.List[i].Order != talkgroups.List[j].Order {
+			return talkgroups.List[i].Order < talkgroups.List[j].Order
+		}
+		// Secondary sort by talkgroup ID for stable ordering
+		return talkgroups.List[i].Id < talkgroups.List[j].Id
 	})
 
 	return nil
@@ -424,13 +463,19 @@ func (talkgroups *Talkgroups) WriteTx(tx *sql.Tx, systemId uint64, dbType string
 			}
 		}
 
+		// Format preferredApiKeyId for SQL (NULL or number)
+		preferredApiKeyIdSQL := "NULL"
+		if talkgroup.PreferredApiKeyId != nil {
+			preferredApiKeyIdSQL = fmt.Sprintf("%d", *talkgroup.PreferredApiKeyId)
+		}
+
 		if count == 0 {
 			if talkgroup.Id > 0 {
 				// Preserve the explicit ID when inserting
-				query = fmt.Sprintf(`INSERT INTO "talkgroups" ("talkgroupId", "delay", "frequency", "label", "name", "order", "systemId", "tagId", "talkgroupRef", "type", "toneDetectionEnabled", "toneSets") VALUES (%d, %d, %d, '%s', '%s', %d, %d, %d, %d, '%s', %t, '%s')`, talkgroup.Id, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, systemId, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson))
+				query = fmt.Sprintf(`INSERT INTO "talkgroups" ("talkgroupId", "delay", "frequency", "label", "name", "order", "systemId", "tagId", "talkgroupRef", "type", "toneDetectionEnabled", "toneSets", "preferredApiKeyId", "excludeFromPreferredSite") VALUES (%d, %d, %d, '%s', '%s', %d, %d, %d, %d, '%s', %t, '%s', %s, %t)`, talkgroup.Id, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, systemId, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson), preferredApiKeyIdSQL, talkgroup.ExcludeFromPreferredSite)
 			} else {
 				// Let database assign auto-increment ID
-				query = fmt.Sprintf(`INSERT INTO "talkgroups" ("delay", "frequency", "label", "name", "order", "systemId", "tagId", "talkgroupRef", "type", "toneDetectionEnabled", "toneSets") VALUES (%d, %d, '%s', '%s', %d, %d, %d, %d, '%s', %t, '%s')`, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, systemId, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson))
+				query = fmt.Sprintf(`INSERT INTO "talkgroups" ("delay", "frequency", "label", "name", "order", "systemId", "tagId", "talkgroupRef", "type", "toneDetectionEnabled", "toneSets", "preferredApiKeyId", "excludeFromPreferredSite") VALUES (%d, %d, '%s', '%s', %d, %d, %d, %d, '%s', %t, '%s', %s, %t)`, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, systemId, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson), preferredApiKeyIdSQL, talkgroup.ExcludeFromPreferredSite)
 			}
 
 			if dbType == DbTypePostgresql {
@@ -451,14 +496,15 @@ func (talkgroups *Talkgroups) WriteTx(tx *sql.Tx, systemId uint64, dbType string
 			}
 
 		} else {
-			// Serialize tone sets
+			// Serialize tone sets (already done above, but we're in else block so need to recalculate)
 			toneSetsJson := "[]"
 			if len(talkgroup.ToneSets) > 0 {
 				if json, err := SerializeToneSets(talkgroup.ToneSets); err == nil {
 					toneSetsJson = json
 				}
 			}
-			query = fmt.Sprintf(`UPDATE "talkgroups" SET "delay" = %d, "frequency" = %d, "label" = '%s', "name" = '%s', "order" = %d, "tagId" = %d, "talkgroupRef" = %d, "type" = '%s', "toneDetectionEnabled" = %t, "toneSets" = '%s' WHERE "talkgroupId" = %d`, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson), talkgroup.Id)
+			// preferredApiKeyIdSQL is already calculated above
+			query = fmt.Sprintf(`UPDATE "talkgroups" SET "delay" = %d, "frequency" = %d, "label" = '%s', "name" = '%s', "order" = %d, "tagId" = %d, "talkgroupRef" = %d, "type" = '%s', "toneDetectionEnabled" = %t, "toneSets" = '%s', "preferredApiKeyId" = %s, "excludeFromPreferredSite" = %t WHERE "talkgroupId" = %d`, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson), preferredApiKeyIdSQL, talkgroup.ExcludeFromPreferredSite, talkgroup.Id)
 			if _, err = tx.Exec(query); err != nil {
 				break
 			}

@@ -131,6 +131,37 @@
     </div>
     <div class="row">
         <p>
+            <span class="mat-body">Preferred API Key</span><br>
+            <span class="mat-caption">
+                Optional: Prioritize calls from a specific API key (works with Advanced Mode).
+                Preferred API key calls are accepted immediately. Non-preferred calls wait for preferred, then process if none arrives.
+                Takes priority over system-level preference. Leave empty to use system-level setting.
+            </span>
+        </p>
+        <mat-form-field floatLabel="auto">
+            <mat-select formControlName="preferredApiKeyId" placeholder="Any API Key">
+                <mat-option [value]="null">Any API Key (Use System Default)</mat-option>
+                <mat-option *ngFor="let apikey of apikeys" [value]="apikey.id">
+                    {{ apikey.ident || 'API Key ' + apikey.id }}
+                </mat-option>
+            </mat-select>
+        </mat-form-field>
+    </div>
+    <div class="row">
+        <p>
+            <span class="mat-body">Exclude from Preferred Site Detection</span><br>
+            <span class="mat-caption">
+                Check this if this talkgroup is patched/interop with another physical system.
+                When enabled, calls on this talkgroup will use legacy time-based duplicate detection instead of waiting for preferred sites.
+                This prevents unnecessary delays for talkgroups that receive calls from sites outside your preferred site configuration.
+            </span>
+        </p>
+        <div>
+            <mat-slide-toggle color="primary" formControlName="excludeFromPreferredSite"></mat-slide-toggle>
+        </div>
+    </div>
+    <div class="row">
+        <p>
             <span class="mat-body">Tone Detection</span><br>
             <span class="mat-caption">Enable tone detection for this talkgroup. When enabled, the system will detect A/B tones and long tones in call audio.</span>
         </p>

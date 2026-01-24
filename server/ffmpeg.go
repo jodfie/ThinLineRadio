@@ -90,11 +90,42 @@ func (ffmpeg *FFMpeg) Convert(call *Call, systems *Systems, tags *Tags, mode uin
 		)
 	}
 
-	if ffmpeg.version43 {
-		if mode == AUDIO_CONVERSION_ENABLED_NORM {
-			args = append(args, "-af", "apad=whole_dur=3s,loudnorm")
-		} else if mode == AUDIO_CONVERSION_ENABLED_LOUD_NORM {
-			args = append(args, "-af", "apad=whole_dur=3s,loudnorm=I=-16:TP=-1.5:LRA=11")
+	// Apply audio normalization if requested
+	if mode >= AUDIO_CONVERSION_CONSERVATIVE_NORM && mode <= AUDIO_CONVERSION_MAXIMUM_NORM {
+		if ffmpeg.version43 {
+			// FFmpeg 4.3+ with loudnorm filter
+			// For over-modulated signals, we add a limiter BEFORE loudnorm to catch extreme peaks
+			switch mode {
+			case AUDIO_CONVERSION_CONSERVATIVE_NORM:
+				// -16 LUFS: Broadcast TV/radio standard (EBU R128)
+				// Pre-limit peaks at -1 dB, then normalize with linear mode for better quality
+				args = append(args, "-af", "apad=whole_dur=3s,alimiter=limit=0.9:attack=5:release=50,loudnorm=I=-16:TP=-1.5:LRA=11:dual_mono=true:linear=true")
+				
+			case AUDIO_CONVERSION_STANDARD_NORM:
+				// -12 LUFS: Modern streaming standard (YouTube, Spotify)
+				// 4 dB louder than conservative, good balance
+				args = append(args, "-af", "apad=whole_dur=3s,alimiter=limit=0.9:attack=5:release=50,loudnorm=I=-12:TP=-1.0:LRA=8:dual_mono=true:linear=true")
+				
+			case AUDIO_CONVERSION_AGGRESSIVE_NORM:
+				// -10 LUFS: Dispatcher/public safety optimized
+				// 6 dB louder, compressed dynamics for consistent volume
+				args = append(args, "-af", "apad=whole_dur=3s,alimiter=limit=0.9:attack=5:release=50,loudnorm=I=-10:TP=-0.5:LRA=6:dual_mono=true:linear=true")
+				
+			case AUDIO_CONVERSION_MAXIMUM_NORM:
+				// -8 LUFS: Maximum loudness
+				// 8 dB louder, heavily compressed, minimal dynamics
+				args = append(args, "-af", "apad=whole_dur=3s,alimiter=limit=0.9:attack=5:release=50,loudnorm=I=-8:TP=-0.2:LRA=5:dual_mono=true:linear=true")
+			}
+		} else {
+			// FFmpeg < 4.3: Fall back to dynamic audio normalization
+			// Not as accurate as loudnorm but better than nothing
+			if !ffmpeg.warned {
+				fmt.Println("Warning: FFmpeg 4.3+ required for loudnorm filter. Using fallback dynaudnorm filter.")
+				fmt.Println("For best results, please upgrade FFmpeg to version 4.3 or later.")
+				ffmpeg.warned = true
+			}
+			// dynaudnorm with aggressive compression for over-modulated signals
+			args = append(args, "-af", "apad=whole_dur=3s,alimiter=limit=0.9:attack=5:release=50,dynaudnorm=f=100:g=15:p=0.9:m=10:r=0.5:b=1")
 		}
 	}
 

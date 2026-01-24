@@ -97,7 +97,8 @@ export class RdioScannerAdminUserRegistrationComponent implements OnInit, OnChan
         // Map UI dropdown to backend fields
         if (mode === 'public') {
           this.userRegistrationForm.patchValue({
-            publicRegistrationEnabled: true
+            publicRegistrationEnabled: true,
+            publicRegistrationMode: 'both' // Always default to both codes and email
           }, { emitEvent: false });
         } else { // 'invite'
           this.userRegistrationForm.patchValue({
