@@ -387,40 +387,39 @@
                                 <span class="alert-type-badge">{{ getAlertTypeLabel(alert) }}</span>
                                 <span class="alert-time">{{ formatTimestamp(alert.createdAt) }}</span>
                             </div>
-                            
-                            <div class="alert-channel">
+
+                            <!-- System label -->
+                            <div class="alert-system">
                                 <mat-icon class="channel-icon">radio</mat-icon>
-                                <span>
-                                    <span *ngIf="alert.systemLabel">{{ alert.systemLabel }}</span>
-                                    <span *ngIf="!alert.systemLabel">System {{ alert.systemId }}</span>
-                                    <span> / </span>
-                                    <span *ngIf="alert.talkgroupLabel">{{ alert.talkgroupLabel }}</span>
-                                    <span *ngIf="!alert.talkgroupLabel && alert.talkgroupName">{{ alert.talkgroupName }}</span>
-                                    <span *ngIf="!alert.talkgroupLabel && !alert.talkgroupName">Talkgroup {{ alert.talkgroupId }}</span>
+                                <span>{{ alert.systemLabel || 'System ' + alert.systemId }}</span>
+                            </div>
+
+                            <!-- All talkgroups that matched (merged into one card) -->
+                            <div class="alert-channels">
+                                <span *ngFor="let tg of alert.talkgroupLabels" class="alert-channel-tag">
+                                    {{ tg }}
                                 </span>
                             </div>
-                            
-                            <div *ngIf="alert.transcript || alert.transcriptSnippet" class="alert-transcript">
-                                <p class="transcript-text">{{ alert.transcript || alert.transcriptSnippet }}</p>
+
+                            <!-- Transcript -->
+                            <div *ngIf="alert.transcript" class="alert-transcript">
+                                <p class="transcript-text">{{ alert.transcript }}</p>
                             </div>
-                            
+
+                            <!-- All matched tones (merged) -->
+                            <div *ngIf="alert.toneDetected && alert.matchedToneSetNames.length > 0" class="alert-tone">
+                                <mat-icon class="tone-icon">notifications_active</mat-icon>
+                                <span>{{ alert.matchedToneSetNames.join(', ') }}</span>
+                            </div>
+
+                            <!-- All matched keywords (merged) -->
                             <div *ngIf="getKeywordsMatched(alert).length > 0" class="alert-keywords">
                                 <span class="keyword-label">Keywords:</span>
                                 <span *ngFor="let keyword of getKeywordsMatched(alert)" class="keyword-tag">
                                     {{ keyword }}
                                 </span>
                             </div>
-                            
-                            <div *ngIf="alert.toneDetected && (alert.matchedToneSetNames?.length || alert.matchedToneSetName)" class="alert-tone">
-                                <mat-icon class="tone-icon">notifications_active</mat-icon>
-                                <span *ngIf="alert.matchedToneSetNames && alert.matchedToneSetNames.length > 0">
-                                    {{ alert.matchedToneSetNames.join(', ') }}
-                                </span>
-                                <span *ngIf="!alert.matchedToneSetNames || alert.matchedToneSetNames.length === 0">
-                                    {{ alert.matchedToneSetName }}
-                                </span>
-                            </div>
-                            
+
                             <div class="alert-actions">
                                 <button mat-stroked-button class="play-button" (click)="playCall(alert.callId)">
                                     <mat-icon>play_arrow</mat-icon>

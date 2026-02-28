@@ -4916,10 +4916,42 @@ func (admin *Admin) UserDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete user directly from database
-	_, err = admin.Controller.Database.Sql.Exec(`DELETE FROM "users" WHERE "userId" = $1`, userID)
+	// Delete user and all related records in a transaction
+	tx, err := admin.Controller.Database.Sql.Begin()
 	if err != nil {
+		log.Printf("Failed to begin transaction for user %d deletion: %v", userID, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to delete user from database"})
+		return
+	}
+
+	// Delete dependent records first (tables without ON DELETE CASCADE)
+	if _, err = tx.Exec(`DELETE FROM "userAlertPreferences" WHERE "userId" = $1`, userID); err != nil {
+		tx.Rollback()
+		log.Printf("Failed to delete userAlertPreferences for user %d: %v", userID, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to delete user from database"})
+		return
+	}
+	if _, err = tx.Exec(`DELETE FROM "deviceTokens" WHERE "userId" = $1`, userID); err != nil {
+		tx.Rollback()
+		log.Printf("Failed to delete deviceTokens for user %d: %v", userID, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to delete user from database"})
+		return
+	}
+
+	// Now delete the user
+	if _, err = tx.Exec(`DELETE FROM "users" WHERE "userId" = $1`, userID); err != nil {
+		tx.Rollback()
 		log.Printf("Failed to delete user %d from database: %v", userID, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to delete user from database"})
+		return
+	}
+
+	if err = tx.Commit(); err != nil {
+		log.Printf("Failed to commit deletion transaction for user %d: %v", userID, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to delete user from database"})
 		return

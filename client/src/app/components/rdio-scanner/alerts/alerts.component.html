@@ -13,6 +13,10 @@
                 <mat-icon>settings</mat-icon>
                 Preferences
             </button>
+            <button class="tab-button" [class.active]="activeTab === 'stats'" (click)="setTab('stats')">
+                <mat-icon>bar_chart</mat-icon>
+                Stats
+            </button>
         </div>
         <div class="header-actions">
             <button *ngIf="activeTab === 'alerts'" class="btn-refresh" (click)="loadAlerts()" [disabled]="loading">
@@ -20,6 +24,9 @@
             </button>
             <button *ngIf="activeTab === 'transcripts'" class="btn-refresh" (click)="loadTranscripts()" [disabled]="loadingTranscripts">
                 {{ loadingTranscripts ? 'Loading...' : 'Refresh Transcripts' }}
+            </button>
+            <button *ngIf="activeTab === 'stats'" class="btn-refresh" (click)="loadStats()" [disabled]="loadingStats">
+                {{ loadingStats ? 'Loading...' : 'Refresh Stats' }}
             </button>
         </div>
     </div>
@@ -206,4 +213,213 @@
     <div class="preferences-content" *ngIf="activeTab === 'preferences'">
         <rdio-scanner-alert-preferences></rdio-scanner-alert-preferences>
     </div>
+
+    <!-- ── Stats Dashboard ── -->
+    <div class="stats-content" *ngIf="activeTab === 'stats'">
+
+        <div *ngIf="loadingStats && !stats" class="stats-loading">
+            <mat-icon>bar_chart</mat-icon>
+            <p>Loading stats...</p>
+        </div>
+
+        <div *ngIf="statsError" class="stats-error">{{ statsError }}</div>
+
+        <ng-container *ngIf="stats">
+
+            <!-- System Filter -->
+            <div class="stats-filter-bar">
+                <mat-icon class="filter-icon">filter_list</mat-icon>
+                <span class="filter-label">Filter by System:</span>
+                <select class="stats-system-select"
+                        [(ngModel)]="selectedSystemId"
+                        (ngModelChange)="loadStats()">
+                    <option [ngValue]="null">All Systems</option>
+                    <option *ngFor="let sys of stats.availableSystems" [ngValue]="sys.id">{{ sys.label }}</option>
+                </select>
+                <span *ngIf="selectedSystemId" class="filter-active-badge">Filtered</span>
+            </div>
+
+            <!-- Incident Summary -->
+            <div class="stats-section" *ngIf="stats.incidentSummary && stats.incidentSummary.length > 0">
+                <h3 class="stats-section-title">
+                    📋 Today's Incident Summary
+                    <span class="section-subtitle">based on transcripts · click to expand</span>
+                </h3>
+
+                <div class="incident-categories">
+                    <div *ngFor="let cat of stats.incidentSummary" class="incident-category"
+                         [class.expanded]="expandedIncidentCategory === cat.category">
+
+                        <!-- Category header row -->
+                        <div class="incident-cat-header" (click)="toggleIncidentCategory(cat.category)"
+                             [style.border-left-color]="getIncidentColor(cat.category)">
+                            <span class="incident-emoji">{{ getIncidentIcon(cat.category) }}</span>
+                            <span class="incident-cat-label">{{ cat.category }}</span>
+                            <div class="incident-cat-bar-track">
+                                <div class="incident-cat-bar"
+                                     [style.width.%]="statsBarPct(cat.count, statsMaxCount(stats.incidentSummary))"
+                                     [style.background]="getIncidentColor(cat.category)">
+                                </div>
+                            </div>
+                            <span class="incident-cat-count">{{ cat.count }}</span>
+                            <span class="expand-chevron">{{ expandedIncidentCategory === cat.category ? '▲' : '▼' }}</span>
+                        </div>
+
+                        <!-- Sub-category breakdown -->
+                        <div class="incident-subcats" *ngIf="expandedIncidentCategory === cat.category">
+                            <div *ngFor="let sub of cat.subcategories" class="incident-subcat-row">
+                                <span class="subcat-label">{{ sub.label }}</span>
+                                <div class="subcat-bar-track">
+                                    <div class="subcat-bar"
+                                         [style.width.%]="statsBarPct(sub.count, cat.count)"
+                                         [style.background]="getIncidentColor(cat.category)">
+                                    </div>
+                                </div>
+                                <span class="subcat-count">{{ sub.count }}</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Counter Row -->
+            <div class="stats-counters">
+                <div class="stat-counter">
+                    <div class="counter-value">{{ stats.totalCallsToday | number }}</div>
+                    <div class="counter-label">Calls Today</div>
+                </div>
+                <div class="stat-counter accent">
+                    <div class="counter-value">{{ stats.callsLastMinute }}</div>
+                    <div class="counter-label">Calls / Min</div>
+                </div>
+                <div class="stat-counter accent">
+                    <div class="counter-value">{{ stats.callsLastHour | number }}</div>
+                    <div class="counter-label">Calls / Hour</div>
+                </div>
+                <div class="stat-counter">
+                    <div class="counter-value">{{ stats.topTalkgroups.length }}</div>
+                    <div class="counter-label">Active Channels (24h)</div>
+                </div>
+                <div class="stat-counter tone">
+                    <div class="counter-value">{{ stats.topDepartmentsByTone.length }}</div>
+                    <div class="counter-label">Depts w/ Tones (24h)</div>
+                </div>
+            </div>
+
+            <!-- Calls Per Minute – last hour -->
+            <div class="stats-section">
+                <h3 class="stats-section-title">
+                    <mat-icon>show_chart</mat-icon>
+                    Calls Per Minute — Last Hour
+                </h3>
+                <div *ngIf="stats.callsPerMinute.length === 0" class="stats-empty">No call activity in the last hour.</div>
+                <div *ngIf="stats.callsPerMinute.length > 0" class="cpm-chart">
+                    <div class="cpm-chart-inner">
+                        <!-- Y-axis -->
+                        <div class="chart-y-axis">
+                            <span *ngFor="let tick of statsYTicksCpm()" class="y-tick">{{ tick }}</span>
+                        </div>
+                        <!-- Bars + grid -->
+                        <div class="cpm-chart-area">
+                            <div class="chart-grid">
+                                <div *ngFor="let tick of statsYTicksCpm()" class="grid-line"></div>
+                            </div>
+                            <div class="cpm-bars">
+                                <div *ngFor="let bucket of stats.callsPerMinute" class="cpm-bar-wrap"
+                                     [title]="statsCallsPerMinLabel(bucket.minute) + ': ' + bucket.count + ' calls'">
+                                    <div class="cpm-bar"
+                                         [style.height.%]="statsBarPct(bucket.count, statsMaxCpm())">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="cpm-x-labels">
+                                <span *ngFor="let lbl of statsCpmLabels()" class="cpm-label">{{ lbl }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Two column: Top Talkgroups | Top Depts by Tone -->
+            <div class="stats-two-col">
+
+                <!-- Top Talkgroups (24h) -->
+                <div class="stats-section">
+                    <h3 class="stats-section-title">
+                        <mat-icon>radio</mat-icon>
+                        Top 10 Channels — Last 24h
+                    </h3>
+                    <div *ngIf="stats.topTalkgroups.length === 0" class="stats-empty">No data yet.</div>
+                    <div *ngFor="let tg of stats.topTalkgroups; let i = index" class="bar-row">
+                        <span class="bar-rank">#{{ i + 1 }}</span>
+                        <span class="bar-label" [title]="tg.label">{{ tg.label }}</span>
+                        <div class="bar-track">
+                            <div class="bar-fill"
+                                 [style.width.%]="statsBarPct(tg.count, statsMaxCount(stats.topTalkgroups))">
+                            </div>
+                        </div>
+                        <span class="bar-count">{{ tg.count }}</span>
+                    </div>
+                </div>
+
+                <!-- Top 10 Departments by Tone (24h) -->
+                <div class="stats-section">
+                    <h3 class="stats-section-title">
+                        <mat-icon>notifications_active</mat-icon>
+                        Top 10 Depts by Tone — Last 24h
+                    </h3>
+                    <div *ngIf="stats.topDepartmentsByTone.length === 0" class="stats-empty">No tone dispatches in the last 24h.</div>
+                    <div *ngFor="let dept of stats.topDepartmentsByTone; let i = index" class="bar-row tone-row">
+                        <span class="bar-rank">#{{ i + 1 }}</span>
+                        <span class="bar-label" [title]="dept.label">{{ dept.label }}</span>
+                        <div class="bar-track">
+                            <div class="bar-fill tone-fill"
+                                 [style.width.%]="statsBarPct(dept.count, statsMaxCount(stats.topDepartmentsByTone))">
+                            </div>
+                        </div>
+                        <span class="bar-count">{{ dept.count }}</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Calls by Hour of Day -->
+            <div class="stats-section">
+                <h3 class="stats-section-title">
+                    <mat-icon>schedule</mat-icon>
+                    Activity by Hour of Day — Last 7 Days
+                </h3>
+                <div class="hour-chart-outer">
+                    <!-- Y-axis -->
+                    <div class="chart-y-axis">
+                        <span *ngFor="let tick of statsYTicks(stats.callsByHour)" class="y-tick">{{ tick }}</span>
+                    </div>
+                    <!-- Chart area -->
+                    <div class="hour-chart-area">
+                        <div class="chart-grid">
+                            <div *ngFor="let tick of statsYTicks(stats.callsByHour)" class="grid-line"></div>
+                        </div>
+                        <div class="hour-chart">
+                            <div *ngFor="let h of stats.callsByHour" class="hour-col"
+                                 [title]="statsHourLabel(h.hour) + ': ' + h.count + ' calls'">
+                                <div class="hour-bar-wrap">
+                                    <div class="hour-bar"
+                                         [style.height.%]="statsBarPct(h.count, statsMaxCount(stats.callsByHour))">
+                                    </div>
+                                </div>
+                                <span class="hour-label">{{ statsHourLabel(h.hour) }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-footer">
+                Updated {{ stats.generatedAt | date:'shortTime' }} &nbsp;·&nbsp; Auto-refreshes every 30s
+            </div>
+
+        </ng-container>
+    </div>
+
 </div>

@@ -1,5 +1,38 @@
 # Change log
 
+## Version 7.0 Beta 9.6.9 - Released Feb 28, 2026 *(Work in Progress)*
+
+> ⚠️ **Beta / Work in Progress** — Features in this release are actively being developed and refined. Some functionality may be incomplete or subject to change.
+
+### New Features
+
+- **Stats Dashboard: Today's Incident Summary panel** *(WIP)*
+  - New collapsible incident summary panel on the Stats tab, powered by real-time keyword analysis of call transcripts
+  - Six parent categories, each color-coded with emoji identifiers: 🔥 Fire, ☣️ Hazmat, 🚑 Medical / EMS, 🚔 Crime, 🚗 Traffic, ⚠️ Disturbance
+  - Click any category row to expand a sub-breakdown (e.g. Fire → Structure Fire, Brush/Wildland, Vehicle Fire, Fire Alarm; Traffic → MVA/Crash, Traffic Stop/Plate, Road Hazard)
+  - Inline proportional bar charts for both parent categories and sub-categories
+  - Fully respects the system filter dropdown — all counts reflect the selected system (or all systems)
+  - Panel is positioned at the top of the Stats tab, directly under the system filter, for immediate visibility
+  - Only categories with at least one matching call today are displayed
+  - Files modified: `server/api.go`, `client/src/app/components/rdio-scanner/alerts/alerts.component.ts`, `client/src/app/components/rdio-scanner/alerts/alerts.component.html`, `client/src/app/components/rdio-scanner/alerts/alerts.component.scss`
+
+- **Stats Dashboard: Calls per Minute and Calls per Hour counters**
+  - Replaced the previous "Calls / 5 min" counter with two more meaningful live counters: **Calls / Min** (calls in the last 60 seconds) and **Calls / Hour** (calls in the last 60 minutes)
+  - Backend `StatsHandler` now returns `callsLastMinute` and `callsLastHour` fields
+  - Files modified: `server/api.go`, `client/src/app/components/rdio-scanner/alerts/alerts.component.ts`, `client/src/app/components/rdio-scanner/alerts/alerts.component.html`, `client/src/app/components/rdio-scanner/alerts/alerts.component.scss`
+
+### Improvements
+
+- **Stats Dashboard: Incident Summary repositioned to top**
+  - Moved the 📋 Today's Incident Summary panel to appear immediately below the system filter bar, making high-level incident categories the first thing visible when opening the Stats tab
+  - Files modified: `client/src/app/components/rdio-scanner/alerts/alerts.component.html`
+
+- **Stats Dashboard: Emoji icons throughout Incident Summary**
+  - Replaced Material icons with native emojis for category icons and expand/collapse chevrons (▲/▼), improving visual clarity and reducing dependency on icon font rendering
+  - Files modified: `client/src/app/components/rdio-scanner/alerts/alerts.component.ts`, `client/src/app/components/rdio-scanner/alerts/alerts.component.html`, `client/src/app/components/rdio-scanner/alerts/alerts.component.scss`
+
+---
+
 ## Version 7.0 Beta 9.6.8 - Released Feb 27, 2026
 
 ### Bug Fixes

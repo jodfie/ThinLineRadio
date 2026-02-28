@@ -560,3 +560,423 @@
         }
     }
 }
+
+// ── Stats Dashboard ────────────────────────────────────────────────────────
+.stats-content {
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    overflow-y: auto;
+}
+
+.stats-loading, .stats-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 3rem;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.95rem;
+    mat-icon { font-size: 2.5rem; width: 2.5rem; height: 2.5rem; }
+}
+.stats-error { color: #f44336; }
+
+.stats-counters {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1rem;
+}
+.stat-counter {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    text-align: center;
+    .counter-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #fff;
+        line-height: 1.1;
+    }
+    .counter-label {
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.5);
+        margin-top: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    &.accent .counter-value { color: #00e676; }
+    &.tone .counter-value   { color: #ffab40; }
+}
+
+.stats-section {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+}
+.stats-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(255,255,255,0.6);
+    mat-icon { font-size: 18px; width: 18px; height: 18px; }
+}
+.stats-empty {
+    color: rgba(255,255,255,0.35);
+    font-size: 0.875rem;
+    text-align: center;
+    padding: 1rem 0;
+}
+
+.stats-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.bar-row {
+    display: grid;
+    grid-template-columns: 28px 1fr auto auto;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+    font-size: 0.82rem;
+    .bar-rank  { color: rgba(255,255,255,0.35); text-align: right; }
+    .bar-label { color: rgba(255,255,255,0.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar-count { color: rgba(255,255,255,0.55); min-width: 32px; text-align: right; }
+    .bar-track {
+        background: rgba(255,255,255,0.08);
+        border-radius: 3px;
+        height: 8px;
+        overflow: hidden;
+        .bar-fill {
+            height: 100%;
+            background: #00e676;
+            border-radius: 3px;
+            transition: width 0.4s ease;
+        }
+        .tone-fill { background: #ffab40; }
+    }
+}
+
+// ── System filter bar ──────────────────────────────────────────────────────
+.stats-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+
+    .filter-icon {
+        font-size: 18px; width: 18px; height: 18px;
+        color: rgba(255,255,255,0.4);
+    }
+    .filter-label {
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        white-space: nowrap;
+    }
+    .stats-system-select {
+        flex: 1;
+        max-width: 320px;
+        padding: 0.35rem 0.6rem;
+        background: rgba(0,0,0,0.35);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 4px;
+        color: rgba(255,255,255,0.9);
+        font-size: 0.875rem;
+        cursor: pointer;
+        &:focus { outline: none; border-color: #00e676; }
+    }
+    .filter-active-badge {
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #000;
+        background: #00e676;
+        padding: 0.2rem 0.5rem;
+        border-radius: 3px;
+    }
+}
+
+// ── Shared Y-axis + grid ───────────────────────────────────────────────────
+.chart-y-axis {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-right: 6px;
+    width: 36px;
+    flex-shrink: 0;
+    // matches the bar area height (set per chart below)
+    height: 100%;
+
+    .y-tick {
+        font-size: 0.62rem;
+        color: rgba(255,255,255,0.35);
+        line-height: 1;
+    }
+}
+
+.chart-grid {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    pointer-events: none;
+    z-index: 0;
+
+    .grid-line {
+        width: 100%;
+        height: 1px;
+        background: rgba(255,255,255,0.07);
+    }
+}
+
+// ── CPM chart ──────────────────────────────────────────────────────────────
+.cpm-chart { display: flex; flex-direction: column; gap: 4px; }
+
+.cpm-chart-inner {
+    display: flex;
+    align-items: stretch;
+    height: 100px; // total chart height incl y-axis
+
+    .chart-y-axis { height: 80px; align-self: flex-start; }
+}
+
+.cpm-chart-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+}
+
+.cpm-bars {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 80px;
+}
+.cpm-bar-wrap {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    height: 100%;
+    .cpm-bar {
+        width: 100%;
+        background: #00e676;
+        border-radius: 2px 2px 0 0;
+        min-height: 2px;
+        opacity: 0.85;
+        transition: height 0.3s ease;
+        &:hover { opacity: 1; }
+    }
+}
+.cpm-x-labels {
+    display: flex;
+    justify-content: space-between;
+    .cpm-label { font-size: 0.68rem; color: rgba(255,255,255,0.35); }
+}
+
+// ── Hour chart ─────────────────────────────────────────────────────────────
+.hour-chart-outer {
+    display: flex;
+    align-items: stretch;
+    height: 120px;
+
+    .chart-y-axis { height: 90px; align-self: flex-start; }
+}
+
+.hour-chart-area {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.hour-chart {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 90px;
+    flex: 1;
+}
+.hour-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 3px;
+    height: 100%;
+    .hour-bar-wrap { flex: 1; display: flex; align-items: flex-end; width: 100%; }
+    .hour-bar {
+        width: 100%;
+        background: #29b6f6;
+        border-radius: 2px 2px 0 0;
+        min-height: 2px;
+        opacity: 0.8;
+        transition: height 0.3s ease;
+        &:hover { opacity: 1; }
+    }
+    .hour-label { font-size: 0.6rem; color: rgba(255,255,255,0.35); white-space: nowrap; }
+}
+
+// ── Incident Summary ───────────────────────────────────────────────────────
+.section-subtitle {
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.3);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.incident-categories {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.incident-category {
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    transition: border-color 0.2s;
+
+    &.expanded {
+        border-color: rgba(255,255,255,0.14);
+    }
+}
+
+.incident-cat-header {
+    display: grid;
+    grid-template-columns: 24px 140px 1fr 40px 24px;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 1rem;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background 0.15s;
+    user-select: none;
+
+    &:hover {
+        background: rgba(255,255,255,0.05);
+    }
+
+    .incident-emoji {
+        font-size: 18px;
+        line-height: 1;
+        text-align: center;
+    }
+
+    .incident-cat-label {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: rgba(255,255,255,0.9);
+        white-space: nowrap;
+    }
+
+    .incident-cat-bar-track {
+        height: 6px;
+        background: rgba(255,255,255,0.07);
+        border-radius: 3px;
+        overflow: hidden;
+
+        .incident-cat-bar {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.4s ease;
+            opacity: 0.8;
+        }
+    }
+
+    .incident-cat-count {
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: rgba(255,255,255,0.8);
+        text-align: right;
+    }
+
+    .expand-chevron {
+        font-size: 10px;
+        color: rgba(255,255,255,0.3);
+        text-align: center;
+    }
+}
+
+.incident-subcats {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 0.5rem 1rem 0.75rem calc(1rem + 24px + 0.75rem + 140px + 0.75rem);
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.incident-subcat-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 36px;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.8rem;
+
+    .subcat-label {
+        color: rgba(255,255,255,0.65);
+        white-space: nowrap;
+    }
+
+    .subcat-bar-track {
+        height: 5px;
+        background: rgba(255,255,255,0.07);
+        border-radius: 3px;
+        overflow: hidden;
+
+        .subcat-bar {
+            height: 100%;
+            border-radius: 3px;
+            opacity: 0.55;
+            transition: width 0.4s ease;
+        }
+    }
+
+    .subcat-count {
+        font-size: 0.78rem;
+        color: rgba(255,255,255,0.45);
+        text-align: right;
+    }
+}
+
+.stats-footer {
+    text-align: center;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.3);
+    padding-bottom: 0.5rem;
+}
+
+@media (max-width: 900px) {
+    .stats-counters { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 600px) {
+    .stats-counters { grid-template-columns: repeat(2, 1fr); }
+    .stats-two-col  { grid-template-columns: 1fr; }
+}

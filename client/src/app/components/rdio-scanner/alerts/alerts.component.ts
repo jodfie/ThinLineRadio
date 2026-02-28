@@ -18,10 +18,35 @@
  */
 
 import { Component, OnDestroy, OnInit } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { RdioScannerAlert, RdioScannerCall, RdioScannerService, RdioScannerTranscript } from '../rdio-scanner';
 import { AlertsService } from './alerts.service';
 import { AlertSoundService } from '../alert-sound.service';
 import { SettingsService } from '../settings/settings.service';
+
+interface IncidentSubcategory {
+    label: string;
+    count: number;
+}
+
+interface IncidentCategory {
+    category: string;
+    count: number;
+    subcategories: IncidentSubcategory[];
+}
+
+interface StatsData {
+    availableSystems: Array<{ id: number; label: string }>;
+    callsPerMinute: Array<{ minute: number; count: number }>;
+    topTalkgroups: Array<{ label: string; count: number }>;
+    callsByHour: Array<{ hour: number; count: number }>;
+    topDepartmentsByTone: Array<{ label: string; count: number }>;
+    totalCallsToday: number;
+    callsLastMinute: number;
+    callsLastHour: number;
+    incidentSummary: IncidentCategory[];
+    generatedAt: number;
+}
 
 @Component({
     selector: 'rdio-scanner-alerts',
@@ -35,7 +60,15 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
     loadingTranscripts = false;
     limit = 50;
     transcriptOffset = 0;
-    activeTab: 'alerts' | 'preferences' | 'transcripts' = 'alerts';
+    activeTab: 'alerts' | 'preferences' | 'transcripts' | 'stats' = 'alerts';
+
+    // Stats
+    stats: StatsData | null = null;
+    loadingStats = false;
+    statsError = '';
+    selectedSystemId: number | null = null;
+    expandedIncidentCategory: string | null = null;
+    private statsRefreshInterval: any;
     private pin?: string;
     
     // Filter properties
@@ -55,6 +88,7 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
         private alertsService: AlertsService,
         private alertSoundService: AlertSoundService,
         private settingsService: SettingsService,
+        private http: HttpClient,
     ) {
         // Get PIN from localStorage using the service method
         this.pin = this.rdioScannerService.readPin();
@@ -173,15 +207,93 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
     }
 
     ngOnDestroy(): void {
+        if (this.statsRefreshInterval) {
+            clearInterval(this.statsRefreshInterval);
+        }
     }
-    setTab(tab: 'alerts' | 'preferences' | 'transcripts'): void {
+
+    setTab(tab: 'alerts' | 'preferences' | 'transcripts' | 'stats'): void {
         this.activeTab = tab;
         if (tab === 'alerts') {
-            // Only fetch new alerts when switching to alerts tab (incremental)
             this.loadAlerts(false);
         } else if (tab === 'transcripts') {
             this.loadTranscripts();
+        } else if (tab === 'stats') {
+            this.loadStats();
+            // Auto-refresh every 30 seconds while on stats tab
+            if (this.statsRefreshInterval) clearInterval(this.statsRefreshInterval);
+            this.statsRefreshInterval = setInterval(() => {
+                if (this.activeTab === 'stats') this.loadStats();
+                else clearInterval(this.statsRefreshInterval);
+            }, 30000);
         }
+    }
+
+    loadStats(): void {
+        this.loadingStats = true;
+        this.statsError = '';
+        const pin = this.pin;
+        const headers = pin ? new HttpHeaders({ 'Authorization': `Bearer ${pin}` }) : new HttpHeaders();
+        let url = '/api/stats';
+        if (this.selectedSystemId !== null) {
+            url += `?systemId=${this.selectedSystemId}`;
+        }
+        this.http.get<StatsData>(url, { headers }).subscribe({
+            next: (data) => {
+                this.stats = data;
+                this.loadingStats = false;
+            },
+            error: (_err) => {
+                this.statsError = 'Failed to load stats. Please try again.';
+                this.loadingStats = false;
+            }
+        });
+    }
+
+
+    // Helpers for CSS bar charts
+    statsMaxCount(items: Array<{ count: number }>): number {
+        return items.length ? Math.max(...items.map(i => i.count), 1) : 1;
+    }
+
+    statsBarPct(count: number, max: number): number {
+        return Math.round((count / max) * 100);
+    }
+
+    statsHourLabel(hour: number): string {
+        if (hour === 0) return '12a';
+        if (hour < 12) return `${hour}a`;
+        if (hour === 12) return '12p';
+        return `${hour - 12}p`;
+    }
+
+    statsCallsPerMinLabel(minute: number): string {
+        return new Date(minute).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    statsMaxCpm(): number {
+        return this.stats ? Math.max(...this.stats.callsPerMinute.map(b => b.count), 1) : 1;
+    }
+
+    // Returns every 10th minute label for the x-axis tick marks
+    statsCpmLabels(): string[] {
+        if (!this.stats) return [];
+        return this.stats.callsPerMinute
+            .filter((_, i) => i % 10 === 0)
+            .map(b => this.statsCallsPerMinLabel(b.minute));
+    }
+
+    // Returns 5 evenly-spaced Y-axis tick values from max down to 0
+    statsYTicks(items: Array<{ count: number }>): number[] {
+        const max = this.statsMaxCount(items);
+        const steps = 4;
+        return Array.from({ length: steps + 1 }, (_, i) => Math.round(max * (steps - i) / steps));
+    }
+
+    statsYTicksCpm(): number[] {
+        const max = this.statsMaxCpm();
+        const steps = 4;
+        return Array.from({ length: steps + 1 }, (_, i) => Math.round(max * (steps - i) / steps));
     }
 
 
@@ -411,6 +523,35 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
                 window.focus();
             };
         }
+    }
+
+    // ── Incident summary helpers ────────────────────────────────────────────
+    toggleIncidentCategory(cat: string): void {
+        this.expandedIncidentCategory = this.expandedIncidentCategory === cat ? null : cat;
+    }
+
+    getIncidentIcon(category: string): string {
+        const icons: { [key: string]: string } = {
+            'Fire':          '🔥',
+            'Hazmat':        '☣️',
+            'Medical / EMS': '🚑',
+            'Crime':         '🚔',
+            'Traffic':       '🚗',
+            'Disturbance':   '⚠️',
+        };
+        return icons[category] || '📻';
+    }
+
+    getIncidentColor(category: string): string {
+        const colors: { [key: string]: string } = {
+            'Fire':         '#ff5722',
+            'Hazmat':       '#ff9800',
+            'Medical / EMS':'#00e676',
+            'Crime':        '#f44336',
+            'Traffic':      '#29b6f6',
+            'Disturbance':  '#ce93d8',
+        };
+        return colors[category] || '#90a4ae';
     }
 
     private playAlertSound(): void {

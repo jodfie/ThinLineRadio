@@ -106,16 +106,22 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 	}
 
 	// Build notification title and message
-	// Title: System name / Channel name
+	// Title: System name / Channel name (+ Tone Set name for tone alerts)
 	title := ""
+	baseTitle := ""
 	if systemLabel != "" && talkgroupLabel != "" {
-		title = fmt.Sprintf("%s / %s", strings.ToUpper(systemLabel), strings.ToUpper(talkgroupLabel))
+		baseTitle = fmt.Sprintf("%s / %s", strings.ToUpper(systemLabel), strings.ToUpper(talkgroupLabel))
 	} else if systemLabel != "" {
-		title = strings.ToUpper(systemLabel)
+		baseTitle = strings.ToUpper(systemLabel)
 	} else if talkgroupLabel != "" {
-		title = strings.ToUpper(talkgroupLabel)
+		baseTitle = strings.ToUpper(talkgroupLabel)
 	} else {
-		title = "RADIO ALERT"
+		baseTitle = "RADIO ALERT"
+	}
+	if toneSetName != "" && (alertType == "pre-alert" || alertType == "tone" || alertType == "tone+keyword") {
+		title = fmt.Sprintf("%s - %s", baseTitle, strings.ToUpper(toneSetName))
+	} else {
+		title = baseTitle
 	}
 
 	// Message: Full transcript if available, otherwise fallback to alert type info
@@ -199,25 +205,12 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 
 	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: grouped devices for user %d - Android: %d, iOS: %d", userId, len(androidDevices), len(iosDevices)))
 
-	// Build subtitle for tone alerts
-	subtitle := ""
-	if alertType == "pre-alert" || alertType == "tone" || alertType == "tone+keyword" {
-		if toneSetName != "" {
-			subtitle = strings.ToUpper(toneSetName)
-			controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: setting subtitle '%s' for %s alert", subtitle, alertType))
-		} else {
-			controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: toneSetName is empty for %s alert, no subtitle", alertType))
-		}
-	} else {
-		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: alertType is '%s', no subtitle needed", alertType))
-	}
-
 	// Send to Android devices
 	if len(androidDevices) > 0 {
 		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: sending to %d Android device(s) for user %d with sound: %s", len(androidDevices), userId, androidSound))
 		// Send in goroutine to ensure independent execution - failures don't affect other batches
 		go func(ids []string, sound string) {
-			controller.sendNotificationBatch(ids, title, subtitle, message, "android", sound, call, systemLabel, talkgroupLabel)
+			controller.sendNotificationBatch(ids, title, "", message, "android", sound, call, systemLabel, talkgroupLabel)
 		}(androidDevices, androidSound)
 	}
 
@@ -232,7 +225,7 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: iOS final sound (stripped extension): %s", iosSoundStripped))
 		// Send in goroutine to ensure independent execution - failures don't affect other batches
 		go func(ids []string, sound string) {
-			controller.sendNotificationBatch(ids, title, subtitle, message, "ios", sound, call, systemLabel, talkgroupLabel)
+			controller.sendNotificationBatch(ids, title, "", message, "ios", sound, call, systemLabel, talkgroupLabel)
 		}(iosDevices, iosSoundStripped)
 	}
 }
@@ -388,16 +381,22 @@ func (controller *Controller) sendBatchedPushNotification(userIds []uint64, aler
 	}
 
 	// Build notification title and message (same for all users)
-	// Title: System name / Channel name
+	// Title: System name / Channel name (+ Tone Set name for tone alerts)
 	title := ""
+	baseTitle := ""
 	if systemLabel != "" && talkgroupLabel != "" {
-		title = fmt.Sprintf("%s / %s", strings.ToUpper(systemLabel), strings.ToUpper(talkgroupLabel))
+		baseTitle = fmt.Sprintf("%s / %s", strings.ToUpper(systemLabel), strings.ToUpper(talkgroupLabel))
 	} else if systemLabel != "" {
-		title = strings.ToUpper(systemLabel)
+		baseTitle = strings.ToUpper(systemLabel)
 	} else if talkgroupLabel != "" {
-		title = strings.ToUpper(talkgroupLabel)
+		baseTitle = strings.ToUpper(talkgroupLabel)
 	} else {
-		title = "RADIO ALERT"
+		baseTitle = "RADIO ALERT"
+	}
+	if toneSetName != "" && (alertType == "pre-alert" || alertType == "tone" || alertType == "tone+keyword") {
+		title = fmt.Sprintf("%s - %s", baseTitle, strings.ToUpper(toneSetName))
+	} else {
+		title = baseTitle
 	}
 
 	// Message: Full transcript if available, otherwise fallback to alert type info
@@ -558,14 +557,6 @@ func (controller *Controller) sendBatchedPushNotification(userIds []uint64, aler
 		platform := parts[0]
 		sound := parts[1]
 
-		// Build subtitle for tone alerts
-		subtitle := ""
-		if alertType == "tone" || alertType == "tone+keyword" {
-			if toneSetName != "" {
-				subtitle = strings.ToUpper(toneSetName)
-			}
-		}
-
 		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification (batched): sending batch with %d player ID(s) for %s platform, sound: %s", len(playerIDs), platform, sound))
 
 		// iOS requires sound name without extension (e.g., "startup" not "startup.wav")
@@ -584,7 +575,7 @@ func (controller *Controller) sendBatchedPushNotification(userIds []uint64, aler
 			if d > 0 {
 				time.Sleep(d)
 			}
-			controller.sendNotificationBatch(ids, title, subtitle, message, plat, snd, call, systemLabel, talkgroupLabel)
+			controller.sendNotificationBatch(ids, title, "", message, plat, snd, call, systemLabel, talkgroupLabel)
 		}(playerIDs, platform, finalSound, delay)
 		batchIndex++
 	}

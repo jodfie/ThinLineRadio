@@ -41,6 +41,22 @@ import { RdioScannerAlert } from '../rdio-scanner';
 import { SettingsService } from '../settings/settings.service';
 
 
+// Merged alert: multiple alerts for the same callId collapsed into one card
+interface MergedAlert {
+    callId: number;
+    alertIds: number[];
+    systemId: number;
+    systemLabel?: string;
+    talkgroupIds: number[];
+    talkgroupLabels: string[];
+    alertType: 'tone' | 'keyword' | 'tone+keyword';
+    toneDetected: boolean;
+    matchedToneSetNames: string[];
+    keywordsMatched: string[];
+    transcript?: string;
+    createdAt: number;
+}
+
 interface ButtonVisibility {
     liveFeed: boolean;
     pause: boolean;
@@ -298,8 +314,8 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
     private storedPinAttempts = 0;
     private lastStoredPin: string | null = null;
 
-    // Recent alerts
-    recentAlerts: RdioScannerAlert[] = [];
+    // Recent alerts (merged by callId so the same call shows as one card)
+    recentAlerts: MergedAlert[] = [];
     loadingAlerts = false;
     showRecentAlertsPanel = true; // User preference to show/hide the alerts panel
     private alertsSubscription: Subscription | undefined;
@@ -750,9 +766,9 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
         
         // Subscribe to shared alerts service for automatic updates
         this.alertsService.alerts$.subscribe(alerts => {
-            // Update recent alerts from cache
-            this.recentAlerts = alerts
-                .sort((a: RdioScannerAlert, b: RdioScannerAlert) => (b.createdAt || 0) - (a.createdAt || 0))
+            // Merge by callId then show 20 most recent
+            this.recentAlerts = this.mergeAlertsByCallId(alerts)
+                .sort((a, b) => b.createdAt - a.createdAt)
                 .slice(0, 20);
         });
         
@@ -1636,26 +1652,89 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
         // Use shared service to fetch new alerts incrementally
         this.alertsService.fetchNewAlerts(pin, false).subscribe({
             next: () => {
-                // Get all alerts from cache and show 20 most recent
                 const allAlerts = this.alertsService.getCachedAlerts();
-                this.recentAlerts = allAlerts
-                    .sort((a: RdioScannerAlert, b: RdioScannerAlert) => (b.createdAt || 0) - (a.createdAt || 0))
-                    .slice(0, 20); // Show only 20 most recent
+                this.recentAlerts = this.mergeAlertsByCallId(allAlerts)
+                    .sort((a, b) => b.createdAt - a.createdAt)
+                    .slice(0, 20);
                 this.loadingAlerts = false;
             },
             error: (error) => {
                 console.error('Error loading recent alerts:', error);
-                // On error, still try to use cached alerts
                 const allAlerts = this.alertsService.getCachedAlerts();
-                this.recentAlerts = allAlerts
-                    .sort((a: RdioScannerAlert, b: RdioScannerAlert) => (b.createdAt || 0) - (a.createdAt || 0))
+                this.recentAlerts = this.mergeAlertsByCallId(allAlerts)
+                    .sort((a, b) => b.createdAt - a.createdAt)
                     .slice(0, 20);
                 this.loadingAlerts = false;
             },
         });
     }
 
-    getKeywordsMatched(alert: RdioScannerAlert): string[] {
+    private mergeAlertsByCallId(alerts: RdioScannerAlert[]): MergedAlert[] {
+        const callMap = new Map<number, MergedAlert>();
+
+        for (const alert of alerts) {
+            const callId = alert.callId;
+
+            // Parse keywords from JSON string
+            let keywords: string[] = [];
+            if (alert.keywordsMatched) {
+                try { keywords = JSON.parse(alert.keywordsMatched); } catch { keywords = []; }
+            }
+
+            // Collect tone set names
+            const toneNames: string[] = alert.matchedToneSetNames?.length
+                ? alert.matchedToneSetNames
+                : (alert.matchedToneSetName ? [alert.matchedToneSetName] : []);
+
+            const tgLabel = alert.talkgroupLabel || alert.talkgroupName || `Talkgroup ${alert.talkgroupId}`;
+
+            if (callMap.has(callId)) {
+                const merged = callMap.get(callId)!;
+
+                if (!merged.talkgroupLabels.includes(tgLabel)) {
+                    merged.talkgroupLabels.push(tgLabel);
+                    merged.talkgroupIds.push(alert.talkgroupId);
+                }
+                for (const t of toneNames) {
+                    if (!merged.matchedToneSetNames.includes(t)) merged.matchedToneSetNames.push(t);
+                }
+                for (const k of keywords) {
+                    if (!merged.keywordsMatched.includes(k)) merged.keywordsMatched.push(k);
+                }
+                // Upgrade alert type if different matches came in
+                if (merged.alertType !== alert.alertType) {
+                    merged.alertType = 'tone+keyword';
+                }
+                if (alert.toneDetected) merged.toneDetected = true;
+                merged.alertIds.push(alert.alertId);
+                if ((alert.createdAt || 0) > merged.createdAt) merged.createdAt = alert.createdAt || 0;
+                if (!merged.transcript) merged.transcript = alert.transcript || alert.transcriptSnippet;
+            } else {
+                callMap.set(callId, {
+                    callId,
+                    alertIds: [alert.alertId],
+                    systemId: alert.systemId,
+                    systemLabel: alert.systemLabel,
+                    talkgroupIds: [alert.talkgroupId],
+                    talkgroupLabels: [tgLabel],
+                    alertType: alert.alertType,
+                    toneDetected: alert.toneDetected,
+                    matchedToneSetNames: [...toneNames],
+                    keywordsMatched: [...keywords],
+                    transcript: alert.transcript || alert.transcriptSnippet,
+                    createdAt: alert.createdAt || 0,
+                });
+            }
+        }
+
+        return Array.from(callMap.values());
+    }
+
+    getKeywordsMatched(alert: MergedAlert): string[] {
+        return alert.keywordsMatched || [];
+    }
+
+    private _getKeywordsMatchedFromRaw(alert: RdioScannerAlert): string[] {
         if (!alert.keywordsMatched) {
             return [];
         }
@@ -1907,16 +1986,16 @@ export class RdioScannerMainComponent implements OnDestroy, OnInit {
         this.rdioScannerService.loadAndPlay(callId);
     }
 
-    getAlertTypeLabel(alert: RdioScannerAlert): string {
+    getAlertTypeLabel(alert: MergedAlert): string {
         switch (alert.alertType) {
             case 'tone':
-                return 'Tone';
+                return 'TONE';
             case 'keyword':
-                return 'Keyword';
+                return 'KEYWORD';
             case 'tone+keyword':
-                return 'Tone & Keyword';
+                return 'TONE & KEYWORD';
             default:
-                return 'Alert';
+                return 'ALERT';
         }
     }
 
