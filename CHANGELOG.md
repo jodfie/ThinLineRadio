@@ -1,5 +1,17 @@
 # Change log
 
+## Version 7.0 Beta 9.7.2 - Released Mar 1, 2026
+
+### Bug Fixes
+
+- **AssemblyAI: `speech_models` must be sent as an array**
+  - AssemblyAI's API requires `speech_models` to be a JSON array (e.g. `["universal-3-pro"]`), not a plain string — sending a string caused HTTP 400: *"speech_models must be a non-empty list containing one or more of: universal-3-pro, universal-2"*
+  - Updated the Go request body to wrap the configured model in a `[]string{}` slice
+  - Updated the admin UI autocomplete to show the correct current model names: `universal-3-pro` and `universal-2`
+  - Files modified: `server/transcription_assemblyai.go`, `client/src/app/components/rdio-scanner/admin/config/options/options.component.html`
+
+---
+
 ## Version 7.0 Beta 9.7.1 - Released Mar 1, 2026
 
 ### Bug Fixes

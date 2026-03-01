@@ -151,10 +151,10 @@ func (assemblyai *AssemblyAITranscription) Transcribe(audio []byte, options Tran
 		"audio_url": uploadResponse.UploadURL,
 	}
 
-	// Add speech model if configured (e.g. "best", "nano", "slam-1-5")
-	// Note: AssemblyAI uses "speech_models" (plural) as of their current API
+	// Add speech model if configured. AssemblyAI requires "speech_models" as an array.
+	// Valid values include: "universal-3-pro", "universal-2"
 	if assemblyai.speechModel != "" {
-		transcriptBody["speech_models"] = assemblyai.speechModel
+		transcriptBody["speech_models"] = []string{assemblyai.speechModel}
 	}
 
 	// Add word boost/keyterms if provided (AssemblyAI supports word_boost parameter)
