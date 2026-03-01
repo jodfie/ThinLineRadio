@@ -152,8 +152,9 @@ func (assemblyai *AssemblyAITranscription) Transcribe(audio []byte, options Tran
 	}
 
 	// Add speech model if configured (e.g. "best", "nano", "slam-1-5")
+	// Note: AssemblyAI uses "speech_models" (plural) as of their current API
 	if assemblyai.speechModel != "" {
-		transcriptBody["speech_model"] = assemblyai.speechModel
+		transcriptBody["speech_models"] = assemblyai.speechModel
 	}
 
 	// Add word boost/keyterms if provided (AssemblyAI supports word_boost parameter)
