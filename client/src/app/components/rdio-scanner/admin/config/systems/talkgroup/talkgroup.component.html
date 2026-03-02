@@ -169,6 +169,36 @@
             <mat-slide-toggle color="primary" formControlName="toneDetectionEnabled"></mat-slide-toggle>
         </div>
     </div>
+    <!-- Per-channel TonesToActive forwarding — shown at the top of tone detection -->
+    <div class="row" *ngIf="form.get('toneDetectionEnabled')?.value">
+        <p>
+            <span class="mat-body">Forward to TonesToActive</span><br>
+            <span class="mat-caption">
+                When enabled, every tone alert on <strong>this channel</strong> will be forwarded to the specified
+                TonesToActive server with the tone set name, transcript, and audio file.
+                Use this to selectively forward individual channels instead of the global option.
+            </span>
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+            <mat-slide-toggle color="primary" formControlName="toneDownstreamEnabled">
+                Enable channel forwarding
+            </mat-slide-toggle>
+            <ng-container *ngIf="form.get('toneDownstreamEnabled')?.value">
+                <mat-form-field floatLabel="auto" style="width: 100%;">
+                    <mat-label>Destination URL</mat-label>
+                    <input type="url" matInput formControlName="toneDownstreamURL"
+                           placeholder="http://localhost:8888/api/tone-alert">
+                    <mat-hint>Full URL of the TonesToActive <code>/api/tone-alert</code> endpoint</mat-hint>
+                </mat-form-field>
+                <mat-form-field floatLabel="auto" style="width: 100%;">
+                    <mat-label>API Key</mat-label>
+                    <input type="password" matInput formControlName="toneDownstreamAPIKey"
+                           placeholder="Shared API key (sent as X-API-Key header)">
+                </mat-form-field>
+            </ng-container>
+        </div>
+    </div>
+
     <div class="row" *ngIf="form.get('toneDetectionEnabled')?.value">
         <p>
             <span class="mat-body">Tone Sets</span><br>
@@ -257,6 +287,29 @@
                         <mat-form-field floatLabel="auto">
                             <input type="number" matInput formControlName="minDuration" placeholder="Minimum Duration (s)" min="0" step="0.01">
                         </mat-form-field>
+                    </div>
+
+                    <!-- TonesToActive downstream forwarding (per tone set) -->
+                    <div class="tone-set-downstream" style="margin-top: 12px; padding: 10px 12px; border: 1px solid #444; border-radius: 6px; background: rgba(255,255,255,0.03);">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                            <mat-slide-toggle color="primary" formControlName="downstreamEnabled">
+                                <span style="font-weight: 500; font-size: 13px;">Forward to TonesToActive</span>
+                            </mat-slide-toggle>
+                        </div>
+                        <div *ngIf="toneSet.get('downstreamEnabled')?.value" style="display: flex; flex-direction: column; gap: 6px;">
+                            <span class="mat-caption" style="color: #aaa; margin-bottom: 4px;">
+                                When this tone set is detected, send the tone set info, transcript, and audio to the TonesToActive server.
+                            </span>
+                            <mat-form-field floatLabel="auto" style="width: 100%;">
+                                <mat-label>Destination URL</mat-label>
+                                <input type="url" matInput formControlName="downstreamURL" placeholder="https://your-tonesToActive-server/api/tone-alert">
+                                <mat-hint>Full URL of the TonesToActive <code>/api/tone-alert</code> endpoint</mat-hint>
+                            </mat-form-field>
+                            <mat-form-field floatLabel="auto" style="width: 100%;">
+                                <mat-label>API Key</mat-label>
+                                <input type="password" matInput formControlName="downstreamAPIKey" placeholder="Shared API key (sent as X-API-Key header)">
+                            </mat-form-field>
+                        </div>
                     </div>
                 </div>
             </div>

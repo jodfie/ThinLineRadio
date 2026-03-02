@@ -381,6 +381,10 @@ export interface Talkgroup {
     toneSets?: any[];
     preferredApiKeyId?: number | null;  // Optional preferred API key for uploads
     excludeFromPreferredSite?: boolean; // Exclude from preferred site detection (for interop/patched talkgroups)
+    // Per-channel TonesToActive forwarding
+    toneDownstreamEnabled?: boolean;
+    toneDownstreamURL?: string;
+    toneDownstreamAPIKey?: string;
 }
 
 export interface Unit {
@@ -1315,6 +1319,10 @@ export class RdioScannerAdminService implements OnDestroy {
                     longToneMaxDuration: this.ngFormBuilder.control(toneSet.longTone?.maxDuration || null),
                     tolerance: this.ngFormBuilder.control(toneSet.tolerance || 10),
                     minDuration: this.ngFormBuilder.control(toneSet.minDuration || null),
+                    // TonesToActive downstream forwarding (per tone set)
+                    downstreamEnabled: this.ngFormBuilder.control(toneSet.downstreamEnabled || false),
+                    downstreamURL: this.ngFormBuilder.control(toneSet.downstreamURL || ''),
+                    downstreamAPIKey: this.ngFormBuilder.control(toneSet.downstreamAPIKey || ''),
                 });
                 toneSetsArray.push(toneSetForm as any);
             });
@@ -1337,6 +1345,10 @@ export class RdioScannerAdminService implements OnDestroy {
             toneSets: toneSetsArray,
             preferredApiKeyId: this.ngFormBuilder.control(talkgroup?.preferredApiKeyId),
             excludeFromPreferredSite: this.ngFormBuilder.control(talkgroup?.excludeFromPreferredSite || false),
+            // Per-channel TonesToActive forwarding
+            toneDownstreamEnabled: this.ngFormBuilder.control(talkgroup?.toneDownstreamEnabled || false),
+            toneDownstreamURL: this.ngFormBuilder.control(talkgroup?.toneDownstreamURL || ''),
+            toneDownstreamAPIKey: this.ngFormBuilder.control(talkgroup?.toneDownstreamAPIKey || ''),
         });
     }
 

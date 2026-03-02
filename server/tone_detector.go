@@ -54,6 +54,10 @@ type ToneSet struct {
 	LongTone    *ToneSpec `json:"longTone"`    // Long tone specification (optional)
 	Tolerance   float64   `json:"tolerance"`   // Frequency tolerance in Hz (default: ±10Hz)
 	MinDuration float64   `json:"minDuration"` // Minimum duration in seconds to be considered valid
+	// TonesToActive downstream forwarding (per tone set)
+	DownstreamEnabled bool   `json:"downstreamEnabled"` // Forward alerts for this tone set to an external endpoint
+	DownstreamURL     string `json:"downstreamURL"`     // Destination URL (TonesToActive server)
+	DownstreamAPIKey  string `json:"downstreamAPIKey"`  // API key sent in X-API-Key header
 }
 
 // ToneSpec defines the expected frequency and duration ranges for a tone

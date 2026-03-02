@@ -84,6 +84,9 @@ var PostgresqlSchema = []string{
     "toneDetectionEnabled" boolean NOT NULL DEFAULT false,
     "toneSets" text NOT NULL DEFAULT '[]',
     "excludeFromPreferredSite" boolean NOT NULL DEFAULT false,
+    "toneDownstreamEnabled" boolean NOT NULL DEFAULT false,
+    "toneDownstreamURL" text NOT NULL DEFAULT '',
+    "toneDownstreamAPIKey" text NOT NULL DEFAULT '',
     CONSTRAINT "talkgroups_systemId_fkey" FOREIGN KEY ("systemId") REFERENCES "systems" ("systemId") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "talkgroups_tagId_fkey" FOREIGN KEY ("tagId") REFERENCES "tags" ("tagId") ON DELETE CASCADE ON UPDATE CASCADE
   );`,

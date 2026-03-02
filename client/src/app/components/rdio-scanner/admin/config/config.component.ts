@@ -404,6 +404,15 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
                                         converted.longTone.maxDuration = toneSet.longToneMaxDuration;
                                     }
                                 }
+
+                                // Preserve TonesToActive downstream fields
+                                converted.downstreamEnabled = toneSet.downstreamEnabled || false;
+                                if (toneSet.downstreamURL) {
+                                    converted.downstreamURL = toneSet.downstreamURL;
+                                }
+                                if (toneSet.downstreamAPIKey) {
+                                    converted.downstreamAPIKey = toneSet.downstreamAPIKey;
+                                }
                                 
                                 return converted;
                             });

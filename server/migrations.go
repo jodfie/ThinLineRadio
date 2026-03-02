@@ -2232,6 +2232,20 @@ func migrateEnhancedDuplicateDetection(db *Database) error {
 		return formatError(err, query)
 	}
 
+	// Add per-channel TonesToActive downstream columns to talkgroups table
+	query = `ALTER TABLE "talkgroups" ADD COLUMN IF NOT EXISTS "toneDownstreamEnabled" boolean NOT NULL DEFAULT false`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+	query = `ALTER TABLE "talkgroups" ADD COLUMN IF NOT EXISTS "toneDownstreamURL" text NOT NULL DEFAULT ''`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+	query = `ALTER TABLE "talkgroups" ADD COLUMN IF NOT EXISTS "toneDownstreamAPIKey" text NOT NULL DEFAULT ''`
+	if _, err := db.Sql.Exec(query); err != nil {
+		return formatError(err, query)
+	}
+
 	// Add duplicate detection mode option (defaults to "legacy" for backward compatibility)
 	query = `INSERT INTO "options" ("key", "value") 
 	         SELECT 'duplicateDetectionMode', '"legacy"'

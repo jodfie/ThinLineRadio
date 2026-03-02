@@ -1513,7 +1513,7 @@ func (options *Options) Read(db *Database) error {
 					options.ConfigSyncPath = v
 				}
 			}
-		case "turnstileEnabled":
+	case "turnstileEnabled":
 			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
 				switch v := f.(type) {
 				case bool:

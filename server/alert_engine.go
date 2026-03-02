@@ -310,6 +310,9 @@ func (engine *AlertEngine) TriggerToneAlerts(call *Call) {
 			})
 		}
 
+		// Forward to TonesToActive downstream (per-tone-set and/or global)
+		dispatchToneDownstreams(engine.controller, call, matchedToneSet)
+
 		// Collect users who should get notifications for this tone set
 		var eligibleUsers []uint64
 		for _, user := range users {

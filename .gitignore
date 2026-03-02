@@ -51,6 +51,7 @@ ThinlineRadio-Mobile/
 ThinlineResponder/
 whisper/
 central-management/
+TonesToActive/
 
 #Package Lock for Node.js
 client/package-lock.json

@@ -1,5 +1,24 @@
 # Change log
 
+## Version 7.0 Beta 9.7.5 - Released Mar 2, 2026
+
+### New Features
+
+- **TonesToActive Per-Channel & Per-Tone-Set Downstream Forwarding**
+  - Added per-channel TonesToActive forwarding to the talkgroup configuration: each talkgroup can now independently enable forwarding of tone alerts to a TonesToActive server with its own destination URL and API key
+  - Added per-tone-set forwarding controls inside each tone set definition, allowing fine-grained control over which specific tone sets trigger a downstream forward
+  - When a tone alert fires, `alert_engine.go` now calls `dispatchToneDownstreams` which checks both channel-level and tone-set-level forwarding settings and sends the tone set name, transcript, and raw audio to the configured TonesToActive endpoint
+  - New `tone_downstream.go` handles all dispatch logic including HTTP multipart POST to the TonesToActive `/api/tone-alert` endpoint with the `X-API-Key` header
+  - Database migration adds `toneDownstreamEnabled`, `toneDownstreamURL`, and `toneDownstreamAPIKey` columns to the `talkgroups` table (PostgreSQL and SQLite, backward compatible with `DEFAULT` values)
+  - Admin UI: talkgroup editor now shows a "Forward to TonesToActive" section (channel-level) when tone detection is enabled, and a per-tone-set forwarding panel inside each tone set row
+  - Files modified: `server/talkgroup.go`, `server/tone_detector.go`, `server/alert_engine.go`, `server/migrations.go`, `server/postgresql.go`, `server/system.go`, `server/tone_downstream.go` (new), `server/options.go`, `client/src/app/components/rdio-scanner/admin/admin.service.ts`, `client/src/app/components/rdio-scanner/admin/config/config.component.ts`, `client/src/app/components/rdio-scanner/admin/config/systems/talkgroup/talkgroup.component.html`, `client/src/app/components/rdio-scanner/admin/config/systems/talkgroup/talkgroup.component.ts`
+
+### Other Changes
+
+- **`.gitignore`**: Added `TonesToActive/` to exclude the TonesToActive sidecar project from the main repo (managed independently)
+
+---
+
 ## Version 7.0 Beta 9.7.4 - Released Mar 1, 2026
 
 ### Bug Fixes
