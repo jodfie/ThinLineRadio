@@ -2291,28 +2291,42 @@ func (api *Api) CreateCheckoutSessionHandler(w http.ResponseWriter, r *http.Requ
 
 	log.Printf("Using price ID %s for user %s (group: %s)", priceId, request.Email, group.Name)
 
+	// Determine tax mode — fall back to legacy collectSalesTax if taxMode not yet set
+	taxMode := group.TaxMode
+	if taxMode == "" {
+		if group.CollectSalesTax {
+			taxMode = "automatic"
+		} else {
+			taxMode = "none"
+		}
+	}
+
+	// Build line item — tax rates are attached here for fixed mode
+	lineItem := &stripe.CheckoutSessionLineItemParams{
+		Price:    stripe.String(priceId),
+		Quantity: stripe.Int64(1),
+	}
+	if taxMode == "fixed" && group.StripeTaxRateId != "" {
+		lineItem.TaxRates = stripe.StringSlice([]string{group.StripeTaxRateId})
+	}
+
 	// Create Stripe Checkout Session
 	params := &stripe.CheckoutSessionParams{
 		PaymentMethodTypes: stripe.StringSlice([]string{
 			"card",
 		}),
-		LineItems: []*stripe.CheckoutSessionLineItemParams{
-			{
-				Price:    stripe.String(priceId),
-				Quantity: stripe.Int64(1),
-			},
-		},
+		LineItems: []*stripe.CheckoutSessionLineItemParams{lineItem},
 		Mode:       stripe.String(string(stripe.CheckoutSessionModeSubscription)),
 		SuccessURL: stripe.String(request.SuccessUrl),
 		CancelURL:  stripe.String(request.CancelUrl),
 		Locale:     stripe.String("en"),
 		AutomaticTax: &stripe.CheckoutSessionAutomaticTaxParams{
-			Enabled: stripe.Bool(group.CollectSalesTax),
+			Enabled: stripe.Bool(taxMode == "automatic"),
 		},
 	}
 
-	// If automatic tax is enabled, configure customer update to save billing address
-	if group.CollectSalesTax {
+	// Automatic tax requires a billing address from the customer
+	if taxMode == "automatic" {
 		params.CustomerUpdate = &stripe.CheckoutSessionCustomerUpdateParams{
 			Address: stripe.String("auto"),
 		}
@@ -5845,11 +5859,13 @@ func (api *Api) AdminGroupsHandler(w http.ResponseWriter, r *http.Request) {
 			"stripePriceId":         group.StripePriceId,
 			"pricingOptions":        group.GetPricingOptions(),
 			"billingMode":           group.BillingMode,
-			"collectSalesTax":       group.CollectSalesTax,
-			"isPublicRegistration":  group.IsPublicRegistration,
-			"allowAddExistingUsers": group.AllowAddExistingUsers,
-			"createdAt":             group.CreatedAt,
-		})
+		"collectSalesTax":       group.CollectSalesTax,
+		"taxMode":               group.TaxMode,
+		"stripeTaxRateId":       group.StripeTaxRateId,
+		"isPublicRegistration":  group.IsPublicRegistration,
+		"allowAddExistingUsers": group.AllowAddExistingUsers,
+		"createdAt":             group.CreatedAt,
+	})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -5890,6 +5906,8 @@ func (api *Api) AdminCreateGroupHandler(w http.ResponseWriter, r *http.Request) 
 		PricingOptions        []PricingOption `json:"pricingOptions"`
 		BillingMode           string          `json:"billingMode"`
 		CollectSalesTax       bool            `json:"collectSalesTax"`
+		TaxMode               string          `json:"taxMode"`
+		StripeTaxRateId       string          `json:"stripeTaxRateId"`
 		IsPublicRegistration  bool            `json:"isPublicRegistration"`
 		AllowAddExistingUsers bool            `json:"allowAddExistingUsers"`
 		// Group admin assignment
@@ -5970,6 +5988,8 @@ func (api *Api) AdminCreateGroupHandler(w http.ResponseWriter, r *http.Request) 
 		PricingOptions:        pricingOptionsJSON,
 		BillingMode:           billingMode,
 		CollectSalesTax:       request.CollectSalesTax,
+		TaxMode:               request.TaxMode,
+		StripeTaxRateId:       request.StripeTaxRateId,
 		IsPublicRegistration:  request.IsPublicRegistration,
 		AllowAddExistingUsers: request.AllowAddExistingUsers,
 		CreatedAt:             time.Now().Unix(),
@@ -6204,6 +6224,8 @@ func (api *Api) AdminUpdateGroupHandler(w http.ResponseWriter, r *http.Request) 
 		PricingOptions        []PricingOption `json:"pricingOptions"`
 		BillingMode           string          `json:"billingMode"`
 		CollectSalesTax       bool            `json:"collectSalesTax"`
+		TaxMode               string          `json:"taxMode"`
+		StripeTaxRateId       string          `json:"stripeTaxRateId"`
 		IsPublicRegistration  bool            `json:"isPublicRegistration"`
 		AllowAddExistingUsers bool            `json:"allowAddExistingUsers"`
 	}
@@ -6273,6 +6295,8 @@ func (api *Api) AdminUpdateGroupHandler(w http.ResponseWriter, r *http.Request) 
 		group.BillingMode = request.BillingMode
 	}
 	group.CollectSalesTax = request.CollectSalesTax
+	group.TaxMode = request.TaxMode
+	group.StripeTaxRateId = request.StripeTaxRateId
 	group.IsPublicRegistration = request.IsPublicRegistration
 	group.AllowAddExistingUsers = request.AllowAddExistingUsers
 
@@ -8782,5 +8806,112 @@ func (api *Api) StatsHandler(w http.ResponseWriter, r *http.Request) {
 		"callsLastHour":        callsLastHour,
 		"incidentSummary":      incidentSummary,
 		"generatedAt":          now,
+	})
+}
+
+// AdminApplyGroupTaxRateHandler applies the group's Fixed Rate tax to all existing active subscriptions
+// POST /api/admin/groups/apply-tax-rate
+func (api *Api) AdminApplyGroupTaxRateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		api.exitWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	client := api.getClient(r)
+	if client == nil || !api.isAdmin(client) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"message": "Unauthorized"})
+		return
+	}
+
+	var request struct {
+		GroupId uint64 `json:"groupId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		api.exitWithError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+
+	group := api.Controller.UserGroups.Get(request.GroupId)
+	if group == nil {
+		api.exitWithError(w, http.StatusNotFound, "Group not found")
+		return
+	}
+
+	if group.TaxMode != "fixed" {
+		api.exitWithError(w, http.StatusBadRequest, "Group tax mode is not set to Fixed Rate")
+		return
+	}
+
+	if group.StripeTaxRateId == "" {
+		api.exitWithError(w, http.StatusBadRequest, "No Stripe Tax Rate ID configured for this group")
+		return
+	}
+
+	stripeKey := api.Controller.Options.StripeSecretKey
+	if stripeKey == "" {
+		api.exitWithError(w, http.StatusInternalServerError, "Stripe is not configured")
+		return
+	}
+	stripe.Key = stripeKey
+
+	// Find all users in this group with an active Stripe subscription
+	allUsers := api.Controller.Users.GetAllUsers()
+	type result struct {
+		Email          string `json:"email"`
+		SubscriptionId string `json:"subscriptionId"`
+		Status         string `json:"status"`
+		Error          string `json:"error,omitempty"`
+	}
+	var results []result
+	updated := 0
+	failed := 0
+	skipped := 0
+
+	for _, user := range allUsers {
+		if user.UserGroupId != group.Id {
+			continue
+		}
+		if user.StripeSubscriptionId == "" {
+			skipped++
+			continue
+		}
+		// Only touch active or trialing subscriptions
+		if user.SubscriptionStatus != "active" && user.SubscriptionStatus != "trialing" {
+			skipped++
+			continue
+		}
+
+		params := &stripe.SubscriptionParams{
+			DefaultTaxRates: stripe.StringSlice([]string{group.StripeTaxRateId}),
+		}
+		_, err := subscription.Update(user.StripeSubscriptionId, params)
+		if err != nil {
+			log.Printf("AdminApplyGroupTaxRate: failed to update subscription %s for user %s: %v", user.StripeSubscriptionId, user.Email, err)
+			results = append(results, result{
+				Email:          user.Email,
+				SubscriptionId: user.StripeSubscriptionId,
+				Status:         "failed",
+				Error:          err.Error(),
+			})
+			failed++
+		} else {
+			log.Printf("AdminApplyGroupTaxRate: applied tax rate %s to subscription %s for user %s", group.StripeTaxRateId, user.StripeSubscriptionId, user.Email)
+			results = append(results, result{
+				Email:          user.Email,
+				SubscriptionId: user.StripeSubscriptionId,
+				Status:         "updated",
+			})
+			updated++
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"updated": updated,
+		"failed":  failed,
+		"skipped": skipped,
+		"results": results,
 	})
 }

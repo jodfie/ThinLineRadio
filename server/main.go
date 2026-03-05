@@ -456,6 +456,7 @@ func main() {
 	http.HandleFunc("/api/admin/groups/remove-admin", wrapHandler(controller.Admin.requireLocalhost(controller.Api.AdminRemoveGroupAdminHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/groups/admins", wrapHandler(controller.Admin.requireLocalhost(controller.Api.AdminGroupAdminsHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/groups/delete/", wrapHandler(controller.Admin.requireLocalhost(controller.Api.AdminDeleteGroupHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/groups/apply-tax-rate", wrapHandler(controller.Admin.requireLocalhost(controller.Api.AdminApplyGroupTaxRateHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/users/transfer", wrapHandler(http.HandlerFunc(controller.Api.AdminTransferUserHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/invitations", wrapHandler(http.HandlerFunc(controller.Api.AdminInviteUserHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/groups/", wrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

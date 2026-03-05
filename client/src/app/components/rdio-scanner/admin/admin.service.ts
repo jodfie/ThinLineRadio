@@ -113,6 +113,8 @@ export interface UserGroup {
     stripePriceId?: string;
     pricingOptions?: any;
     collectSalesTax?: boolean;
+    taxMode?: string;
+    stripeTaxRateId?: string;
     createdAt?: string | number;
     systemAccess?: any[] | string;
     systemDelays?: any[] | string;

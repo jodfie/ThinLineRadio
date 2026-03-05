@@ -47,7 +47,9 @@ type UserGroup struct {
 	StripePriceId         string // DEPRECATED: Legacy single price ID (kept for backward compatibility)
 	PricingOptions        string // JSON array of PricingOption objects (up to 3)
 	BillingMode           string // "all_users" (each user has own customer ID) or "group_admin" (all admins share one customer ID)
-	CollectSalesTax       bool   // Whether to collect sales tax via Stripe Automatic Tax
+	CollectSalesTax       bool   // DEPRECATED: kept for migration only — use TaxMode instead
+	TaxMode               string // "none", "automatic", or "fixed"
+	StripeTaxRateId       string // Stripe Tax Rate ID (e.g. txr_xxx) used when TaxMode = "fixed"
 	IsPublicRegistration  bool
 	AllowAddExistingUsers bool // Allow group admins to add existing users from any group
 	CreatedAt             int64
@@ -279,7 +281,7 @@ func (ugs *UserGroups) Load(db *Database) error {
 	ugs.mutex.Lock()
 	defer ugs.mutex.Unlock()
 
-	rows, err := db.Sql.Query(`SELECT "userGroupId", "name", "description", "systemAccess", "delay", "systemDelays", "talkgroupDelays", "connectionLimit", "maxUsers", "billingEnabled", "stripePriceId", "pricingOptions", "billingMode", "collectSalesTax", "isPublicRegistration", "allowAddExistingUsers", "createdAt" FROM "userGroups"`)
+	rows, err := db.Sql.Query(`SELECT "userGroupId", "name", "description", "systemAccess", "delay", "systemDelays", "talkgroupDelays", "connectionLimit", "maxUsers", "billingEnabled", "stripePriceId", "pricingOptions", "billingMode", "collectSalesTax", "taxMode", "stripeTaxRateId", "isPublicRegistration", "allowAddExistingUsers", "createdAt" FROM "userGroups"`)
 	if err != nil {
 		return err
 	}
@@ -302,6 +304,8 @@ func (ugs *UserGroups) Load(db *Database) error {
 		var pricingOptions sql.NullString
 		var billingMode sql.NullString
 		var collectSalesTax sql.NullBool
+		var taxMode sql.NullString
+		var stripeTaxRateId sql.NullString
 
 		err := rows.Scan(
 			&group.Id,
@@ -318,6 +322,8 @@ func (ugs *UserGroups) Load(db *Database) error {
 			&pricingOptions,
 			&billingMode,
 			&collectSalesTax,
+			&taxMode,
+			&stripeTaxRateId,
 			&group.IsPublicRegistration,
 			&allowAddExistingUsers,
 			&createdAt,
@@ -359,6 +365,18 @@ func (ugs *UserGroups) Load(db *Database) error {
 			group.CollectSalesTax = collectSalesTax.Bool
 		} else {
 			group.CollectSalesTax = false // Default to false for existing groups
+		}
+
+		if taxMode.Valid && taxMode.String != "" {
+			group.TaxMode = taxMode.String
+		} else {
+			group.TaxMode = "none"
+		}
+
+		if stripeTaxRateId.Valid {
+			group.StripeTaxRateId = stripeTaxRateId.String
+		} else {
+			group.StripeTaxRateId = ""
 		}
 
 		if createdAt.Valid {
@@ -436,9 +454,9 @@ func (ugs *UserGroups) Add(group *UserGroup, db *Database) error {
 
 	var userId int64
 	err := db.Sql.QueryRow(
-		`INSERT INTO "userGroups" ("name", "description", "systemAccess", "delay", "systemDelays", "talkgroupDelays", "connectionLimit", "maxUsers", "billingEnabled", "stripePriceId", "pricingOptions", "billingMode", "collectSalesTax", "isPublicRegistration", "allowAddExistingUsers", "createdAt") 
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING "userGroupId"`,
-		group.Name, group.Description, group.SystemAccess, group.Delay, group.SystemDelays, group.TalkgroupDelays, group.ConnectionLimit, group.MaxUsers, group.BillingEnabled, group.StripePriceId, group.PricingOptions, group.BillingMode, group.CollectSalesTax, group.IsPublicRegistration, group.AllowAddExistingUsers, group.CreatedAt,
+		`INSERT INTO "userGroups" ("name", "description", "systemAccess", "delay", "systemDelays", "talkgroupDelays", "connectionLimit", "maxUsers", "billingEnabled", "stripePriceId", "pricingOptions", "billingMode", "collectSalesTax", "taxMode", "stripeTaxRateId", "isPublicRegistration", "allowAddExistingUsers", "createdAt") 
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING "userGroupId"`,
+		group.Name, group.Description, group.SystemAccess, group.Delay, group.SystemDelays, group.TalkgroupDelays, group.ConnectionLimit, group.MaxUsers, group.BillingEnabled, group.StripePriceId, group.PricingOptions, group.BillingMode, group.CollectSalesTax, group.TaxMode, group.StripeTaxRateId, group.IsPublicRegistration, group.AllowAddExistingUsers, group.CreatedAt,
 	).Scan(&userId)
 
 	if err != nil {
@@ -461,8 +479,8 @@ func (ugs *UserGroups) Update(group *UserGroup, db *Database) error {
 	group.loadPricingOptions()
 
 	_, err := db.Sql.Exec(
-		`UPDATE "userGroups" SET "name" = $1, "description" = $2, "systemAccess" = $3, "delay" = $4, "systemDelays" = $5, "talkgroupDelays" = $6, "connectionLimit" = $7, "maxUsers" = $8, "billingEnabled" = $9, "stripePriceId" = $10, "pricingOptions" = $11, "billingMode" = $12, "collectSalesTax" = $13, "isPublicRegistration" = $14, "allowAddExistingUsers" = $15 WHERE "userGroupId" = $16`,
-		group.Name, group.Description, group.SystemAccess, group.Delay, group.SystemDelays, group.TalkgroupDelays, group.ConnectionLimit, group.MaxUsers, group.BillingEnabled, group.StripePriceId, group.PricingOptions, group.BillingMode, group.CollectSalesTax, group.IsPublicRegistration, group.AllowAddExistingUsers, group.Id,
+		`UPDATE "userGroups" SET "name" = $1, "description" = $2, "systemAccess" = $3, "delay" = $4, "systemDelays" = $5, "talkgroupDelays" = $6, "connectionLimit" = $7, "maxUsers" = $8, "billingEnabled" = $9, "stripePriceId" = $10, "pricingOptions" = $11, "billingMode" = $12, "collectSalesTax" = $13, "taxMode" = $14, "stripeTaxRateId" = $15, "isPublicRegistration" = $16, "allowAddExistingUsers" = $17 WHERE "userGroupId" = $18`,
+		group.Name, group.Description, group.SystemAccess, group.Delay, group.SystemDelays, group.TalkgroupDelays, group.ConnectionLimit, group.MaxUsers, group.BillingEnabled, group.StripePriceId, group.PricingOptions, group.BillingMode, group.CollectSalesTax, group.TaxMode, group.StripeTaxRateId, group.IsPublicRegistration, group.AllowAddExistingUsers, group.Id,
 	)
 
 	if err != nil {

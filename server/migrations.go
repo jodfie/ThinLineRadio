@@ -1848,6 +1848,23 @@ func migrateUserGroupsCollectSalesTax(db *Database) error {
 	return nil
 }
 
+// migrateUserGroupsTaxMode adds taxMode and stripeTaxRateId columns to userGroups table
+// and migrates existing collectSalesTax=true rows to taxMode='automatic'
+func migrateUserGroupsTaxMode(db *Database) error {
+	queries := []string{
+		`ALTER TABLE "userGroups" ADD COLUMN IF NOT EXISTS "taxMode" text NOT NULL DEFAULT 'none'`,
+		`ALTER TABLE "userGroups" ADD COLUMN IF NOT EXISTS "stripeTaxRateId" text NOT NULL DEFAULT ''`,
+		// Migrate any existing groups that had collectSalesTax=true → taxMode='automatic'
+		`UPDATE "userGroups" SET "taxMode" = 'automatic' WHERE "collectSalesTax" = true AND "taxMode" = 'none'`,
+	}
+	for _, query := range queries {
+		if _, err := db.Sql.Exec(query); err != nil {
+			log.Printf("migration note: %v", err)
+		}
+	}
+	return nil
+}
+
 // migrateTransferRequestsApprovalTokens adds approval token columns to transferRequests table
 func migrateTransferRequestsApprovalTokens(db *Database) error {
 	// Check if transferRequests table exists

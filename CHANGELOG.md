@@ -1,5 +1,22 @@
 # Change log
 
+## Version 7.0 Beta 9.7.11 - Released Mar 4, 2026
+
+### New Features
+
+- **Billing: Flexible tax collection — Automatic or Fixed Rate per User Group**
+  - The previous `Collect Sales Tax` checkbox (which enabled Stripe Automatic Tax and required customers to enter their billing address at checkout) has been replaced with a **Tax Collection Mode** dropdown per User Group
+  - Three modes available:
+    - **None** — No tax collected (default)
+    - **Automatic** — Stripe Automatic Tax; calculates tax based on customer billing address entered at checkout. Requires origin address configured in Stripe Tax dashboard settings
+    - **Fixed Rate** — Apply a specific Stripe Tax Rate ID (e.g. `txr_xxx`) at a fixed percentage. No customer address required at checkout
+  - Existing groups that had `Collect Sales Tax` enabled are automatically migrated to **Automatic** mode — no data loss, changeable at any time
+  - For Fixed Rate mode: a **"Apply Tax Rate to Existing Subscribers"** button appears when editing a group, allowing admins to push the tax rate to all current active Stripe subscriptions in one click. Tax is applied on the next invoice cycle, not retroactively
+  - New API endpoint: `POST /api/admin/groups/apply-tax-rate`
+  - Files modified: `server/user_group.go`, `server/migrations.go`, `server/database.go`, `server/postgresql.go`, `server/admin.go`, `server/api.go`, `server/main.go`, `client/src/app/components/rdio-scanner/admin/admin.service.ts`, `client/src/app/components/rdio-scanner/admin/config/user-groups/user-groups.component.ts`, `client/src/app/components/rdio-scanner/admin/config/user-groups/user-groups.component.html`
+
+---
+
 ## Version 7.0 Beta 9.7.7 - Released Mar 3, 2026
 
 ### Bug Fixes

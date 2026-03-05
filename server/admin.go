@@ -1556,8 +1556,10 @@ func (admin *Admin) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 						existingGroup.StripePriceId = getStringFromMap(groupMap, "stripePriceId")
 						existingGroup.PricingOptions = getStringFromMap(groupMap, "pricingOptions")
 						existingGroup.BillingMode = getStringFromMap(groupMap, "billingMode")
-						existingGroup.CollectSalesTax = getBoolFromMap(groupMap, "collectSalesTax", false)
-						existingGroup.IsPublicRegistration = getBoolFromMap(groupMap, "isPublicRegistration", false)
+					existingGroup.CollectSalesTax = getBoolFromMap(groupMap, "collectSalesTax", false)
+					existingGroup.TaxMode = getStringFromMap(groupMap, "taxMode")
+					existingGroup.StripeTaxRateId = getStringFromMap(groupMap, "stripeTaxRateId")
+					existingGroup.IsPublicRegistration = getBoolFromMap(groupMap, "isPublicRegistration", false)
 						existingGroup.AllowAddExistingUsers = getBoolFromMap(groupMap, "allowAddExistingUsers", false)
 						if createdAt, ok := groupMap["createdAt"].(float64); ok {
 							existingGroup.CreatedAt = int64(createdAt)
@@ -1586,8 +1588,10 @@ func (admin *Admin) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 							StripePriceId:         getStringFromMap(groupMap, "stripePriceId"),
 							PricingOptions:        getStringFromMap(groupMap, "pricingOptions"),
 							BillingMode:           getStringFromMap(groupMap, "billingMode"),
-							CollectSalesTax:       getBoolFromMap(groupMap, "collectSalesTax", false),
-							IsPublicRegistration:  getBoolFromMap(groupMap, "isPublicRegistration", false),
+						CollectSalesTax:       getBoolFromMap(groupMap, "collectSalesTax", false),
+						TaxMode:               getStringFromMap(groupMap, "taxMode"),
+						StripeTaxRateId:       getStringFromMap(groupMap, "stripeTaxRateId"),
+						IsPublicRegistration:  getBoolFromMap(groupMap, "isPublicRegistration", false),
 							AllowAddExistingUsers: getBoolFromMap(groupMap, "allowAddExistingUsers", false),
 						}
 						if createdAt, ok := groupMap["createdAt"].(float64); ok {
@@ -2256,6 +2260,8 @@ func (admin *Admin) GetConfig() map[string]any {
 			"pricingOptions":        group.PricingOptions,
 			"billingMode":           group.BillingMode,
 			"collectSalesTax":       group.CollectSalesTax,
+			"taxMode":               group.TaxMode,
+			"stripeTaxRateId":       group.StripeTaxRateId,
 			"isPublicRegistration":  group.IsPublicRegistration,
 			"allowAddExistingUsers": group.AllowAddExistingUsers,
 			"createdAt":             group.CreatedAt,

@@ -330,6 +330,8 @@ var PostgresqlSchema = []string{
     "pricingOptions" text NOT NULL DEFAULT '',
     "billingMode" text NOT NULL DEFAULT 'all_users',
     "collectSalesTax" boolean NOT NULL DEFAULT false,
+    "taxMode" text NOT NULL DEFAULT 'none',
+    "stripeTaxRateId" text NOT NULL DEFAULT '',
     "isPublicRegistration" boolean NOT NULL DEFAULT false,
     "allowAddExistingUsers" boolean NOT NULL DEFAULT false,
     "createdAt" bigint NOT NULL DEFAULT 0

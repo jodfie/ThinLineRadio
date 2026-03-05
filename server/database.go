@@ -230,6 +230,11 @@ func (db *Database) migrate() error {
 		return formatError(err, "")
 	}
 
+	// Migrate userGroups taxMode and stripeTaxRateId columns
+	if err := migrateUserGroupsTaxMode(db); err != nil {
+		return formatError(err, "")
+	}
+
 	// Migrate users accountExpiresAt column
 	if err := migrateUserAccountExpiresAt(db); err != nil {
 		return formatError(err, "")

@@ -45,6 +45,8 @@ interface UserGroup {
   pricingOptions?: PricingOption[];
   billingMode: string;
   collectSalesTax?: boolean;
+  taxMode?: string;
+  stripeTaxRateId?: string;
   isPublicRegistration: boolean;
   allowAddExistingUsers: boolean;
   createdAt: number;
@@ -141,6 +143,8 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
       pricingOptions: this.fb.array([]),
       billingMode: ['all_users'],
       collectSalesTax: [false],
+      taxMode: ['none'],
+      stripeTaxRateId: [''],
       isPublicRegistration: [false],
       allowAddExistingUsers: [false],
       groupAdminUserId: [0],
@@ -804,6 +808,25 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
     }
   }
   
+  applyTaxRateToExistingSubscriptions(group: UserGroup): void {
+    if (!confirm(`Apply the fixed tax rate to all active subscribers in "${group.name}"?\n\nThis will update their Stripe subscriptions so the tax rate is charged on their next invoice.`)) {
+      return;
+    }
+    this.http.post('/api/admin/groups/apply-tax-rate', { groupId: group.id }, { headers: this.adminService.getAuthHeaders() }).subscribe({
+      next: (response: any) => {
+        const msg = `Tax rate applied: ${response.updated} updated, ${response.failed} failed, ${response.skipped} skipped.`;
+        this.snackBar.open(msg, 'Close', { duration: 6000 });
+        if (response.failed > 0) {
+          console.error('Some subscriptions failed to update:', response.results?.filter((r: any) => r.status === 'failed'));
+        }
+      },
+      error: (error) => {
+        console.error('Failed to apply tax rate:', error);
+        this.snackBar.open(error.error?.message || error.error?.error || 'Failed to apply tax rate to subscriptions', 'Close', { duration: 5000 });
+      }
+    });
+  }
+
   performGroupDelete(groupId: number): void {
     this.http.delete(`/api/admin/groups/delete/${groupId}`, { headers: this.adminService.getAuthHeaders() }).subscribe({
       next: () => {

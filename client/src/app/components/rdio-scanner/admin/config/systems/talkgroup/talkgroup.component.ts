@@ -157,6 +157,11 @@ export class RdioScannerAdminTalkgroupComponent {
             });
     }
 
+    allToneSetsForwardingEnabled(): boolean {
+        const controls = this.getToneSets().controls;
+        return controls.length > 0 && controls.every(c => c.get('downstreamEnabled')?.value === true);
+    }
+
     setAllToneSetsForwarding(enabled: boolean): void {
         this.getToneSets().controls.forEach(ctrl => {
             ctrl.get('downstreamEnabled')?.setValue(enabled);

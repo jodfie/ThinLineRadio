@@ -218,12 +218,34 @@
           Add Pricing Option
         </button>
 
-        <mat-checkbox formControlName="collectSalesTax" style="margin-top: 20px;">
-          Collect Sales Tax
-        </mat-checkbox>
-        <p class="mat-caption" style="margin-top: 5px; margin-bottom: 15px;">
-          Enable Stripe Automatic Tax collection. Ensure you are following your state laws on if you need to collect sales tax.
+        <mat-form-field appearance="outline" class="full-width" style="margin-top: 20px;">
+          <mat-label>Tax Collection Mode</mat-label>
+          <mat-select formControlName="taxMode">
+            <mat-option value="none">None — No tax collected</mat-option>
+            <mat-option value="automatic">Automatic — Stripe calculates tax by customer address</mat-option>
+            <mat-option value="fixed">Fixed Rate — Apply a specific Stripe Tax Rate ID</mat-option>
+          </mat-select>
+          <mat-hint>Choose how sales tax is collected at checkout.</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="full-width" *ngIf="groupForm.get('taxMode')?.value === 'fixed'" style="margin-top: 10px;">
+          <mat-label>Stripe Tax Rate ID</mat-label>
+          <input matInput formControlName="stripeTaxRateId" placeholder="txr_xxxxxxxxxxxxxxxx">
+          <mat-hint>Enter the Tax Rate ID from your Stripe Dashboard (Products → Tax rates). No customer address required.</mat-hint>
+        </mat-form-field>
+        <p class="mat-caption" *ngIf="groupForm.get('taxMode')?.value === 'automatic'" style="margin-top: 5px; margin-bottom: 15px;">
+          Stripe Automatic Tax will prompt the customer for their billing address during checkout. Ensure you have configured your origin address in the Stripe Tax settings.
         </p>
+
+        <div *ngIf="editingGroup && groupForm.get('taxMode')?.value === 'fixed' && groupForm.get('stripeTaxRateId')?.value" style="margin-top: 10px; margin-bottom: 15px;">
+          <button mat-stroked-button color="accent" type="button" (click)="applyTaxRateToExistingSubscriptions(editingGroup)">
+            <mat-icon>sync</mat-icon>
+            Apply Tax Rate to Existing Subscribers
+          </button>
+          <p class="mat-caption" style="margin-top: 4px;">
+            Updates all current active subscriptions in this group to include this tax rate. New subscribers are covered automatically.
+          </p>
+        </div>
       </div>
 
       <mat-checkbox formControlName="isPublicRegistration">Public Registration Group</mat-checkbox>

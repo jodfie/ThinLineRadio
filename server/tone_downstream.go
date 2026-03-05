@@ -245,8 +245,8 @@ func dispatchToneDownstreams(controller *Controller, call *Call, toneSet *ToneSe
 		}()
 	}
 
-	// 2. Per-channel downstream (all tone sets for this talkgroup)
-	if call.Talkgroup != nil && call.Talkgroup.ToneDownstreamEnabled && call.Talkgroup.ToneDownstreamURL != "" {
+	// 2. Per-channel downstream — only if this tone set has forwarding enabled
+	if call.Talkgroup != nil && call.Talkgroup.ToneDownstreamEnabled && call.Talkgroup.ToneDownstreamURL != "" && toneSet.DownstreamEnabled {
 		go func() {
 			logPrefix := fmt.Sprintf("tone_downstream[channel]: call=%d talkgroup=%q toneSet=%q", call.Id, call.Talkgroup.Label, toneSet.Label)
 			if err := sendToneAlertDownstream(controller, call.Talkgroup.ToneDownstreamURL, call.Talkgroup.ToneDownstreamAPIKey, call, toneSet); err != nil {
