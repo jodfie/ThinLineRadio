@@ -17,6 +17,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -1145,6 +1146,67 @@ func (admin *Admin) ToneImportHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+}
+
+// SyncToneSetsHandler proxies a tone-set list to a TonesToActive server.
+// The Angular client sends: { url, apiKey, toneSets: [{id, label}] }
+// The handler strips the path from the URL (if it ends with /api/tone-alert),
+// appends /api/sync-tone-sets, and forwards the request.
+func (admin *Admin) SyncToneSetsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	token := admin.GetAuthorization(r)
+	if !admin.ValidateToken(token) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		URL      string `json:"url"`
+		APIKey   string `json:"apiKey"`
+		ToneSets []struct {
+			ID    string `json:"id"`
+			Label string `json:"label"`
+		} `json:"toneSets"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Derive the base URL → /api/sync-tone-sets
+	base := strings.TrimSuffix(req.URL, "/api/tone-alert")
+	base = strings.TrimRight(base, "/")
+	syncURL := base + "/api/sync-tone-sets"
+
+	payload, _ := json.Marshal(map[string]any{"toneSets": req.ToneSets})
+	proxyReq, err := http.NewRequest(http.MethodPost, syncURL, bytes.NewReader(payload))
+	if err != nil {
+		http.Error(w, `{"error":"invalid url"}`, http.StatusBadRequest)
+		return
+	}
+	proxyReq.Header.Set("Content-Type", "application/json")
+	if req.APIKey != "" {
+		proxyReq.Header.Set("X-API-Key", req.APIKey)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(proxyReq)
+	if err != nil {
+		admin.Controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("sync-tone-sets proxy: POST to %s: %v", syncURL, err))
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	admin.Controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("sync-tone-sets: pushed %d tone sets to %s → %s", len(req.ToneSets), syncURL, resp.Status))
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 func (admin *Admin) BroadcastConfig() {

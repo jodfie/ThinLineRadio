@@ -41,6 +41,9 @@ export class RdioScannerAdminTalkgroupComponent {
     @ViewChild('csvFileInput') csvFileInput?: ElementRef<HTMLInputElement>;
 
     importingToneSets = false;
+    syncingToneSets   = false;
+    syncToneSetsStatus = '';
+    syncSelectedIds   = new Set<string>();
 
     get groups(): Group[] {
         return this.form?.root.get('groups')?.value as Group[];
@@ -150,6 +153,71 @@ export class RdioScannerAdminTalkgroupComponent {
                 error: (error) => {
                     const message = error?.error?.error || 'Failed to import tone sets';
                     this.snackBar.open(message, '', { duration: 6000 });
+                },
+            });
+    }
+
+    setAllToneSetsForwarding(enabled: boolean): void {
+        this.getToneSets().controls.forEach(ctrl => {
+            ctrl.get('downstreamEnabled')?.setValue(enabled);
+        });
+    }
+
+    isToneSetSelected(id: string): boolean {
+        return this.syncSelectedIds.has(id);
+    }
+
+    toggleToneSetSelection(id: string, checked: boolean): void {
+        if (checked) {
+            this.syncSelectedIds.add(id);
+        } else {
+            this.syncSelectedIds.delete(id);
+        }
+    }
+
+    selectAllToneSets(): void {
+        const all = this.getToneSets().controls.every(c => this.syncSelectedIds.has(c.get('id')?.value));
+        if (all) {
+            // All already selected — deselect all (toggle behaviour)
+            this.syncSelectedIds.clear();
+        } else {
+            this.getToneSets().controls.forEach(c => {
+                const id = c.get('id')?.value;
+                if (id) this.syncSelectedIds.add(id);
+            });
+        }
+    }
+
+    syncToneSetsToDownstream(url: string, apiKey: string): void {
+        if (!url || this.syncingToneSets) return;
+
+        const toneSets = this.getToneSets().controls
+            .filter(c => this.syncSelectedIds.has(c.get('id')?.value))
+            .map(c => ({
+                id:    c.get('id')?.value    || '',
+                label: c.get('label')?.value || '',
+            }))
+            .filter(ts => ts.label);
+
+        if (toneSets.length === 0) {
+            this.snackBar.open('No tone sets selected to sync', '', { duration: 3000 });
+            return;
+        }
+
+        this.syncingToneSets    = true;
+        this.syncToneSetsStatus = '';
+
+        this.adminService.syncToneSets(url, apiKey, toneSets)
+            .pipe(finalize(() => { this.syncingToneSets = false; }))
+            .subscribe({
+                next: () => {
+                    this.syncToneSetsStatus = `✓ Synced ${toneSets.length} tone set${toneSets.length === 1 ? '' : 's'}`;
+                    this.snackBar.open('Tone sets synced to TonesToActive', '', { duration: 4000 });
+                },
+                error: (err) => {
+                    const msg = err?.error?.error || 'Sync failed — check URL and API key';
+                    this.syncToneSetsStatus = `✗ ${msg}`;
+                    this.snackBar.open(msg, '', { duration: 5000 });
                 },
             });
     }

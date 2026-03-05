@@ -195,6 +195,62 @@
                     <input type="password" matInput formControlName="toneDownstreamAPIKey"
                            placeholder="Shared API key (sent as X-API-Key header)">
                 </mat-form-field>
+                <!-- Enable / Disable all tone set forwarding -->
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px;">
+                    <button type="button" mat-stroked-button (click)="setAllToneSetsForwarding(true)">
+                        <mat-icon>check_box</mat-icon>
+                        Enable All Tone Sets
+                    </button>
+                    <button type="button" mat-stroked-button (click)="setAllToneSetsForwarding(false)">
+                        <mat-icon>check_box_outline_blank</mat-icon>
+                        Disable All Tone Sets
+                    </button>
+                </div>
+
+                <!-- Sync tone set list panel -->
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 14px; margin-top: 4px;">
+                    <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #aaa; margin-bottom: 10px;">
+                        Sync Tone Set List
+                    </div>
+
+                    <!-- Select All + tone set checkboxes -->
+                    <div style="margin-bottom: 10px;">
+                        <button type="button" mat-button style="padding: 0; font-size: 12px; height: 28px; min-width: unset; margin-bottom: 6px;"
+                                (click)="selectAllToneSets()">
+                            Select All
+                        </button>
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <div *ngFor="let ts of getToneSets().controls; let i = index"
+                                 style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                                <mat-checkbox [checked]="isToneSetSelected(ts.get('id')?.value)"
+                                              (change)="toggleToneSetSelection(ts.get('id')?.value, $event.checked)">
+                                    {{ ts.get('label')?.value || '(unnamed)' }}
+                                </mat-checkbox>
+                            </div>
+                            <div *ngIf="getToneSets().controls.length === 0" style="font-size: 12px; color: #666;">
+                                No tone sets configured yet.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sync button + status -->
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <button type="button" mat-stroked-button color="accent"
+                                [disabled]="syncingToneSets || !form.get('toneDownstreamURL')?.value || syncSelectedIds.size === 0"
+                                (click)="syncToneSetsToDownstream(form.get('toneDownstreamURL')?.value, form.get('toneDownstreamAPIKey')?.value)">
+                            <mat-icon>sync</mat-icon>
+                            {{ syncingToneSets ? 'Syncing…' : 'Sync List with TonesToActive' }}
+                        </button>
+                        <span *ngIf="syncToneSetsStatus"
+                              [style.color]="syncToneSetsStatus.startsWith('✓') ? '#4caf50' : '#f44336'"
+                              style="font-size: 12px;">
+                            {{ syncToneSetsStatus }}
+                        </span>
+                    </div>
+                    <span class="mat-caption" style="color: #666; margin-top: 6px; display: block;">
+                        Sends selected tone set labels to TonesToActive so they appear ready to configure in its admin panel. Does not send audio or alerts.
+                    </span>
+                </div>
             </ng-container>
         </div>
     </div>
@@ -291,25 +347,12 @@
 
                     <!-- TonesToActive downstream forwarding (per tone set) -->
                     <div class="tone-set-downstream">
-                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-                            <mat-slide-toggle color="primary" formControlName="downstreamEnabled">
-                                <span style="font-weight: 500; font-size: 13px;">Forward to TonesToActive</span>
-                            </mat-slide-toggle>
-                        </div>
-                        <div *ngIf="toneSet.get('downstreamEnabled')?.value" style="display: flex; flex-direction: column; gap: 6px;">
-                            <span class="mat-caption" style="color: #aaa; margin-bottom: 4px;">
-                                When this tone set is detected, send the tone set info, transcript, and audio to the TonesToActive server.
-                            </span>
-                            <mat-form-field floatLabel="auto" style="width: 100%;">
-                                <mat-label>Destination URL</mat-label>
-                                <input type="url" matInput formControlName="downstreamURL" placeholder="https://your-tonesToActive-server/api/tone-alert">
-                                <mat-hint>Full URL of the TonesToActive <code>/api/tone-alert</code> endpoint</mat-hint>
-                            </mat-form-field>
-                            <mat-form-field floatLabel="auto" style="width: 100%;">
-                                <mat-label>API Key</mat-label>
-                                <input type="password" matInput formControlName="downstreamAPIKey" placeholder="Shared API key (sent as X-API-Key header)">
-                            </mat-form-field>
-                        </div>
+                        <mat-slide-toggle color="primary" formControlName="downstreamEnabled">
+                            <span style="font-weight: 500; font-size: 13px;">Forward to TonesToActive</span>
+                        </mat-slide-toggle>
+                        <span class="mat-caption" style="display: block; color: #888; margin-top: 4px;">
+                            Uses the channel URL and API key configured above.
+                        </span>
                     </div>
                 </div>
             </div>

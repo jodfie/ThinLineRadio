@@ -1363,6 +1363,14 @@ export class RdioScannerAdminService implements OnDestroy {
         );
     }
 
+    syncToneSets(url: string, apiKey: string, toneSets: { id: string; label: string }[]): Observable<any> {
+        return this.ngHttpClient.post<any>(
+            '/api/admin/sync-tone-sets',
+            { url, apiKey, toneSets },
+            { headers: this.getHeaders() },
+        );
+    }
+
     private generateToneSetId(): string {
         return `tone-set-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
