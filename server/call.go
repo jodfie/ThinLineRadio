@@ -90,6 +90,12 @@ type Call struct {
 	// Add back simple fields for compatibility with v6 uploads
 	SystemId    uint `json:"system"`
 	TalkgroupId uint `json:"talkgroup"`
+
+	// RDIO/upstream transcription passthrough fields
+	// Set by the uploader when transcription was already processed externally.
+	// Empty when transcription is disabled or audio is outside 2s-250s range.
+	TransmissionId string // upstream transmission ID (e.g. from RDIO/AlertPage)
+	RequestId      string // upstream request correlation ID
 }
 
 func NewCall() *Call {
@@ -855,14 +861,14 @@ func (calls *Calls) WriteCall(call *Call, db *Database) (uint64, error) {
 	}
 
 	if db.Config.DbType == DbTypePostgresql {
-		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus") VALUES ($1, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, $2, %t, $3, %.2f, '%s') RETURNING "callId"`, call.AudioFilename, call.AudioMime, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, escapeQuotes(call.TranscriptionStatus))
+		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus", "transmissionId", "requestId") VALUES ($1, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, $2, %t, $3, %.2f, '%s', $4, $5) RETURNING "callId"`, call.AudioFilename, call.AudioMime, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, escapeQuotes(call.TranscriptionStatus))
 
-		err = tx.QueryRow(query, call.Audio, toneSequenceJson, call.Transcript).Scan(&call.Id)
+		err = tx.QueryRow(query, call.Audio, toneSequenceJson, call.Transcript, call.TransmissionId, call.RequestId).Scan(&call.Id)
 
 	} else {
-		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus") VALUES (?, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, ?, %t, ?, %.2f, '%s')`, call.AudioFilename, call.AudioMime, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, escapeQuotes(call.TranscriptionStatus))
+		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus", "transmissionId", "requestId") VALUES (?, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, ?, %t, ?, %.2f, '%s', ?, ?)`, call.AudioFilename, call.AudioMime, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, escapeQuotes(call.TranscriptionStatus))
 
-		if res, err = tx.Exec(query, call.Audio, toneSequenceJson, call.Transcript); err == nil {
+		if res, err = tx.Exec(query, call.Audio, toneSequenceJson, call.Transcript, call.TransmissionId, call.RequestId); err == nil {
 			if id, err := res.LastInsertId(); err == nil {
 				call.Id = uint64(id)
 			}

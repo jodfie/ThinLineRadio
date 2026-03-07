@@ -516,6 +516,15 @@ func ParseMultipartContent(call *Call, p *multipart.Part, b []byte) {
 	case "test":
 		// SDRTrunk test field - no action needed, just acknowledge it was received
 
+	case "transmission_id":
+		// RDIO upstream transmission ID - set when transcription was already processed externally.
+		// Empty when transcription is disabled or audio is outside the 2s-250s processing window.
+		call.TransmissionId = string(b)
+
+	case "request_id":
+		// RDIO upstream request correlation ID - paired with transmission_id.
+		call.RequestId = string(b)
+
 	}
 }
 

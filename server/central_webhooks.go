@@ -482,6 +482,7 @@ type CentralManagementPairRequest struct {
 	APIKey                string `json:"api_key"`
 	ServerName            string `json:"server_name"`
 	ServerID              string `json:"server_id"`
+	ServerURL             string `json:"server_url"` // the TLR server's own public URL, so it can register back correctly
 }
 
 // PairWithCentralManagementHandler is called by the Central Management backend to authenticate
@@ -529,6 +530,10 @@ func (api *Api) PairWithCentralManagementHandler(w http.ResponseWriter, r *http.
 	}
 	if req.ServerID != "" {
 		api.Controller.Options.CentralManagementServerID = req.ServerID
+	}
+	// Store the server's own public URL so heartbeats register correctly instead of falling back to localhost.
+	if req.ServerURL != "" {
+		api.Controller.Options.BaseUrl = req.ServerURL
 	}
 	api.Controller.Options.mutex.Unlock()
 
@@ -877,5 +882,74 @@ func (api *Api) CentralWebhookSetRelayAPIKeyHandler(w http.ResponseWriter, r *ht
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":  "ok",
 		"message": "Relay API key updated successfully",
+	})
+}
+
+// CentralWebhookSetHydraConfigHandler receives Hydra API key and enabled status from
+// Central Management and saves it to this server's options so Hydra transcription
+// retrieval can be used.
+// POST /api/webhook/central-set-hydra-config
+func (api *Api) CentralWebhookSetHydraConfigHandler(w http.ResponseWriter, r *http.Request) {
+	if !api.Controller.Options.CentralManagementEnabled {
+		api.exitWithError(w, http.StatusForbidden, "Central management not enabled")
+		return
+	}
+
+	apiKey := r.Header.Get("X-API-Key")
+	if apiKey == "" || apiKey != api.Controller.Options.CentralManagementAPIKey {
+		api.exitWithError(w, http.StatusUnauthorized, "Invalid API key")
+		return
+	}
+
+	var req struct {
+		HydraAPIKey              string `json:"hydra_api_key"`
+		HydraTranscriptionEnabled bool   `json:"hydra_transcription_enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		api.exitWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Save to options
+	api.Controller.Options.mutex.Lock()
+	api.Controller.Options.HydraAPIKey = req.HydraAPIKey
+	api.Controller.Options.HydraTranscriptionEnabled = req.HydraTranscriptionEnabled
+	
+	// If Hydra transcription is enabled, enable transcription and set provider to "hydra"
+	if req.HydraTranscriptionEnabled && req.HydraAPIKey != "" {
+		api.Controller.Options.TranscriptionConfig.Enabled = true
+		api.Controller.Options.TranscriptionConfig.Provider = "hydra"
+	}
+	api.Controller.Options.mutex.Unlock()
+
+	// Persist to database
+	if err := api.Controller.Options.Write(api.Controller.Database); err != nil {
+		log.Printf("CentralWebhookSetHydraConfig: failed to persist Hydra config: %v", err)
+		api.exitWithError(w, http.StatusInternalServerError, "failed to save Hydra config")
+		return
+	}
+
+	log.Printf("CentralWebhookSetHydraConfig: Hydra config updated via Central Management (enabled=%v)", req.HydraTranscriptionEnabled)
+
+	// Initialize or update Hydra retrieval queue
+	if req.HydraTranscriptionEnabled && req.HydraAPIKey != "" {
+		if api.Controller.HydraTranscriptionRetrievalQueue == nil {
+			api.Controller.HydraTranscriptionRetrievalQueue = NewHydraTranscriptionRetrievalQueue(api.Controller)
+			log.Printf("CentralWebhookSetHydraConfig: Hydra retrieval queue started")
+		} else {
+			api.Controller.HydraTranscriptionRetrievalQueue.UpdateAPIKey(req.HydraAPIKey)
+			log.Printf("CentralWebhookSetHydraConfig: Hydra retrieval queue API key updated")
+		}
+	} else if api.Controller.HydraTranscriptionRetrievalQueue != nil {
+		// Stop queue if disabled
+		api.Controller.HydraTranscriptionRetrievalQueue.Stop()
+		api.Controller.HydraTranscriptionRetrievalQueue = nil
+		log.Printf("CentralWebhookSetHydraConfig: Hydra retrieval queue stopped (disabled or no API key)")
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"message": "Hydra config updated successfully",
 	})
 }

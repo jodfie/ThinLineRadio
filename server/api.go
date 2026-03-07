@@ -171,7 +171,8 @@ func (api *Api) CallUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 		mr := multipart.NewReader(r.Body, params["boundary"])
 
-		log.Printf("api: [UPLOAD RAW] /api/call-upload - from=%s ua=%q", r.RemoteAddr, r.Header.Get("User-Agent"))
+		// Log raw request info
+		log.Printf("api: [UPLOAD RAW] %s - from=%s ua=%q", r.URL.Path, r.RemoteAddr, r.UserAgent())
 
 		for {
 			p, err := mr.NextPart()
@@ -188,8 +189,11 @@ func (api *Api) CallUploadHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// Log every raw field received
-			if p.FormName() == "audio" || p.FileName() != "" {
+			// Log raw multipart part
+			for hk, hv := range p.Header {
+				log.Printf("api: [UPLOAD RAW]   header: %q = %v", hk, hv)
+			}
+			if p.FileName() != "" {
 				log.Printf("api: [UPLOAD RAW]   field=%q filename=%q mime=%q size=%d bytes", p.FormName(), p.FileName(), p.Header.Get("Content-Type"), len(b))
 			} else {
 				log.Printf("api: [UPLOAD RAW]   field=%q value=%q", p.FormName(), string(b))
@@ -214,6 +218,8 @@ func (api *Api) CallUploadHandler(w http.ResponseWriter, r *http.Request) {
 			call.Meta.SiteRef, call.Meta.SiteId, call.Meta.SiteLabel)
 		log.Printf("api: [UPLOAD PARSED] Units=%v Meta.UnitRefs=%v Meta.UnitLabels=%v Patches=%v",
 			call.Units, call.Meta.UnitRefs, call.Meta.UnitLabels, call.Patches)
+		log.Printf("api: [UPLOAD PARSED] TransmissionId=%q RequestId=%q",
+			call.TransmissionId, call.RequestId)
 
 		// Check if this is a test connection (SDRTrunk sends key, system, test fields)
 		if len(call.Audio) == 0 && call.SystemId > 0 && call.TalkgroupId == 0 && call.Timestamp.IsZero() {
@@ -350,9 +356,10 @@ func (api *Api) TrunkRecorderCallUploadHandler(w http.ResponseWriter, r *http.Re
 
 		mr := multipart.NewReader(r.Body, params["boundary"])
 
-		parts := map[*multipart.Part][]byte{}
+		// Log raw request info
+		log.Printf("api: [TR-UPLOAD RAW] %s - from=%s ua=%q", r.URL.Path, r.RemoteAddr, r.UserAgent())
 
-		log.Printf("api: [TR-UPLOAD RAW] /api/trunk-recorder-call-upload - from=%s ua=%q", r.RemoteAddr, r.Header.Get("User-Agent"))
+		parts := map[*multipart.Part][]byte{}
 
 		for {
 			p, err := mr.NextPart()
@@ -369,8 +376,11 @@ func (api *Api) TrunkRecorderCallUploadHandler(w http.ResponseWriter, r *http.Re
 				return
 			}
 
-			// Log every raw field received
-			if p.FormName() == "audio" || p.FileName() != "" {
+			// Log raw multipart part
+			for hk, hv := range p.Header {
+				log.Printf("api: [TR-UPLOAD RAW]   header: %q = %v", hk, hv)
+			}
+			if p.FileName() != "" {
 				log.Printf("api: [TR-UPLOAD RAW]   field=%q filename=%q mime=%q size=%d bytes", p.FormName(), p.FileName(), p.Header.Get("Content-Type"), len(b))
 			} else {
 				log.Printf("api: [TR-UPLOAD RAW]   field=%q value=%q", p.FormName(), string(b))
@@ -404,6 +414,8 @@ func (api *Api) TrunkRecorderCallUploadHandler(w http.ResponseWriter, r *http.Re
 			call.Meta.SiteRef, call.Meta.SiteId, call.Meta.SiteLabel)
 		log.Printf("api: [TR-UPLOAD PARSED] Units=%v Meta.UnitRefs=%v Meta.UnitLabels=%v Patches=%v",
 			call.Units, call.Meta.UnitRefs, call.Meta.UnitLabels, call.Patches)
+		log.Printf("api: [TR-UPLOAD PARSED] TransmissionId=%q RequestId=%q",
+			call.TransmissionId, call.RequestId)
 
 		if ok, err := call.IsValid(); ok {
 			log.Printf("api: [TR-UPLOAD PARSED] -> Valid, passing to HandleCall")
@@ -3099,6 +3111,7 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := api.Controller.Database.Sql.Query(query)
 	if err != nil {
+		log.Printf("TranscriptsHandler: SQL query error: %v, query: %s", err, query)
 		api.exitWithError(w, http.StatusInternalServerError, fmt.Sprintf("failed to query transcripts: %v", err))
 		return
 	}
@@ -3128,7 +3141,11 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 			"talkgroupId":         tgId,
 			"transcript":          transcript.String,
 			"transcriptionStatus": transcriptionStatus.String,
-			"timestamp":           callTimestamp.Int64,
+		}
+		if callTimestamp.Valid {
+			entry["timestamp"] = callTimestamp.Int64
+		} else {
+			entry["timestamp"] = nil
 		}
 		if systemLabel.Valid {
 			entry["systemLabel"] = systemLabel.String
@@ -3142,10 +3159,18 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 		results = append(results, entry)
 	}
 
+	// Check for errors from iteration
+	if err := rows.Err(); err != nil {
+		log.Printf("TranscriptsHandler: error iterating rows: %v", err)
+		api.exitWithError(w, http.StatusInternalServerError, fmt.Sprintf("failed to process transcripts: %v", err))
+		return
+	}
+
 	if b, err := json.Marshal(results); err == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(b)
 	} else {
+		log.Printf("TranscriptsHandler: failed to marshal results: %v", err)
 		api.exitWithError(w, http.StatusInternalServerError, "failed to marshal transcripts")
 	}
 }

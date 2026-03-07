@@ -191,7 +191,7 @@
                     <p [innerHTML]="highlightSearchText(transcript.transcript, filterSearch)"></p>
                 </div>
                 <div class="transcript-footer">
-                    <span>{{ transcript.timestamp ? (transcript.timestamp | date:'short') : '' }}</span>
+                    <span>{{ transcript.timestamp ? formatTimestamp(transcript.timestamp) : '' }}</span>
                     <button class="btn-play" (click)="playCall(transcript.callId)">
                         Play Call
                     </button>

@@ -91,6 +91,16 @@ func NewTranscriptionQueue(controller *Controller, config TranscriptionConfig) *
 		queue.provider = NewAssemblyAITranscription(&AssemblyAIConfig{
 			APIKey: config.AssemblyAIKey,
 		})
+	case "hydra":
+		// Hydra transcription uses a separate retrieval queue, not the transcription queue
+		// This provider case should not be used, but we handle it gracefully
+		// Hydra transcriptions are retrieved via HydraTranscriptionRetrievalQueue
+		// For now, use a no-op provider that will mark itself as unavailable
+		queue.provider = NewWhisperAPITranscription(&WhisperAPIConfig{
+			BaseURL: "",
+			APIKey:  "",
+			Model:   "",
+		})
 	default:
 		// Default to whisper-api
 		if config.WhisperAPIURL == "" {

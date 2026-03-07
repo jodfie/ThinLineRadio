@@ -232,27 +232,52 @@ func syncToneSetsToDownstreams(controller *Controller) {
 
 // dispatchToneDownstreams checks per-tone-set and per-channel downstream config
 // and fires any enabled downstream in a goroutine per destination.
+// Destinations are deduplicated by URL so the same server never receives
+// the same alert twice even if both per-tone-set and per-channel are configured
+// to point at the same URL.
 func dispatchToneDownstreams(controller *Controller, call *Call, toneSet *ToneSet) {
+	type dest struct {
+		url    string
+		apiKey string
+		source string // for logging
+	}
+
+	seen := map[string]bool{}
+	var dests []dest
+
 	// 1. Per-tone-set downstream
 	if toneSet.DownstreamEnabled && toneSet.DownstreamURL != "" {
-		go func() {
-			logPrefix := fmt.Sprintf("tone_downstream[tone-set]: call=%d toneSet=%q", call.Id, toneSet.Label)
-			if err := sendToneAlertDownstream(controller, toneSet.DownstreamURL, toneSet.DownstreamAPIKey, call, toneSet); err != nil {
-				controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("%s → %s ERROR: %v", logPrefix, toneSet.DownstreamURL, err))
-			} else {
-				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("%s → %s OK", logPrefix, toneSet.DownstreamURL))
-			}
-		}()
+		if !seen[toneSet.DownstreamURL] {
+			seen[toneSet.DownstreamURL] = true
+			dests = append(dests, dest{
+				url:    toneSet.DownstreamURL,
+				apiKey: toneSet.DownstreamAPIKey,
+				source: "tone-set",
+			})
+		}
 	}
 
 	// 2. Per-channel downstream — only if this tone set has forwarding enabled
-	if call.Talkgroup != nil && call.Talkgroup.ToneDownstreamEnabled && call.Talkgroup.ToneDownstreamURL != "" && toneSet.DownstreamEnabled {
+	if call.Talkgroup != nil && call.Talkgroup.ToneDownstreamEnabled &&
+		call.Talkgroup.ToneDownstreamURL != "" && toneSet.DownstreamEnabled {
+		if !seen[call.Talkgroup.ToneDownstreamURL] {
+			seen[call.Talkgroup.ToneDownstreamURL] = true
+			dests = append(dests, dest{
+				url:    call.Talkgroup.ToneDownstreamURL,
+				apiKey: call.Talkgroup.ToneDownstreamAPIKey,
+				source: "channel",
+			})
+		}
+	}
+
+	for _, d := range dests {
+		d := d // capture for goroutine
 		go func() {
-			logPrefix := fmt.Sprintf("tone_downstream[channel]: call=%d talkgroup=%q toneSet=%q", call.Id, call.Talkgroup.Label, toneSet.Label)
-			if err := sendToneAlertDownstream(controller, call.Talkgroup.ToneDownstreamURL, call.Talkgroup.ToneDownstreamAPIKey, call, toneSet); err != nil {
-				controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("%s → %s ERROR: %v", logPrefix, call.Talkgroup.ToneDownstreamURL, err))
+			logPrefix := fmt.Sprintf("tone_downstream[%s]: call=%d toneSet=%q", d.source, call.Id, toneSet.Label)
+			if err := sendToneAlertDownstream(controller, d.url, d.apiKey, call, toneSet); err != nil {
+				controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("%s → %s ERROR: %v", logPrefix, d.url, err))
 			} else {
-				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("%s → %s OK", logPrefix, call.Talkgroup.ToneDownstreamURL))
+				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("%s → %s OK", logPrefix, d.url))
 			}
 		}()
 	}

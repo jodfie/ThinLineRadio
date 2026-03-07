@@ -17,5 +17,5 @@ package main
 
 import "embed"
 
-//go:embed webapp/*
+//go:embed all:webapp
 var webapp embed.FS

@@ -506,6 +506,7 @@ func main() {
 	http.HandleFunc("/api/webhook/central-users-batch-update", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.CentralWebhookUsersBatchUpdateHandler))).ServeHTTP)
 	http.HandleFunc("/api/webhook/central-systems-talkgroups-groups", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.CentralWebhookSystemsTalkgroupsGroupsHandler))).ServeHTTP)
 	http.HandleFunc("/api/webhook/central-set-relay-key", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.CentralWebhookSetRelayAPIKeyHandler))).ServeHTTP)
+	http.HandleFunc("/api/webhook/central-set-hydra-config", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.CentralWebhookSetHydraConfigHandler))).ServeHTTP)
 
 	// Central Management pairing endpoint — called by the CM backend to push the API key and
 	// enable centralized mode. Not localhost-restricted; protected by admin password (bcrypt).

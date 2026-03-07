@@ -129,6 +129,9 @@ type Options struct {
 	CentralManagementAPIKey     string            `json:"centralManagementAPIKey"`
 	CentralManagementServerName string            `json:"centralManagementServerName"` // Optional friendly name for this server
 	CentralManagementServerID   string            `json:"centralManagementServerID"`   // Identifier used to correlate users/CSV imports
+	// Hydra transcription integration (provisioned from Central Management)
+	HydraAPIKey                 string            `json:"hydraAPIKey"`                 // Hydra API key for transcription retrieval
+	HydraTranscriptionEnabled   bool              `json:"hydraTranscriptionEnabled"`   // Per-server toggle for Hydra transcription
 	adminPassword               string
 	adminPasswordNeedChange     bool
 	mutex                       sync.Mutex
@@ -643,6 +646,20 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		options.RelayServerAPIKey = v
 	default:
 		options.RelayServerAPIKey = ""
+	}
+
+	switch v := m["hydraAPIKey"].(type) {
+	case string:
+		options.HydraAPIKey = v
+	default:
+		options.HydraAPIKey = ""
+	}
+
+	switch v := m["hydraTranscriptionEnabled"].(type) {
+	case bool:
+		options.HydraTranscriptionEnabled = v
+	default:
+		options.HydraTranscriptionEnabled = false
 	}
 
 	switch v := m["radioReferenceAPIKey"].(type) {
@@ -1488,6 +1505,20 @@ func (options *Options) Read(db *Database) error {
 					options.RelayServerAPIKey = v
 				}
 			}
+		case "hydraAPIKey":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case string:
+					options.HydraAPIKey = v
+				}
+			}
+		case "hydraTranscriptionEnabled":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case bool:
+					options.HydraTranscriptionEnabled = v
+				}
+			}
 		case "radioReferenceAPIKey":
 			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
 				switch v := f.(type) {
@@ -1679,6 +1710,8 @@ func (options *Options) Write(db *Database) error {
 	set("noAudioRepeatMinutes", options.NoAudioRepeatMinutes)
 	set("relayServerURL", options.RelayServerURL)
 	set("relayServerAPIKey", options.RelayServerAPIKey)
+	set("hydraAPIKey", options.HydraAPIKey)
+	set("hydraTranscriptionEnabled", options.HydraTranscriptionEnabled)
 	set("radioReferenceAPIKey", options.RadioReferenceAPIKey)
 	set("adminLocalhostOnly", options.AdminLocalhostOnly)
 	set("configSyncEnabled", options.ConfigSyncEnabled)

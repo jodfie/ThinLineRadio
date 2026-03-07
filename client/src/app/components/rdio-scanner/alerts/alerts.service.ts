@@ -29,6 +29,9 @@ export class AlertsService {
     private readonly keywordListsUrl = '/api/keyword-lists';
     private readonly transcriptsUrl = '/api/transcripts';
 
+    // Optional base URL for cross-origin requests (e.g., when embedded in Central Management)
+    private baseUrl: string | null = null;
+
     // Shared alerts cache - single source of truth
     private alertsCache: RdioScannerAlert[] = [];
     private lastFetchTime: number = 0;
@@ -40,10 +43,28 @@ export class AlertsService {
     }
 
     /**
+     * Set the base URL for API calls (used when embedded in Central Management)
+     * @param url The base URL of the TLR server (e.g., 'https://scanner.example.com')
+     */
+    setBaseUrl(url: string | null): void {
+        this.baseUrl = url ? url.replace(/\/$/, '') : null; // Remove trailing slash
+    }
+
+    /**
+     * Get the full URL for an API endpoint
+     */
+    private getFullUrl(path: string): string {
+        if (this.baseUrl) {
+            return `${this.baseUrl}${path}`;
+        }
+        return path;
+    }
+
+    /**
      * Get all alerts (full fetch - used for initial load)
      */
     getAlerts(limit: number = 50, offset: number = 0, pin?: string): Observable<any[]> {
-        let url = `${this.apiUrl}?limit=${limit}&offset=${offset}`;
+        let url = `${this.getFullUrl(this.apiUrl)}?limit=${limit}&offset=${offset}`;
         if (pin) {
             url += `&pin=${encodeURIComponent(pin)}`;
         }
@@ -67,7 +88,7 @@ export class AlertsService {
 
         this.isFetching = true;
 
-        let url = this.apiUrl;
+        let url = this.getFullUrl(this.apiUrl);
         const params: string[] = [];
 
         // If not forcing full refresh and we have a last fetch time, only get new alerts
@@ -174,7 +195,7 @@ export class AlertsService {
     }
 
     getTranscripts(limit: number = 50, offset: number = 0, pin?: string, systemId?: number, talkgroupId?: number, dateFrom?: number, dateTo?: number, search?: string): Observable<any[]> {
-        let url = `${this.transcriptsUrl}?limit=${limit}&offset=${offset}`;
+        let url = `${this.getFullUrl(this.transcriptsUrl)}?limit=${limit}&offset=${offset}`;
         if (pin) {
             url += `&pin=${encodeURIComponent(pin)}`;
         }
@@ -198,7 +219,7 @@ export class AlertsService {
     }
 
     getPreferences(pin?: string): Observable<RdioScannerAlertPreference[]> {
-        let url = this.preferencesUrl;
+        let url = this.getFullUrl(this.preferencesUrl);
         if (pin) {
             url += `?pin=${encodeURIComponent(pin)}`;
     }
@@ -208,11 +229,11 @@ export class AlertsService {
 
     updatePreferences(preferences: RdioScannerAlertPreference[], pin?: string): Observable<any> {
         const headers = pin ? new HttpHeaders().set('Authorization', `Bearer ${pin}`) : undefined;
-        return this.http.put<any>(this.preferencesUrl, preferences, { headers });
+        return this.http.put<any>(this.getFullUrl(this.preferencesUrl), preferences, { headers });
     }
 
     getKeywordLists(pin?: string): Observable<RdioScannerKeywordList[]> {
-        let url = this.keywordListsUrl;
+        let url = this.getFullUrl(this.keywordListsUrl);
         if (pin) {
             url += `?pin=${encodeURIComponent(pin)}`;
         }
@@ -222,17 +243,17 @@ export class AlertsService {
 
     createKeywordList(list: Partial<RdioScannerKeywordList>, pin?: string): Observable<RdioScannerKeywordList> {
         const headers = pin ? new HttpHeaders().set('Authorization', `Bearer ${pin}`) : undefined;
-        return this.http.post<RdioScannerKeywordList>(this.keywordListsUrl, list, { headers });
+        return this.http.post<RdioScannerKeywordList>(this.getFullUrl(this.keywordListsUrl), list, { headers });
     }
 
     updateKeywordList(listId: number, list: Partial<RdioScannerKeywordList>, pin?: string): Observable<any> {
         const headers = pin ? new HttpHeaders().set('Authorization', `Bearer ${pin}`) : undefined;
-        return this.http.put<any>(`${this.keywordListsUrl}/${listId}`, list, { headers });
+        return this.http.put<any>(`${this.getFullUrl(this.keywordListsUrl)}/${listId}`, list, { headers });
     }
 
     deleteKeywordList(listId: number, pin?: string): Observable<any> {
         const headers = pin ? new HttpHeaders().set('Authorization', `Bearer ${pin}`) : undefined;
-        return this.http.delete<any>(`${this.keywordListsUrl}/${listId}`, { headers });
+        return this.http.delete<any>(`${this.getFullUrl(this.keywordListsUrl)}/${listId}`, { headers });
     }
 }
 

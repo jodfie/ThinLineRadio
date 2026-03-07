@@ -64,12 +64,13 @@ type Controller struct {
 	TransferRequests       *TransferRequests
 	DeviceTokens           *DeviceTokens
 	EmailService           *EmailService
-	ToneDetector           *ToneDetector
-	TranscriptionQueue     *TranscriptionQueue
-	KeywordMatcher         *KeywordMatcher
-	AlertEngine            *AlertEngine
-	HallucinationDetector  *HallucinationDetector
-	CentralManagement      *CentralManagementService
+	ToneDetector                  *ToneDetector
+	TranscriptionQueue            *TranscriptionQueue
+	HydraTranscriptionRetrievalQueue *HydraTranscriptionRetrievalQueue
+	KeywordMatcher                *KeywordMatcher
+	AlertEngine                   *AlertEngine
+	HallucinationDetector         *HallucinationDetector
+	CentralManagement             *CentralManagementService
 	Register              chan *Client
 	Unregister            chan *Client
 	Ingest                chan *Call
@@ -2149,6 +2150,51 @@ func (controller *Controller) resetStuckTranscriptions() {
 
 // queueTranscriptionIfNeeded queues transcription if at least one user has alerts enabled for this talkgroup
 func (controller *Controller) queueTranscriptionIfNeeded(call *Call) {
+	// Check if Hydra transcription is enabled and call has transmission_id
+	controller.Options.mutex.Lock()
+	hydraEnabled := controller.Options.HydraTranscriptionEnabled
+	hydraAPIKey := controller.Options.HydraAPIKey
+	controller.Options.mutex.Unlock()
+
+	if hydraEnabled && hydraAPIKey != "" && call.TransmissionId != "" {
+		// Queue for Hydra retrieval instead of local transcription
+		// Verify transmission_id from database to ensure it matches what was stored
+		var dbTransmissionId string
+		verifyQuery := `SELECT "transmissionId" FROM "calls" WHERE "callId" = $1`
+		if controller.Database.Config.DbType != DbTypePostgresql {
+			verifyQuery = `SELECT "transmissionId" FROM "calls" WHERE "callId" = ?`
+		}
+		err := controller.Database.Sql.QueryRow(verifyQuery, call.Id).Scan(&dbTransmissionId)
+		if err != nil {
+			controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("failed to verify transmission_id for call %d: %v, using in-memory value", call.Id, err))
+			dbTransmissionId = call.TransmissionId // Fallback to in-memory value
+		}
+		
+		// Use database value if available, otherwise fall back to in-memory value
+		transmissionIdToUse := dbTransmissionId
+		if transmissionIdToUse == "" {
+			transmissionIdToUse = call.TransmissionId
+		}
+		
+		if transmissionIdToUse == "" {
+			controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("skipping Hydra transcription for call %d: no transmission_id found", call.Id))
+			return
+		}
+		
+		if controller.HydraTranscriptionRetrievalQueue == nil {
+			log.Printf("queueTranscriptionIfNeeded: initializing Hydra retrieval queue for call %d", call.Id)
+			controller.HydraTranscriptionRetrievalQueue = NewHydraTranscriptionRetrievalQueue(controller)
+		}
+		controller.HydraTranscriptionRetrievalQueue.QueueJob(HydraTranscriptionRetrievalJob{
+			CallId:         call.Id,
+			TransmissionId: transmissionIdToUse,
+			RequestId:      call.RequestId,
+			QueuedAt:       time.Now(),
+		})
+		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("queued call %d for Hydra transcription retrieval (transmission_id=%s)", call.Id, transmissionIdToUse))
+		return // Skip normal transcription queue
+	}
+
 	// Lazily initialize the transcription queue if enabled but not started yet
 	if controller.TranscriptionQueue == nil && controller.Options.TranscriptionConfig.Enabled {
 		controller.Logs.LogEvent(LogLevelInfo, "transcription queue not initialized starting now due to incoming call")
@@ -2814,6 +2860,12 @@ func (controller *Controller) Start() error {
 		controller.TranscriptionQueue = NewTranscriptionQueue(controller, controller.Options.TranscriptionConfig)
 	} else {
 		controller.Logs.LogEvent(LogLevelInfo, "transcription is disabled in config")
+	}
+
+	// Initialize Hydra transcription retrieval queue if enabled
+	if controller.Options.HydraTranscriptionEnabled && controller.Options.HydraAPIKey != "" {
+		controller.HydraTranscriptionRetrievalQueue = NewHydraTranscriptionRetrievalQueue(controller)
+		controller.Logs.LogEvent(LogLevelInfo, "Hydra transcription retrieval queue started")
 	}
 
 	// Start system health monitoring for system admins
