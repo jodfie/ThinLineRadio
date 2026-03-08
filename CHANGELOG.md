@@ -1,5 +1,56 @@
 # Change log
 
+## Version 7.0 Beta 9.7.14 - Released Mar 8, 2026
+
+### Bug Fixes
+
+- **Interactive Setup: `role "thinline_user" does not exist` when creating database**
+  - The setup wizard created the database with `OWNER thinline_user` before creating the user, causing `pq: role "thinline_user" does not exist` on first-time setup
+  - Reordered operations: create the database user first, then create the database (PostgreSQL requires the owner role to exist)
+  - Added password escaping for single quotes to prevent SQL syntax errors when passwords contain `'`
+  - Files modified: `server/setup.go`
+
+- **Logs: SQL syntax error when system name contains a single quote**
+  - `LogEvent` built its INSERT using `fmt.Sprintf` with `'%s'` placeholders, so any log message containing a single quote (e.g. `no-audio monitoring not started for system 'Waverly Public Schools'`) produced malformed SQL and the log entry was dropped with a PostgreSQL syntax error
+  - Replaced the raw string-interpolated query with a parameterized `$1/$2/$3` query so the driver handles escaping safely
+  - Closes [#119](https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio/issues/119)
+  - Files modified: `server/log.go`
+
+- **AssemblyAI: transcription fails with status 400 when using `universal-3-pro` model**
+  - The transcription provider always sent `word_boost` regardless of model, but AssemblyAI's `universal-3-pro` does not support `word_boost` and returns HTTP 400. The correct parameter for that model is `keyterms_prompt`
+  - The provider now checks the selected speech model and sends `keyterms_prompt` for `universal-3-pro` and `word_boost` for all other models (e.g. `universal-2`). The same terms list is used for both — no configuration change required
+  - Closes [#118](https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio/issues/118)
+  - Files modified: `server/transcription_assemblyai.go`
+
+- **AssemblyAI: word boost terms repopulate after being cleared and saved**
+  - When the word boost textarea was emptied and the config was saved, the terms reappeared on next page load. The save handler only converted the textarea string to an array when the value was truthy, so an empty string was left unconverted. The backend received a string instead of an empty array, failed the type assertion, and kept the previous list unchanged
+  - Removed the truthy guard so an empty string is always split and filtered, producing an empty array `[]` that correctly clears the stored list
+  - Closes [#118](https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio/issues/118)
+  - Files modified: `client/src/app/components/rdio-scanner/admin/config/config.component.ts`
+
+- **Tools > Radio Reference Import: State/Province dropdown always disabled after UI overhaul**
+  - The State/Province dropdown used `[disabled]="!selectedCountry"` (the full country object), while every other cascading dropdown in the same form correctly used the ID primitive: County uses `[disabled]="!selectedStateId"`, System uses `[disabled]="!selectedCountyId"`. The object-based condition is fragile — object identity can be lost on saved-state restore, and a UI refactor can easily leave the reference `null` — causing the State dropdown to remain permanently disabled even after a country was selected
+  - Changed to `[disabled]="!selectedCountryId"` to match the consistent pattern used by the County and System dropdowns
+  - Also added `selectedCountry` to `saveState()` / `restoreState()` so the Country `mat-select` itself reflects the correct saved selection on return visits
+  - Files modified: `client/src/app/components/rdio-scanner/admin/tools/radio-reference-import/radio-reference-import.component.html`, `radio-reference-import.component.ts`
+
+- **Admin: dragging a sortable row when clicking inside a text field moves the row instead of selecting text**
+  - In the API Keys, Groups, and Tags tables each row has `cdkDrag` applied directly to the `mat-row`. CDK drag registers a global mousedown listener on the entire row, so clicking inside a text field and dragging to select text was interpreted as a row drag — the row moved and text selection was impossible
+  - Added `(mousedown)="$event.stopPropagation()"` to every `td` that contains an editable `mat-form-field`, so the CDK drag listener never sees mousedown events originating inside those cells. The drag grip icon is unaffected — dragging from the `drag_indicator` icon still reorders rows normally
+  - Files modified: `client/src/app/components/rdio-scanner/admin/config/apikeys/apikeys.component.html`, `config/groups/groups.component.html`, `config/tags/tags.component.html`
+
+- **Admin: select/dropdown option text unreadable on hover (dark text on dark background)**
+  - The CDK overlay container is rendered in `<body>` outside the `.admin-dark-theme` host element, so Material's dark theme colours never reach overlay panels. The `separated-options` hover style set a dark `#2a2a2a` background without overriding text colour, producing dark text on a dark background
+  - Added a global `.admin-select-panel` CSS class in `styles.scss` (dark background, light text, correct hover and selected states). Provided `MAT_SELECT_CONFIG` in `admin.module.ts` so every `mat-select` in the admin module automatically receives this panel class without requiring per-template changes. The RR import location dropdowns carry both `admin-select-panel` and `separated-options` for their additional border decoration
+  - Files modified: `client/src/styles.scss`, `client/src/app/components/rdio-scanner/admin/admin.module.ts`, `admin/tools/radio-reference-import/radio-reference-import.component.html`, `radio-reference-import.component.scss`
+
+- **Tools > Import Units / Import Talkgroups: saving after import attempts to delete all users**
+  - Every config event emitted from the Tools panel was passed with `{ isImport: true }`, which marked the config form as a full destructive import. When the user clicked Save after importing units or talkgroups, the backend entered the full-import code path and attempted to delete every user account — failing with PostgreSQL foreign key violations on `deviceTokens` and `userAlertPreferences`
+  - The full-import flag is only appropriate for the Import/Export Config full restore, which already calls `saveConfig(config, true)` directly and does not use this event. Changed the Tools panel config event to `isImport: false` so Import Units and Import Talkgroups saves only update system/unit/talkgroup data and never touch users
+  - Files modified: `client/src/app/components/rdio-scanner/admin/admin.component.html`
+
+---
+
 ## Version 7.0 Beta 9.7.12 - Released Mar 4, 2026
 
 ### Bug Fixes

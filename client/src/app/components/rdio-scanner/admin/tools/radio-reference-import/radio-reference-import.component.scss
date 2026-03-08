@@ -92,39 +92,27 @@ section {
   }
 }
 
-// Styling for dropdown option lists with visual separators
-::ng-deep .separated-options {
-  .mat-mdc-option {
-    border-bottom: 1px solid #333;
-    padding: 12px 16px !important;
-    min-height: 48px;
+// Visual separator decoration for the RR import location dropdowns.
+// Background, text colour and hover colour are handled by .admin-select-panel
+// in styles.scss (applied via MAT_SELECT_CONFIG + explicit panelClass).
+::ng-deep .separated-options .mat-mdc-option {
+  border-bottom: 1px solid #333;
+  border-left: 3px solid transparent;
+  padding: 12px 16px !important;
+  min-height: 48px;
+  transition: border-color 0.2s ease;
 
-    &:hover {
-      background-color: #2a2a2a !important;
-    }
-
-    &.mat-mdc-option-active {
-      background-color: rgba(33, 150, 243, 0.1) !important;
-    }
-
-    &:last-child {
-      border-bottom: none;
-    }
+  &:hover:not(.mdc-list-item--disabled) {
+    border-left-color: #2196F3;
   }
 
-  .mat-mdc-option {
-    border-left: 3px solid transparent;
-    transition: border-color 0.2s ease;
+  &.mat-mdc-option-active,
+  &.mdc-list-item--selected {
+    border-left-color: #1976d2;
+  }
 
-    &:hover {
-      border-left-color: #2196F3;
-    }
-
-    &.mat-mdc-option-active,
-    &.mdc-list-item--selected {
-      border-left-color: #1976d2;
-      background-color: rgba(33, 150, 243, 0.1) !important;
-    }
+  &:last-child {
+    border-bottom: none;
   }
 }
 

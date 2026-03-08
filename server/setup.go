@@ -133,8 +133,8 @@ func runInteractiveSetup(configFile string) error {
 
 	if setupMode == "1" {
 		fmt.Println("\nThis wizard will help you set up ThinLine Radio by:")
-		fmt.Println("  1. Creating a PostgreSQL database")
-		fmt.Println("  2. Creating a database user with appropriate permissions")
+		fmt.Println("  1. Creating a database user with appropriate permissions")
+		fmt.Println("  2. Creating a PostgreSQL database")
 		fmt.Println("  3. Generating a configuration file")
 	} else {
 		fmt.Println("\nThis wizard will help you set up ThinLine Radio by:")
@@ -253,32 +253,20 @@ func runInteractiveSetup(configFile string) error {
 
 	// Only create database/user in local mode
 	if setupMode == "1" && db != nil {
-		// Create database
-		fmt.Print("\n🔄 Creating database... ")
 		var err error
-		_, err = db.Exec(fmt.Sprintf("CREATE DATABASE %s OWNER %s", dbName, dbUser))
-		if err != nil {
-			// Check if database already exists
-			if strings.Contains(err.Error(), "already exists") {
-				fmt.Println("⚠️  (already exists)")
-			} else {
-				fmt.Println("❌")
-				return fmt.Errorf("failed to create database: %v", err)
-			}
-		} else {
-			fmt.Println("✓")
-		}
+		// Escape single quotes in password for SQL safety
+		safePassword := strings.ReplaceAll(dbPassword, "'", "''")
 
-		// Create user
-		fmt.Print("🔄 Creating database user... ")
-		_, err = db.Exec(fmt.Sprintf("CREATE USER %s WITH PASSWORD '%s'", dbUser, dbPassword))
+		// Create user FIRST (must exist before we can use as database owner)
+		fmt.Print("\n🔄 Creating database user... ")
+		_, err = db.Exec(fmt.Sprintf("CREATE USER %s WITH PASSWORD '%s'", dbUser, safePassword))
 		if err != nil {
 			// Check if user already exists
 			if strings.Contains(err.Error(), "already exists") {
 				fmt.Println("⚠️  (already exists)")
 				// Update password for existing user
 				fmt.Print("🔄 Updating user password... ")
-				_, err = db.Exec(fmt.Sprintf("ALTER USER %s WITH PASSWORD '%s'", dbUser, dbPassword))
+				_, err = db.Exec(fmt.Sprintf("ALTER USER %s WITH PASSWORD '%s'", dbUser, safePassword))
 				if err != nil {
 					fmt.Println("❌")
 					return fmt.Errorf("failed to update user password: %v", err)
@@ -287,6 +275,21 @@ func runInteractiveSetup(configFile string) error {
 			} else {
 				fmt.Println("❌")
 				return fmt.Errorf("failed to create user: %v", err)
+			}
+		} else {
+			fmt.Println("✓")
+		}
+
+		// Create database (user must exist to be owner)
+		fmt.Print("🔄 Creating database... ")
+		_, err = db.Exec(fmt.Sprintf("CREATE DATABASE %s OWNER %s", dbName, dbUser))
+		if err != nil {
+			// Check if database already exists
+			if strings.Contains(err.Error(), "already exists") {
+				fmt.Println("⚠️  (already exists)")
+			} else {
+				fmt.Println("❌")
+				return fmt.Errorf("failed to create database: %v", err)
 			}
 		} else {
 			fmt.Println("✓")

@@ -23,6 +23,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 
 	"gopkg.in/ini.v1"
@@ -90,6 +91,12 @@ func NewConfig() *Config {
 						os.MkdirAll(config.BaseDir, 0770)
 					}
 				}
+			}
+		} else {
+			// Running via `go run` — use the source file directory so the
+			// ini file is always found next to the source regardless of CWD.
+			if _, filename, _, ok := runtime.Caller(0); ok {
+				config.BaseDir = filepath.Dir(filename)
 			}
 		}
 	}

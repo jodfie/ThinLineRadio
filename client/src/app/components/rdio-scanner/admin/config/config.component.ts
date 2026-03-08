@@ -444,7 +444,7 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
                 }
             }
             
-            if (formValue.options.transcriptionConfig?.assemblyAIWordBoost) {
+            if (formValue.options.transcriptionConfig) {
                 const wordBoostString = formValue.options.transcriptionConfig.assemblyAIWordBoost;
                 if (typeof wordBoostString === 'string') {
                     formValue.options.transcriptionConfig.assemblyAIWordBoost = wordBoostString

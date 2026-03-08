@@ -80,8 +80,8 @@ func (logs *Logs) LogEvent(level string, message string) error {
 			Message:  message,
 		}
 
-		query := fmt.Sprintf(`INSERT INTO "logs" ("level", "message", "timestamp") VALUES ('%s', '%s', %d)`, l.Level, l.Message, l.DateTime.UnixMilli())
-		if _, err := logs.database.Sql.Exec(query); err != nil {
+		query := `INSERT INTO "logs" ("level", "message", "timestamp") VALUES ($1, $2, $3)`
+		if _, err := logs.database.Sql.Exec(query, l.Level, l.Message, l.DateTime.UnixMilli()); err != nil {
 			return fmt.Errorf("logs.logevent: %s in %s", err, query)
 		}
 	}

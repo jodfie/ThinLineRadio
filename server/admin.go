@@ -3825,10 +3825,15 @@ func (admin *Admin) RadioReferenceStatesHandler(w http.ResponseWriter, r *http.R
 	rr := NewRadioReferenceService(admin.Controller.Options.RadioReferenceUsername, admin.Controller.Options.RadioReferencePassword, admin.Controller.Options.RadioReferenceAPIKey)
 	items, err := rr.GetStates(id)
 	if err != nil {
+		log.Printf("radioreference: GetStates(countryId=%d) error: %v", id, err)
 		w.WriteHeader(http.StatusExpectationFailed)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
+	if items == nil {
+		items = []RadioReferenceItem{}
+	}
+	log.Printf("radioreference: GetStates(countryId=%d) returned %d items", id, len(items))
 	json.NewEncoder(w).Encode(map[string]any{"success": true, "items": items})
 }
 

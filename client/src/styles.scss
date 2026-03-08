@@ -92,7 +92,8 @@ $admin-dark-theme: mat.define-dark-theme((
     color: #e0e0e0 !important;
   }
 
-  // Select panel options
+  // Select panel options (scoped to admin — has no effect because the
+  // CDK overlay is rendered outside this host element; see global rules below)
   .mat-mdc-option .mdc-list-item__primary-text {
     color: #e0e0e0 !important;
   }
@@ -144,6 +145,43 @@ $admin-dark-theme: mat.define-dark-theme((
   }
   .mat-mdc-icon-button:not([color]):not(:disabled) {
     color: #ccc;
+  }
+}
+
+// ── Admin select/autocomplete overlay panels ──────────────────────────────────
+// CDK overlay panels are rendered in <body> outside any .admin-dark-theme host,
+// so dark-theme colours must be applied globally via a panel class.
+// All mat-select dropdowns inside the admin panel carry the "admin-panel" class
+// via the global overlay container workaround below.  The RR import dropdowns
+// additionally carry "separated-options" for their extra decoration.
+.admin-select-panel {
+  background: #1e1e1e !important;
+
+  .mat-mdc-option {
+    color: #e0e0e0 !important;
+
+    .mdc-list-item__primary-text {
+      color: #e0e0e0 !important;
+    }
+
+    // State layer / hover ripple
+    .mdc-list-item__ripple::before,
+    .mat-mdc-option-ripple::before {
+      background-color: #fff !important;
+    }
+
+    &:hover:not(.mdc-list-item--disabled) {
+      background-color: #2a2a2a !important;
+    }
+
+    &.mdc-list-item--selected,
+    &.mat-mdc-option-active {
+      background-color: rgba(33, 150, 243, 0.15) !important;
+
+      .mdc-list-item__primary-text {
+        color: #fff !important;
+      }
+    }
   }
 }
 

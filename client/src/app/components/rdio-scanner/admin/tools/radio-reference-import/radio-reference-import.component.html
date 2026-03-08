@@ -81,28 +81,28 @@
     <div class="dropdowns" style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
         <mat-form-field appearance="outline" floatLabel="auto">
             <mat-label>Country</mat-label>
-            <mat-select [(ngModel)]="selectedCountry" (selectionChange)="onCountryChange()" panelClass="separated-options">
+            <mat-select [(ngModel)]="selectedCountry" (selectionChange)="onCountryChange()" panelClass="admin-select-panel separated-options">
                 <mat-option *ngFor="let c of countries" [value]="c">{{ c.name }}</mat-option>
             </mat-select>
         </mat-form-field>
 
         <mat-form-field appearance="outline" floatLabel="auto">
             <mat-label>State/Province</mat-label>
-            <mat-select [(ngModel)]="selectedStateId" (selectionChange)="onStateChange()" [disabled]="!selectedCountry" panelClass="separated-options">
+            <mat-select [(ngModel)]="selectedStateId" (selectionChange)="onStateChange()" [disabled]="!selectedCountryId" panelClass="admin-select-panel separated-options">
                 <mat-option *ngFor="let s of states" [value]="s.id">{{ s.name }}</mat-option>
             </mat-select>
         </mat-form-field>
 
         <mat-form-field appearance="outline" floatLabel="auto">
             <mat-label>County</mat-label>
-            <mat-select [(ngModel)]="selectedCountyId" (selectionChange)="onCountyChange()" [disabled]="!selectedStateId" panelClass="separated-options">
+            <mat-select [(ngModel)]="selectedCountyId" (selectionChange)="onCountyChange()" [disabled]="!selectedStateId" panelClass="admin-select-panel separated-options">
                 <mat-option *ngFor="let c of counties" [value]="c.id">{{ c.name }}</mat-option>
             </mat-select>
         </mat-form-field>
 
         <mat-form-field appearance="outline" floatLabel="auto">
             <mat-label>System</mat-label>
-            <mat-select (selectionChange)="onSystemSelectFromDropdown($event.value)" [disabled]="!selectedCountyId" panelClass="separated-options">
+            <mat-select (selectionChange)="onSystemSelectFromDropdown($event.value)" [disabled]="!selectedCountyId" panelClass="admin-select-panel separated-options">
                 <mat-option *ngFor="let s of systems" [value]="s.id">{{ s.name }}</mat-option>
             </mat-select>
         </mat-form-field>

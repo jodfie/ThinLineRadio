@@ -20,6 +20,7 @@
 import { HttpClientModule } from '@angular/common/http';
 import { NgModule } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { MAT_SELECT_CONFIG } from '@angular/material/select';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatChipsModule } from '@angular/material/chips';
@@ -108,6 +109,13 @@ import { RdioScannerAdminSystemHealthComponent } from './system-health/system-he
     entryComponents: [RdioScannerAdminSystemsSelectComponent],
     exports: [RdioScannerAdminComponent],
     imports: [AppSharedModule, HttpClientModule, FormsModule, MatProgressSpinnerModule, MatProgressBarModule, MatChipsModule, MatPaginatorModule, MatSnackBarModule],
-    providers: [RdioScannerAdminService, AlertsService],
+    providers: [
+        RdioScannerAdminService,
+        AlertsService,
+        // Apply dark-theme overlay styles to every mat-select in the admin module.
+        // The CDK overlay is rendered outside .admin-dark-theme, so panel colours
+        // must be driven by a global panelClass rather than the scoped theme.
+        { provide: MAT_SELECT_CONFIG, useValue: { panelClass: 'admin-select-panel' } },
+    ],
 })
 export class RdioScannerAdminModule { }

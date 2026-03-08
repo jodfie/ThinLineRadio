@@ -156,6 +156,7 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         const state = {
             importType: this.importType,
             targetSystemId: this.targetSystemId,
+            selectedCountry: this.selectedCountry,
             selectedCountryId: this.selectedCountryId,
             selectedStateId: this.selectedStateId,
             selectedCountyId: this.selectedCountyId,
@@ -198,6 +199,14 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
             this.states = state.states || [];
             this.counties = state.counties || [];
             this.systems = state.systems || [];
+
+            // Restore selectedCountry object — required for the State dropdown's [disabled] binding.
+            // Fall back to reconstructing it from the countries list + selectedCountryId in case
+            // the saved state predates the selectedCountry field being persisted.
+            this.selectedCountry = state.selectedCountry ||
+                (this.selectedCountryId !== null
+                    ? (this.countries.find(c => c.id === this.selectedCountryId) ?? null)
+                    : null);
             
             // Restore categories
             this.talkgroupCategories = state.talkgroupCategories || [];
@@ -361,14 +370,12 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
     async onCountryChange(): Promise<void> {
         if (this.selectedCountry) {
             this.selectedCountryId = this.selectedCountry.id;
-            console.log('Extracted selectedCountryId:', this.selectedCountryId);
         } else {
             this.selectedCountryId = null;
-            console.log('No country selected');
         }
-        
-        this.saveState(); // Save state
-        
+
+        this.saveState();
+
         this.states = [];
         this.counties = [];
         this.systems = [];
@@ -377,11 +384,27 @@ export class RdioScannerAdminRadioReferenceImportComponent implements OnInit {
         this.selectedSystem = null;
         this.allTalkgroups = [];
         this.filteredTalkgroups = [];
-        
+        this.errorMessage = '';
+
         if (this.selectedCountryId) {
-            const res = await this.adminService.rrGetStates(this.selectedCountryId);
-            this.states = res?.items || [];
-            this.saveState(); // Save state after loading states
+            console.log('[RR] Fetching states for countryId:', this.selectedCountryId);
+            try {
+                const res = await this.adminService.rrGetStates(this.selectedCountryId);
+                console.log('[RR] rrGetStates response:', res);
+                if (res?.items?.length > 0) {
+                    this.states = res.items;
+                    console.log('[RR] Loaded', this.states.length, 'states');
+                } else {
+                    this.errorMessage = res?.error
+                        ? `Failed to load states: ${res.error}`
+                        : 'No states returned for this country. Check the browser Network tab for the /radioreference/states response.';
+                    console.warn('[RR] No states in response:', res);
+                }
+            } catch (err) {
+                this.errorMessage = `Error loading states: ${err}`;
+                console.error('[RR] rrGetStates threw:', err);
+            }
+            this.saveState();
         }
     }
 

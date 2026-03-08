@@ -97,7 +97,7 @@
         <!-- Label Column -->
         <ng-container matColumnDef="label">
             <th mat-header-cell *matHeaderCellDef>Label</th>
-            <td mat-cell *matCellDef="let tag">
+            <td mat-cell *matCellDef="let tag" (mousedown)="$event.stopPropagation()">
                 <div class="cell-content" [formGroup]="tag">
                     <mat-form-field appearance="outline" class="label-field" subscriptSizing="dynamic">
                         <input matInput formControlName="label"

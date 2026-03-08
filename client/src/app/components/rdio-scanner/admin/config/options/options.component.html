@@ -510,7 +510,7 @@
   <div class="row" *ngIf="form?.get('transcriptionEnabled')?.value && form?.get('transcriptionConfig')?.get('provider')?.value === 'assemblyai'" formGroupName="transcriptionConfig">
     <p>
       <span class="mat-body">Word Boost / Keyterms (AssemblyAI)</span><br>
-      <span class="mat-caption">Enter words or phrases (one per line) to improve recognition accuracy. Maximum 100 terms, each up to 50 characters. Examples: unit names, technical terms, proper names. Leave empty for default behavior.</span>
+      <span class="mat-caption">Enter words or phrases (one per line) to improve recognition accuracy. Maximum 100 terms, each up to 50 characters. Examples: unit names, technical terms, proper names. Leave empty for default behavior. <strong>universal-2</strong> uses <code>word_boost</code>; <strong>universal-3-pro</strong> uses <code>keyterms_prompt</code> — these terms apply to both.</span>
     </p>
     <mat-form-field floatLabel="auto" style="width: 100%;">
       <textarea matInput formControlName="assemblyAIWordBoost" placeholder="ENGINE&#10;TRUCK&#10;LADDER&#10;RESCUE" rows="4"></textarea>
