@@ -448,12 +448,50 @@ func isNewerVersion(candidate, current string) bool {
 		return false // beta doesn't beat stable with same core
 	}
 
-	// Both pre-release or both stable — simple string compare.
+	// Both pre-release — compare numerically segment by segment.
+	// e.g. "beta9.7.10" must beat "beta9.7.8"; string comparison gets this wrong.
 	if !candidateIsStable && !currentIsStable {
-		return cParts[1] > rParts[1]
+		return comparePreRelease(cParts[1], rParts[1])
 	}
 
 	return false // identical
+}
+
+// comparePreRelease compares two pre-release strings (e.g. "beta9.7.10" vs "beta9.7.8")
+// by stripping any leading alphabetic prefix then comparing each dot-separated segment numerically.
+func comparePreRelease(a, b string) bool {
+	stripAlpha := func(s string) string {
+		i := 0
+		for i < len(s) && !(s[i] >= '0' && s[i] <= '9') {
+			i++
+		}
+		return s[i:]
+	}
+
+	aParts := strings.Split(stripAlpha(a), ".")
+	bParts := strings.Split(stripAlpha(b), ".")
+
+	maxLen := len(aParts)
+	if len(bParts) > maxLen {
+		maxLen = len(bParts)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		aVal, bVal := 0, 0
+		if i < len(aParts) {
+			aVal = parseVersionInt(aParts[i])
+		}
+		if i < len(bParts) {
+			bVal = parseVersionInt(bParts[i])
+		}
+		if aVal > bVal {
+			return true
+		}
+		if aVal < bVal {
+			return false
+		}
+	}
+	return false
 }
 
 func parseVersionInt(s string) int {

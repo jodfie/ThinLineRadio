@@ -4,6 +4,11 @@
 
 ### Bug Fixes
 
+- **Auto-update: update checker reports "up to date" for versions 7.0.0-beta9.7.10 and above**
+  - The pre-release version comparison used a plain string comparison (`cParts[1] > rParts[1]`). Lexicographic ordering treats `"beta9.7.8"` as greater than `"beta9.7.10"` because `"8"` > `"1"` at the differing character position, so any release from `.10` onward was seen as older than `.8` or `.9` and the updater always reported the server as up to date
+  - Replaced the string comparison with `comparePreRelease()`, which strips the alphabetic prefix (`beta`) then splits and compares each dot-separated segment as an integer — correctly ranking `.10` > `.8`
+  - Files modified: `server/updater.go`
+
 - **System Alerts: `column "dismissedAt" does not exist` error in no-audio, transcription, and tone-detection monitoring**
   - The no-audio, transcription-failure, and tone-detection alert queries referenced a `"dismissedAt"` timestamp column that was never added to the `systemAlerts` table. The table only has a boolean `"dismissed"` column. Every monitoring cycle logged `ERROR: column "dismissedAt" does not exist (SQLSTATE 42703)` and failed to suppress duplicate alerts or dismiss stale ones
   - Replaced all four `"dismissedAt"` references with the correct `"dismissed" = false` / `SET "dismissed" = true` expressions that match the actual schema
