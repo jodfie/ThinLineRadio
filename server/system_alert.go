@@ -344,9 +344,9 @@ func (controller *Controller) MonitorTranscriptionFailures() {
 			repeatMinutes = 60 // Default: 60 minutes
 		}
 
-		checkAlertQuery := `SELECT MAX("createdAt") FROM "systemAlerts" 
-			WHERE "alertType" = 'transcription_failure' 
-				AND "dismissedAt" IS NULL`
+	checkAlertQuery := `SELECT MAX("createdAt") FROM "systemAlerts" 
+		WHERE "alertType" = 'transcription_failure' 
+			AND "dismissed" = false`
 
 		var lastAlertTime sql.NullInt64
 		shouldCreateAlert := true
@@ -443,12 +443,12 @@ func (controller *Controller) MonitorToneDetectionIssues() {
 				repeatMinutes = 60 // Default: 60 minutes
 			}
 
-			checkAlertQuery := fmt.Sprintf(`
-				SELECT MAX("createdAt") FROM "systemAlerts" 
-				WHERE "alertType" = 'tone_detection_issue' 
-					AND "data" LIKE '%%"talkgroupId":%d%%'
-					AND "dismissedAt" IS NULL
-			`, talkgroupId)
+		checkAlertQuery := fmt.Sprintf(`
+			SELECT MAX("createdAt") FROM "systemAlerts" 
+			WHERE "alertType" = 'tone_detection_issue' 
+				AND "data" LIKE '%%"talkgroupId":%d%%'
+				AND "dismissed" = false
+		`, talkgroupId)
 
 			var lastAlertTime sql.NullInt64
 			shouldCreateAlert := true
@@ -539,7 +539,7 @@ func (controller *Controller) MonitorNoAudioForSystem(systemId uint64, systemLab
 			SELECT MAX("createdAt") FROM "systemAlerts" 
 			WHERE "alertType" = 'no_audio' 
 				AND "data" LIKE '%%"systemId":%d%%'
-				AND "dismissedAt" IS NULL
+				AND "dismissed" = false
 		`, systemId)
 
 		var lastAlertTime sql.NullInt64
@@ -556,15 +556,15 @@ func (controller *Controller) MonitorNoAudioForSystem(systemId uint64, systemLab
 		}
 
 		if shouldCreateAlert {
-			// Dismiss any existing no-audio alerts for this system before creating new one
-			// This keeps only the latest alert instead of accumulating them
-			dismissQuery := fmt.Sprintf(`
-				UPDATE "systemAlerts" 
-				SET "dismissedAt" = %d, "dismissed" = true 
-				WHERE "alertType" = 'no_audio' 
-					AND "data" LIKE '%%"systemId":%d%%'
-					AND "dismissedAt" IS NULL
-			`, currentTime.UnixMilli(), systemId)
+		// Dismiss any existing no-audio alerts for this system before creating new one
+		// This keeps only the latest alert instead of accumulating them
+		dismissQuery := fmt.Sprintf(`
+			UPDATE "systemAlerts" 
+			SET "dismissed" = true 
+			WHERE "alertType" = 'no_audio' 
+				AND "data" LIKE '%%"systemId":%d%%'
+				AND "dismissed" = false
+		`, systemId)
 			if _, err := controller.Database.Sql.Exec(dismissQuery); err != nil {
 				controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("failed to dismiss old no-audio alerts for system %d: %v", systemId, err))
 			}

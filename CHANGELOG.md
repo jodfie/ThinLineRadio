@@ -4,6 +4,26 @@
 
 ### Bug Fixes
 
+- **System Alerts: `column "dismissedAt" does not exist` error in no-audio, transcription, and tone-detection monitoring**
+  - The no-audio, transcription-failure, and tone-detection alert queries referenced a `"dismissedAt"` timestamp column that was never added to the `systemAlerts` table. The table only has a boolean `"dismissed"` column. Every monitoring cycle logged `ERROR: column "dismissedAt" does not exist (SQLSTATE 42703)` and failed to suppress duplicate alerts or dismiss stale ones
+  - Replaced all four `"dismissedAt"` references with the correct `"dismissed" = false` / `SET "dismissed" = true` expressions that match the actual schema
+  - Files modified: `server/system_alert.go`
+
+- **User Groups: Group Admin assignment UI — dialog CSS not applied, controls rendered unstyled and narrow**
+  - All four dialog overlays (`codes-dialog-overlay`) were placed outside the closing `</div>` of `.user-groups-admin` in the template, making them siblings rather than descendants of that element. Because all dialog CSS rules were nested inside `.user-groups-admin` in the component SCSS, Angular's emulated view encapsulation generated selectors requiring a descendant relationship that was never satisfied. As a result no dialog styles applied at all: `position: fixed` was ignored (dialogs rendered inline), `width: 90%` had no effect, and `full-width` on `mat-form-field` elements did nothing — leaving every control squashed to its minimum intrinsic width
+  - Moved the closing `</div>` to the end of the template so all dialogs are descendants of `.user-groups-admin`, restoring the correct CSS selector match for all dialog layout rules
+  - Files modified: `client/src/app/components/rdio-scanner/admin/config/user-groups/user-groups.component.html`
+
+- **User Groups: Group Admin assignment required two dialog layers and a dropdown click to reach the user list**
+  - Clicking "Assign New Group Admin" opened a second `codes-dialog-overlay` on top of the first, doubling the dark backdrop. Inside that second dialog, a `mat-select` required an additional click to open, and the search field was hidden inside the dropdown panel — three interactions before a user was visible
+  - Merged the assign flow into the existing Group Admins dialog as a toggled view (`showAssignView` flag). Replaced the `mat-select` + embedded search with an always-visible search bar and a scrollable, filterable user list. Clicking a user row highlights it; a single "Assign Admin" button confirms. The dialog closes automatically on successful assignment or removal
+  - Files modified: `client/src/app/components/rdio-scanner/admin/config/user-groups/user-groups.component.html`, `user-groups.component.ts`, `user-groups.component.scss`
+
+- **Admin: version header showed only "v" on initial page load**
+  - The admin page header displayed the server version fetched via the config API, but the component initialised `version` as an empty string, so the header read "v" until the first API response arrived
+  - Initialised `version` from the bundled `package.json` so a meaningful value is shown immediately, then replaced it with the authoritative server version once the config loads
+  - Files modified: `client/src/app/pages/rdio-scanner/admin/admin.component.ts`, `client/package.json`
+
 - **Interactive Setup: `role "thinline_user" does not exist` when creating database**
   - The setup wizard created the database with `OWNER thinline_user` before creating the user, causing `pq: role "thinline_user" does not exist` on first-time setup
   - Reordered operations: create the database user first, then create the database (PostgreSQL requires the owner role to exist)

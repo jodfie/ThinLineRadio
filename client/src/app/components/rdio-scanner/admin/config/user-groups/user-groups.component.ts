@@ -82,6 +82,12 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
   talkgroupDelayEntries: Array<{systemId: number, talkgroupId: number, delay: number}> = [];
   availableUsers: any[] = [];
   groupAdminMode: 'none' | 'existing' | 'new' = 'none';
+
+  // Searchable user selector — create-group form
+  userSearchQuery = '';
+
+  // Searchable user selector — assign admin dialog
+  assignAdminSearchQuery = '';
   
   // Registration codes management
   selectedGroupForCodes: UserGroup | null = null;
@@ -98,6 +104,7 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
   // Assign group admin management
   selectedGroupForAdmin: UserGroup | null = null;
   showAssignAdminDialog = false;
+  showAssignView = false;
   selectedUserIdForAdmin = 0;
   
   // Delete group dialog
@@ -268,6 +275,49 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
       console.error('Failed to load users:', error);
       this.availableUsers = [];
     });
+  }
+
+  userLabel(user: any): string {
+    if (!user || typeof user !== 'object') return '';
+    const email = user.email || '';
+    const parts = [user.firstName, user.lastName].filter((p: any) => p && String(p).trim());
+    return parts.length ? `${email} (${parts.join(' ')})` : email;
+  }
+
+  getUserName(user: any): string {
+    return [user.firstName, user.lastName].filter(Boolean).join(' ');
+  }
+
+  private filterUsers(query: string): any[] {
+    const q = (typeof query === 'string' ? query : '').toLowerCase().trim();
+    if (!q) return this.availableUsers;
+    return this.availableUsers.filter(u =>
+      u.email?.toLowerCase().includes(q) ||
+      u.firstName?.toLowerCase().includes(q) ||
+      u.lastName?.toLowerCase().includes(q)
+    );
+  }
+
+  get filteredUsers(): any[] {
+    return this.filterUsers(this.userSearchQuery);
+  }
+
+  get filteredAssignUsers(): any[] {
+    return this.filterUsers(this.assignAdminSearchQuery);
+  }
+
+  clearUserSelection(): void {
+    this.userSearchQuery = '';
+    this.groupForm.patchValue({ groupAdminUserId: 0 });
+  }
+
+  // mat-select handles value binding via formControlName — only need to clear on search change
+  onUserSearchChange(): void {
+    this.groupForm.patchValue({ groupAdminUserId: 0 });
+  }
+
+  onAssignAdminSearchChange(): void {
+    this.selectedUserIdForAdmin = 0;
   }
 
   loadSystems(): void {
@@ -705,6 +755,7 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
     this.selectedSystemAccess = [];
     this.groupForm.reset();
     this.groupAdminMode = 'none';
+    this.userSearchQuery = '';
     this.systemDelayEntries = [];
     this.talkgroupDelayEntries = [];
   }
@@ -886,15 +937,24 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
   openAssignAdminDialog(group: UserGroup): void {
     this.selectedGroupForAdmin = group;
     this.selectedUserIdForAdmin = 0;
-    this.showAssignAdminDialog = true;
-    // Reload users to ensure we have the latest list
+    this.assignAdminSearchQuery = '';
+    this.showAssignView = true;
     this.loadUsers();
   }
 
   closeAssignAdminDialog(): void {
     this.showAssignAdminDialog = false;
+    this.showAssignView = false;
     this.selectedGroupForAdmin = null;
     this.selectedUserIdForAdmin = 0;
+    this.assignAdminSearchQuery = '';
+  }
+
+  cancelAssignView(): void {
+    this.showAssignView = false;
+    this.selectedGroupForAdmin = null;
+    this.selectedUserIdForAdmin = 0;
+    this.assignAdminSearchQuery = '';
   }
 
   assignGroupAdmin(): void {
@@ -909,13 +969,13 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
     ).subscribe({
       next: () => {
         this.snackBar.open('Group admin assigned successfully', 'Close', { duration: 3000 });
-        this.closeAssignAdminDialog();
-        this.loadGroups(); // Reload groups to show updated state
-        this.loadUsers(); // Reload users to show updated admin status
-        // Reload group admins if the view admins dialog is open
-        if (this.showViewAdminsDialog && this.selectedGroupForViewAdmins) {
-          this.loadGroupAdmins();
-        }
+        this.closeViewAdminsDialog();
+        this.showAssignView = false;
+        this.selectedGroupForAdmin = null;
+        this.selectedUserIdForAdmin = 0;
+        this.assignAdminSearchQuery = '';
+        this.loadGroups();
+        this.loadUsers();
       },
       error: (error) => {
         console.error('Failed to assign group admin:', error);
@@ -972,8 +1032,9 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
     ).subscribe({
       next: () => {
         this.snackBar.open('Group admin removed successfully', 'Close', { duration: 3000 });
-        this.loadGroupAdmins(); // Reload the list
-        this.loadUsers(); // Reload users to show updated admin status
+        this.closeViewAdminsDialog();
+        this.loadGroups();
+        this.loadUsers();
       },
       error: (error) => {
         console.error('Failed to remove group admin:', error);

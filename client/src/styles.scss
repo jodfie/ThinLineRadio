@@ -185,6 +185,41 @@ $admin-dark-theme: mat.define-dark-theme((
   }
 }
 
+// ── Searchable mat-select: sticky search box inside the panel ────────────────
+.admin-select-panel .select-search-box,
+.mat-mdc-select-panel .select-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #333;
+  position: sticky;
+  top: 0;
+  background: #1e1e1e;
+  z-index: 1;
+
+  mat-icon {
+    color: #888;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
+  input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #e0e0e0;
+    font-size: 14px;
+    min-width: 0;
+
+    &::placeholder { color: #666; }
+  }
+}
+
+
 body {
 	font-family: $rdio-scanner-font-family;
 	margin: 0;

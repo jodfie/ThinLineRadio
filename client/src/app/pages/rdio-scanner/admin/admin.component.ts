@@ -70,6 +70,9 @@ export class RdioScannerAdminPageComponent implements OnInit, OnDestroy {
             if ('config' in event && event.config) {
                 const branding = event.config.branding?.trim() || 'TLR';
                 this.titleService.setTitle(`Admin-${branding}`);
+                if (event.config.version) {
+                    this.version = event.config.version;
+                }
             }
         });
     }
@@ -87,6 +90,9 @@ export class RdioScannerAdminPageComponent implements OnInit, OnDestroy {
             const config = await this.adminService.getConfig();
             const branding = config.branding?.trim() || 'TLR';
             this.titleService.setTitle(`Admin-${branding}`);
+            if (config.version) {
+                this.version = config.version;
+            }
         } catch {
             this.titleService.setTitle('Admin-TLR');
         }

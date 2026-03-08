@@ -251,29 +251,40 @@
       <mat-checkbox formControlName="isPublicRegistration">Public Registration Group</mat-checkbox>
       <mat-checkbox formControlName="allowAddExistingUsers">Allow Group Admins to Add Existing Users</mat-checkbox>
 
+      <!-- Group Admin header + mode selector at form level -->
       <div class="form-section" *ngIf="!editingGroup">
         <h4>Group Admin (Optional)</h4>
         <p class="mat-caption">Assign an existing user or create a new user as the group admin.</p>
-        
         <mat-radio-group [(ngModel)]="groupAdminMode" [ngModelOptions]="{standalone: true}">
           <mat-radio-button value="none">No Group Admin</mat-radio-button>
           <mat-radio-button value="existing">Assign Existing User</mat-radio-button>
           <mat-radio-button value="new">Create New User</mat-radio-button>
         </mat-radio-group>
+      </div>
 
-        <div *ngIf="groupAdminMode === 'existing'" class="admin-option">
-          <mat-form-field appearance="outline" class="full-width">
-            <mat-label>Select User</mat-label>
-            <mat-select formControlName="groupAdminUserId">
-              <mat-option [value]="0">-- Select User --</mat-option>
-              <mat-option *ngFor="let user of availableUsers" [value]="user.id">
-                {{ user.email }} ({{ user.firstName }} {{ user.lastName }})
-              </mat-option>
-            </mat-select>
-          </mat-form-field>
-        </div>
+      <!-- Group Admin: single searchable select -->
+      <div *ngIf="!editingGroup && groupAdminMode === 'existing'" class="admin-option">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Select Group Admin</mat-label>
+          <mat-select formControlName="groupAdminUserId" (openedChange)="userSearchQuery=''">
+            <div class="select-search-box" (click)="$event.stopPropagation()">
+              <mat-icon>search</mat-icon>
+              <input [(ngModel)]="userSearchQuery"
+                     [ngModelOptions]="{standalone: true}"
+                     placeholder="Search by email or name…"
+                     (keydown)="$event.stopPropagation()"
+                     (ngModelChange)="onUserSearchChange()">
+            </div>
+            <mat-option [value]="0">— None —</mat-option>
+            <mat-option *ngFor="let user of filteredUsers" [value]="user.id">
+              {{ user.email }}{{ getUserName(user) ? '  ·  ' + getUserName(user) : '' }}
+            </mat-option>
+            <mat-option *ngIf="filteredUsers.length === 0" disabled>No users match</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
 
-        <div *ngIf="groupAdminMode === 'new'" class="admin-option">
+      <div *ngIf="!editingGroup && groupAdminMode === 'new'" class="form-section admin-option">
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Email</mat-label>
             <input matInput type="email" formControlName="newGroupAdminEmail" required>
@@ -324,7 +335,6 @@
               Please enter a valid ZIP code
             </mat-error>
           </mat-form-field>
-        </div>
       </div>
 
       <div class="form-actions">
@@ -390,7 +400,6 @@
     <tr mat-header-row *matHeaderRowDef="['name', 'description', 'billingEnabled', 'isPublicRegistration', 'actions']"></tr>
     <tr mat-row *matRowDef="let row; columns: ['name', 'description', 'billingEnabled', 'isPublicRegistration', 'actions']"></tr>
   </table>
-</div>
 
 <!-- Delete Group Dialog -->
 <div class="codes-dialog-overlay" *ngIf="showDeleteGroupDialog" (click)="cancelGroupDelete()">
@@ -533,51 +542,20 @@
   </div>
 </div>
 
-<!-- Assign Group Admin Dialog -->
-<div class="codes-dialog-overlay" *ngIf="showAssignAdminDialog" (click)="closeAssignAdminDialog()">
+<!-- Group Admins Dialog (list + assign view in one overlay) -->
+<div class="codes-dialog-overlay" *ngIf="showViewAdminsDialog" (click)="showAssignView ? cancelAssignView() : closeViewAdminsDialog()">
   <div class="codes-dialog" (click)="$event.stopPropagation()">
+
+    <!-- Header changes based on view -->
     <div class="dialog-header">
-      <h2>Assign Group Admin - {{ selectedGroupForAdmin?.name }}</h2>
-      <button mat-icon-button (click)="closeAssignAdminDialog()">
+      <h2>{{ showAssignView ? 'Assign Group Admin — ' + selectedGroupForViewAdmins?.name : 'Group Admins — ' + selectedGroupForViewAdmins?.name }}</h2>
+      <button mat-icon-button (click)="showAssignView ? cancelAssignView() : closeViewAdminsDialog()">
         <mat-icon>close</mat-icon>
       </button>
     </div>
 
-    <div class="dialog-content">
-      <p class="mat-caption">Select a user to assign as group admin. The user will be moved to this group if they are not already a member.</p>
-      
-      <mat-form-field appearance="outline" class="full-width">
-        <mat-label>Select User</mat-label>
-        <mat-select [(ngModel)]="selectedUserIdForAdmin">
-          <mat-option [value]="0">-- Select User --</mat-option>
-          <mat-option *ngFor="let user of availableUsers" [value]="user.id">
-            {{ user.email }} ({{ user.firstName }} {{ user.lastName }})
-            <span *ngIf="user.isGroupAdmin"> - Already Group Admin</span>
-          </mat-option>
-        </mat-select>
-      </mat-form-field>
-
-      <div class="dialog-actions">
-        <button mat-button (click)="closeAssignAdminDialog()">Cancel</button>
-        <button mat-raised-button color="primary" (click)="assignGroupAdmin()" [disabled]="selectedUserIdForAdmin === 0">
-          Assign Admin
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- View/Manage Group Admins Dialog -->
-<div class="codes-dialog-overlay" *ngIf="showViewAdminsDialog" (click)="closeViewAdminsDialog()">
-  <div class="codes-dialog" (click)="$event.stopPropagation()">
-    <div class="dialog-header">
-      <h2>Group Admins - {{ selectedGroupForViewAdmins?.name }}</h2>
-      <button mat-icon-button (click)="closeViewAdminsDialog()">
-        <mat-icon>close</mat-icon>
-      </button>
-    </div>
-
-    <div class="dialog-content">
+    <!-- ── LIST VIEW ── -->
+    <div class="dialog-content" *ngIf="!showAssignView">
       <div class="dialog-actions" style="margin-bottom: 20px;">
         <button mat-raised-button color="primary" (click)="openAssignAdminDialog(selectedGroupForViewAdmins!)">
           <mat-icon>person_add</mat-icon>
@@ -614,6 +592,53 @@
       </table>
       <p *ngIf="!loadingGroupAdmins && groupAdmins.length === 0" class="empty-message">No group admins assigned</p>
     </div>
+
+    <!-- ── ASSIGN VIEW ── -->
+    <div class="dialog-content assign-view" *ngIf="showAssignView">
+      <p class="mat-caption" style="margin-bottom: 16px;">Search for a user and click their row to assign them as group admin.</p>
+
+      <!-- Always-visible search bar -->
+      <div class="user-picker-search">
+        <mat-icon>search</mat-icon>
+        <input #assignSearchInput
+               [(ngModel)]="assignAdminSearchQuery"
+               placeholder="Search by email or name…"
+               (ngModelChange)="onAssignAdminSearchChange()"
+               autofocus>
+        <button *ngIf="assignAdminSearchQuery" mat-icon-button class="clear-btn" (click)="assignAdminSearchQuery=''; onAssignAdminSearchChange()">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+
+      <!-- Scrollable user list -->
+      <div class="user-picker-list">
+        <div *ngFor="let user of filteredAssignUsers"
+             class="user-picker-row"
+             [class.selected]="selectedUserIdForAdmin === user.id"
+             (click)="selectedUserIdForAdmin = user.id">
+          <div class="user-picker-info">
+            <span class="user-picker-email">{{ user.email }}</span>
+            <span class="user-picker-name" *ngIf="getUserName(user)">{{ getUserName(user) }}</span>
+          </div>
+          <span *ngIf="user.isGroupAdmin" class="already-admin-badge">Already Admin</span>
+          <mat-icon *ngIf="selectedUserIdForAdmin === user.id" class="selected-check">check_circle</mat-icon>
+        </div>
+        <div *ngIf="filteredAssignUsers.length === 0" class="user-picker-empty">
+          No users match your search
+        </div>
+      </div>
+
+      <div class="dialog-actions">
+        <button mat-button (click)="cancelAssignView()">Cancel</button>
+        <button mat-raised-button color="primary" (click)="assignGroupAdmin()" [disabled]="selectedUserIdForAdmin === 0">
+          <mat-icon>person_add</mat-icon>
+          Assign Admin
+        </button>
+      </div>
+    </div>
+
   </div>
+</div>
+
 </div>
 
