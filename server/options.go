@@ -21,7 +21,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 
 	"golang.org/x/crypto/bcrypt"
@@ -1662,21 +1661,26 @@ func (options *Options) Write(db *Database) error {
 
 	formatError := errorFormatter("options", "write")
 
+	var setErr error
 	set := func(key string, val any) {
-		if val, err = json.Marshal(val); err == nil {
-			switch v := val.(type) {
-			case string:
-				val = escapeQuotes(v)
-			}
-
-			query := fmt.Sprintf(`UPDATE "options" SET "value" = '%s' WHERE "key" = '%s'`, val, key)
-			if res, err = tx.Exec(query); err == nil {
-				if i, err := res.RowsAffected(); err == nil && i == 0 {
-					query = fmt.Sprintf(`INSERT INTO "options" ("key", "value") VALUES ('%s', '%s')`, key, val)
-					if _, err = tx.Exec(query); err != nil {
-						log.Println(formatError(err, query))
-					}
-				}
+		if setErr != nil {
+			return
+		}
+		var marshaled []byte
+		if marshaled, err = json.Marshal(val); err != nil {
+			setErr = formatError(err, "")
+			return
+		}
+		valStr := string(marshaled)
+		query := `UPDATE "options" SET "value" = $1 WHERE "key" = $2`
+		if res, err = tx.Exec(query, valStr, key); err != nil {
+			setErr = formatError(err, query)
+			return
+		}
+		if i, err := res.RowsAffected(); err == nil && i == 0 {
+			query = `INSERT INTO "options" ("key", "value") VALUES ($1, $2)`
+			if _, err = tx.Exec(query, key, valStr); err != nil {
+				setErr = formatError(err, query)
 			}
 		}
 	}
@@ -1780,6 +1784,11 @@ func (options *Options) Write(db *Database) error {
 	set("reconnectionMaxBufferSize", options.ReconnectionMaxBufferSize)
 	// Persist entire transcription config as a single JSON blob
 	set("transcriptionConfig", options.TranscriptionConfig)
+
+	if setErr != nil {
+		tx.Rollback()
+		return setErr
+	}
 
 	if err = tx.Commit(); err != nil {
 		tx.Rollback()

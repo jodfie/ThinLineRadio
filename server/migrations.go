@@ -773,8 +773,8 @@ func migrateLogs(db *Database) error {
 			continue
 		}
 
-		query = fmt.Sprintf(`INSERT INTO "logs" ("logId", "level", "message", "timestamp") VALUES (%d, '%s', '%s', %d)`, l.Id, l.Level, l.Message, timestamp)
-		if _, err = tx.Exec(query); err != nil {
+		query = `INSERT INTO "logs" ("logId", "level", "message", "timestamp") VALUES ($1, $2, $3, $4)`
+		if _, err = tx.Exec(query, l.Id, l.Level, l.Message, timestamp); err != nil {
 			log.Println(formatError(err, query))
 		}
 	}

@@ -459,6 +459,7 @@ func (calls *Calls) GetCall(id uint64) (*Call, error) {
 		call.System = system
 
 	} else {
+		tx.Rollback()
 		return nil, formatError(fmt.Errorf("cannot retrieve system id %d for call id %d", systemId, call.Id), "")
 	}
 
@@ -466,6 +467,7 @@ func (calls *Calls) GetCall(id uint64) (*Call, error) {
 		call.Talkgroup = talkgroup
 
 	} else {
+		tx.Rollback()
 		return nil, formatError(fmt.Errorf("cannot retrieve talkgroup id %d for call id %d", talkgroupId, call.Id), "")
 	}
 
@@ -867,14 +869,14 @@ func (calls *Calls) WriteCall(call *Call, db *Database) (uint64, error) {
 	fingerprintStr := SerializeFingerprint(call.AudioFingerprint)
 
 	if db.Config.DbType == DbTypePostgresql {
-		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus", "transmissionId", "requestId", "signalJobId", "audioFingerprint", "receivedAt") VALUES ($1, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, $2, %t, $3, %.2f, '%s', $4, $5, $6, $7, NOW()) RETURNING "callId"`, call.AudioFilename, call.AudioMime, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, escapeQuotes(call.TranscriptionStatus))
+		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus", "transmissionId", "requestId", "signalJobId", "audioFingerprint", "receivedAt") VALUES ($1, $2, $3, %d, %d, %d, %d, %d, %d, %d, $4, %t, $5, %.2f, $6, $7, $8, $9, $10, NOW()) RETURNING "callId"`, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence)
 
-		err = tx.QueryRow(query, call.Audio, toneSequenceJson, call.Transcript, call.TransmissionId, call.RequestId, call.SignalJobId, fingerprintStr).Scan(&call.Id)
+		err = tx.QueryRow(query, call.Audio, call.AudioFilename, call.AudioMime, toneSequenceJson, call.Transcript, call.TranscriptionStatus, call.TransmissionId, call.RequestId, call.SignalJobId, fingerprintStr).Scan(&call.Id)
 
 	} else {
-		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus", "transmissionId", "requestId", "signalJobId", "audioFingerprint", "receivedAt") VALUES (?, '%s', '%s', %d, %d, %d, %d, %d, %d, %d, ?, %t, ?, %.2f, '%s', ?, ?, ?, ?, CURRENT_TIMESTAMP)`, call.AudioFilename, call.AudioMime, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, escapeQuotes(call.TranscriptionStatus))
+		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus", "transmissionId", "requestId", "signalJobId", "audioFingerprint", "receivedAt") VALUES (?, ?, ?, %d, %d, %d, %d, %d, %d, %d, ?, %t, ?, %.2f, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence)
 
-		if res, err = tx.Exec(query, call.Audio, toneSequenceJson, call.Transcript, call.TransmissionId, call.RequestId, call.SignalJobId, fingerprintStr); err == nil {
+		if res, err = tx.Exec(query, call.Audio, call.AudioFilename, call.AudioMime, toneSequenceJson, call.Transcript, call.TranscriptionStatus, call.TransmissionId, call.RequestId, call.SignalJobId, fingerprintStr); err == nil {
 			if id, err := res.LastInsertId(); err == nil {
 				call.Id = uint64(id)
 			}

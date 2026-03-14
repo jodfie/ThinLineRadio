@@ -42,6 +42,7 @@ func seedGroups(db *Database) error {
 			}
 
 			if err := tx.Commit(); err != nil {
+				tx.Rollback()
 				return formatError(err, "")
 			}
 
@@ -77,6 +78,7 @@ func seedTags(db *Database) error {
 			}
 
 			if err := tx.Commit(); err != nil {
+				tx.Rollback()
 				return formatError(err, "")
 			}
 

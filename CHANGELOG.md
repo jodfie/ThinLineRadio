@@ -1,5 +1,40 @@
 # Change log
 
+## Version 7.0 Beta 9.7.21 - Released Mar 14, 2026
+
+### Bug Fixes
+
+- **PostgreSQL: connection pool exhaustion causing database to appear unreachable**
+  - Fixed transaction leak in `GetCall()` — when a system or talkgroup lookup failed, the open transaction was never rolled back, holding a DB connection with locks until PostgreSQL timed it out. Under load these would stack up and exhaust the pool
+  - Fixed `sendAvailableCallsToClient()` — previously opened up to 1,000 simultaneous transactions (one per call) while holding an outer cursor open, capable of draining the entire connection pool in a single client connect event. Now collects all call IDs first, closes the cursor, then processes sequentially
+  - Added `SetConnMaxIdleTime(5 minutes)` to the connection pool — idle connections were previously held open indefinitely (up to 30 minutes), keeping PostgreSQL backend processes alive unnecessarily. Idle connections are now returned after 5 minutes
+  - Halved max idle connections from `maxConns` to `maxConns/2` to reduce steady-state PostgreSQL backend load
+  - Files modified: `server/call.go`, `server/controller.go`, `server/database.go`
+
+- **PostgreSQL: SQL syntax errors on log inserts with quoted system/talkgroup names**
+  - Log messages containing single quotes (e.g. system names like `'OH Cuyahoga GCRN'`, tone set names like `'Brookfield'`, `'Weathersfield 41'`) were breaking the SQL string and causing every log insert to silently fail
+  - Root cause: `migrations.go` log migration used `fmt.Sprintf` with `%s` string interpolation instead of parameterized queries
+  - Fixed: switched to `$1, $2, $3, $4` parameterized query
+  - Files modified: `server/migrations.go`
+
+- **PostgreSQL: partial options commit with no error returned**
+  - The `Options.Write()` `set()` closure silently swallowed write errors — if any option key failed to write, the outer `err` variable was overwritten by the next `json.Marshal` call (which almost always succeeds), making the failure invisible. The transaction would then commit successfully with some keys missing
+  - Fixed: rewrote `set()` to use a dedicated `setErr` sentinel that stops further writes on first failure, rolls back the transaction, and propagates the error to the caller
+  - Also switched all `UPDATE`/`INSERT` queries in `set()` from `fmt.Sprintf` string interpolation to `$1/$2` parameterized queries
+  - Files modified: `server/options.go`
+
+- **PostgreSQL: external API data interpolated directly into SQL**
+  - `transcription_queue.go`: `result.Language` (from external transcription API) and `result.Confidence` were string-interpolated into INSERT/UPDATE queries via `fmt.Sprintf`. Switched to fully parameterized queries for both PostgreSQL and SQLite paths
+  - `call.go`: `AudioFilename`, `AudioMime`, and `TranscriptionStatus` were interpolated into the calls INSERT via `fmt.Sprintf`. Moved to parameterized arguments (`$2`, `$3`, `$6` for PostgreSQL; `?` for SQLite)
+  - Files modified: `server/transcription_queue.go`, `server/call.go`
+
+- **Transaction cleanup: missing rollbacks on error paths**
+  - `admin.go`: missing `tx.Rollback()` after a failed `tx.Commit()` on user deletion
+  - `seeds.go`: missing `tx.Rollback()` after failed `tx.Commit()` in both `seedGroups()` and `seedTags()`
+  - Files modified: `server/admin.go`, `server/seeds.go`
+
+---
+
 ## Version 7.0 Beta 9.7.20 - Released Mar 11, 2026
 
 ### Bug Fixes

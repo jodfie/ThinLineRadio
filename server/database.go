@@ -57,7 +57,8 @@ func NewDatabase(config *Config) *Database {
 	}
 
 	database.Sql.SetConnMaxLifetime(30 * time.Minute)
-	database.Sql.SetMaxIdleConns(maxConns)
+	database.Sql.SetConnMaxIdleTime(5 * time.Minute)
+	database.Sql.SetMaxIdleConns(maxConns / 2)
 	database.Sql.SetMaxOpenConns(maxConns)
 
 	log.Printf("Database connection pool configured: %d max connections for %d CPU cores", maxConns, runtime.NumCPU())

@@ -395,25 +395,22 @@ func (queue *TranscriptionQueue) storeTranscription(callId uint64, result *Trans
 
 	// Update call table
 	transcript := strings.ToUpper(result.Transcript) // Ensure ALL CAPS
-	query := fmt.Sprintf(`UPDATE "calls" SET "transcript" = $1, "transcriptConfidence" = %.2f, "transcriptionStatus" = 'completed' WHERE "callId" = %d`, result.Confidence, callId)
 	if queue.controller.Database.Config.DbType == DbTypePostgresql {
-		_, err := queue.controller.Database.Sql.Exec(query, transcript)
-		if err != nil {
+		query := `UPDATE "calls" SET "transcript" = $1, "transcriptConfidence" = $2, "transcriptionStatus" = 'completed' WHERE "callId" = $3`
+		if _, err := queue.controller.Database.Sql.Exec(query, transcript, result.Confidence, callId); err != nil {
 			queue.controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("failed to update call transcript: %v", err))
 		}
 	}
 
 	// Store detailed transcription (optional, for history)
-	insertQuery := fmt.Sprintf(`INSERT INTO "transcriptions" ("callId", "transcript", "confidence", "language", "createdAt") VALUES (%d, $1, %.2f, '%s', %d)`, callId, result.Confidence, result.Language, time.Now().UnixMilli())
 	if queue.controller.Database.Config.DbType == DbTypePostgresql {
-		_, err := queue.controller.Database.Sql.Exec(insertQuery, transcript)
-		if err != nil {
+		insertQuery := `INSERT INTO "transcriptions" ("callId", "transcript", "confidence", "language", "createdAt") VALUES ($1, $2, $3, $4, $5)`
+		if _, err := queue.controller.Database.Sql.Exec(insertQuery, callId, transcript, result.Confidence, result.Language, time.Now().UnixMilli()); err != nil {
 			queue.controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("failed to insert transcription record: %v", err))
 		}
 	} else {
-		insertQuery = fmt.Sprintf(`INSERT INTO "transcriptions" ("callId", "transcript", "confidence", "language", "createdAt") VALUES (%d, ?, %.2f, '%s', %d)`, callId, result.Confidence, result.Language, time.Now().UnixMilli())
-		_, err := queue.controller.Database.Sql.Exec(insertQuery, transcript)
-		if err != nil {
+		insertQuery := `INSERT INTO "transcriptions" ("callId", "transcript", "confidence", "language", "createdAt") VALUES (?, ?, ?, ?, ?)`
+		if _, err := queue.controller.Database.Sql.Exec(insertQuery, callId, transcript, result.Confidence, result.Language, time.Now().UnixMilli()); err != nil {
 			queue.controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("failed to insert transcription record: %v", err))
 		}
 	}

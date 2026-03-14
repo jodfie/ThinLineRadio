@@ -5209,6 +5209,7 @@ func (admin *Admin) UserDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = tx.Commit(); err != nil {
+		tx.Rollback()
 		log.Printf("Failed to commit deletion transaction for user %d: %v", userID, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to delete user from database"})

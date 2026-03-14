@@ -1234,8 +1234,6 @@ func (controller *Controller) getAudioDuration(audio []byte, audioMime string) (
 		ext = ".wav"
 	} else if strings.Contains(audioMime, "ogg") {
 		ext = ".ogg"
-	} else if strings.Contains(audioMime, "flac") {
-		ext = ".flac"
 	}
 
 	tempFile := filepath.Join(tempDir, fmt.Sprintf("duration_%d%s", time.Now().UnixNano(), ext))
@@ -2787,19 +2785,27 @@ func (controller *Controller) sendAvailableCallsToClient(client *Client) {
 		controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("sendAvailableCallsToClient query failed: %v", err))
 		return
 	}
-	defer rows.Close()
 
+	// Collect all IDs before closing the cursor so that GetCall (which opens its
+	// own transaction) does not compete for connections while the outer rows are
+	// still held open. Without this, up to 1000 concurrent transactions would be
+	// in flight simultaneously against the pool.
+	type callRef struct {
+		id        uint64
+		timestamp int64
+	}
+	var callRefs []callRef
 	for rows.Next() {
-		var (
-			callId    uint64
-			timestamp int64
-		)
-
-		if err = rows.Scan(&callId, &timestamp); err != nil {
+		var ref callRef
+		if err = rows.Scan(&ref.id, &ref.timestamp); err != nil {
 			continue
 		}
+		callRefs = append(callRefs, ref)
+	}
+	rows.Close()
 
-		call, err := controller.Calls.GetCall(callId)
+	for _, ref := range callRefs {
+		call, err := controller.Calls.GetCall(ref.id)
 		if err != nil || call == nil {
 			continue
 		}
