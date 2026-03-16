@@ -17,7 +17,7 @@
  * ****************************************************************************
  */
 
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
+import { ChangeDetectorRef, Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
 import { FormBuilder, FormGroup, FormArray, Validators } from '@angular/forms';
@@ -69,7 +69,6 @@ export interface User {
     selector: 'rdio-scanner-admin-users',
     templateUrl: './users.component.html',
     styleUrls: ['./users.component.scss'],
-    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RdioScannerAdminUsersComponent implements OnInit, OnDestroy, OnChanges {
     @Input() userRegistrationEnabled = false;

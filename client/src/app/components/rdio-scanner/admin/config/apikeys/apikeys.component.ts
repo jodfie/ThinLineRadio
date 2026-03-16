@@ -19,7 +19,7 @@
  */
 
 import { CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input } from '@angular/core';
+import { ChangeDetectorRef, Component, Input } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { FormArray, FormGroup } from '@angular/forms';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -30,7 +30,6 @@ import { RdioScannerAdminSystemsSelectComponent } from '../systems/select/select
     selector: 'rdio-scanner-admin-apikeys',
     templateUrl: './apikeys.component.html',
     styleUrls: ['./apikeys.component.scss'],
-    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RdioScannerAdminApikeysComponent {
     @Input() form: FormArray | undefined;

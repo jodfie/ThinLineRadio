@@ -17,7 +17,7 @@
  * ****************************************************************************
  */
 
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit, OnDestroy } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, OnDestroy } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { RdioScannerAdminService } from '../admin.service';
 
@@ -48,7 +48,6 @@ export interface FailedCall {
     selector: 'rdio-scanner-admin-system-health',
     styleUrls: ['./system-health.component.scss'],
     templateUrl: './system-health.component.html',
-    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RdioScannerAdminSystemHealthComponent implements OnInit, OnDestroy {
     alerts: SystemAlert[] = [];

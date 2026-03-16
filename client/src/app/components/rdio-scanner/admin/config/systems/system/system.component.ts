@@ -19,7 +19,7 @@
  */
 
 import { CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
+import { ChangeDetectorRef, Component, EventEmitter, Input, Output } from '@angular/core';
 import { FormArray, FormControl, FormGroup } from '@angular/forms';
 import { RdioScannerAdminService, Group, Tag } from '../../../admin.service';
 
@@ -27,7 +27,6 @@ import { RdioScannerAdminService, Group, Tag } from '../../../admin.service';
     selector: 'rdio-scanner-admin-system',
     templateUrl: './system.component.html',
     styleUrls: ['./system.component.scss'],
-    changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class RdioScannerAdminSystemComponent {
     @Input() form = new FormGroup({});
