@@ -50,6 +50,7 @@ docker/config/*.ini
 relay-server/
 ThinlineRadio-Mobile/
 ThinlineResponder/
+whisper/
 central-management/
 TonesToActive/
 
