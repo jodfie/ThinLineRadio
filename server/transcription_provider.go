@@ -25,30 +25,29 @@ type TranscriptionProvider interface {
 
 // TranscriptionOptions contains options for transcription
 type TranscriptionOptions struct {
-	Language     string   // "en", "auto", etc.
-	Model        string   // "tiny", "base", "small", "medium", "large" (for Whisper)
-	Device       string   // "cpu", "cuda", "metal" (for GPU)
-	Temperature  float64  // Temperature for sampling (0.0-1.0)
-	InitialPrompt string  // Initial prompt/context
-	AudioMime    string   // MIME type of audio (e.g., "audio/mp4", "audio/mpeg")
-	WordBoost    []string // Word boost/keyterms for AssemblyAI (max 100 terms, 50 chars each)
-	SpeechModel  string   // Speech model for AssemblyAI (e.g., "universal-2", "universal-3-pro")
+	Language      string   // "en", "auto", etc.
+	Model         string   // "tiny", "base", "small", "medium", "large" (for Whisper)
+	Device        string   // "cpu", "cuda", "metal" (for GPU)
+	Temperature   float64  // Temperature for sampling (0.0-1.0)
+	InitialPrompt string   // Initial prompt/context
+	AudioMime     string   // MIME type of audio (e.g., "audio/mp4", "audio/mpeg")
+	WordBoost     []string // Word boost/keyterms for AssemblyAI (max 100 terms, 50 chars each)
+	SpeechModel   string   // Speech model for AssemblyAI (e.g., "universal-2", "universal-3-pro")
 }
 
 // TranscriptionResult contains the transcription result
 type TranscriptionResult struct {
 	Transcript   string              `json:"transcript"`    // The transcribed text (in ALL CAPS)
 	Confidence   float64             `json:"confidence"`    // Confidence score (0.0-1.0)
-	Language     string              `json:"language"`     // Detected language code
+	Language     string              `json:"language"`      // Detected language code
 	Segments     []TranscriptSegment `json:"segments"`      // Timestamped segments (optional)
-	AlertSummary string             `json:"alert_summary"` // Optional short summary from Whisper server (e.g. from integrated Ollama); used for alerts when present
+	AlertSummary string              `json:"alert_summary"` // Optional short summary from Whisper server (e.g. from integrated Ollama); used for alerts when present
 }
 
 // TranscriptSegment represents a timestamped segment of the transcript
 type TranscriptSegment struct {
-	Text      string  `json:"text"`       // Segment text
-	StartTime float64 `json:"startTime"`  // Start time in seconds
-	EndTime   float64 `json:"endTime"`    // End time in seconds
+	Text       string  `json:"text"`       // Segment text
+	StartTime  float64 `json:"startTime"`  // Start time in seconds
+	EndTime    float64 `json:"endTime"`    // End time in seconds
 	Confidence float64 `json:"confidence"` // Confidence for this segment
 }
-

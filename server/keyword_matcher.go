@@ -18,6 +18,7 @@ package main
 import (
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // KeywordMatch represents a matched keyword in a transcript
@@ -31,14 +32,42 @@ type KeywordMatch struct {
 
 // KeywordMatcher handles keyword matching in transcripts
 type KeywordMatcher struct {
-	contextChars int // Number of characters to include on each side of match
+	contextChars int
+
+	// Compiled regex cache: keyed by the uppercased keyword so the same
+	// pattern is only compiled once for the lifetime of the process.
+	mu      sync.RWMutex
+	compiled map[string]*regexp.Regexp
 }
 
 // NewKeywordMatcher creates a new keyword matcher
 func NewKeywordMatcher() *KeywordMatcher {
 	return &KeywordMatcher{
-		contextChars: 50, // Default: 50 chars each side
+		contextChars: 50,
+		compiled:     make(map[string]*regexp.Regexp),
 	}
+}
+
+// getCompiledPattern returns a cached *regexp.Regexp for the given uppercased
+// keyword, compiling and caching it on first use.
+func (matcher *KeywordMatcher) getCompiledPattern(keywordUpper string) (*regexp.Regexp, error) {
+	matcher.mu.RLock()
+	re, ok := matcher.compiled[keywordUpper]
+	matcher.mu.RUnlock()
+	if ok {
+		return re, nil
+	}
+
+	pattern := `\b` + regexp.QuoteMeta(keywordUpper) + `\b`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	matcher.mu.Lock()
+	matcher.compiled[keywordUpper] = re
+	matcher.mu.Unlock()
+	return re, nil
 }
 
 // MatchKeywords matches keywords against a transcript (case-insensitive, whole-word only)
@@ -61,13 +90,8 @@ func (matcher *KeywordMatcher) MatchKeywords(transcript string, keywords []strin
 		// Convert keyword to uppercase for case-insensitive matching
 		keywordUpper := strings.ToUpper(strings.TrimSpace(keyword))
 		
-		// Escape special regex characters in keyword
-		keywordEscaped := regexp.QuoteMeta(keywordUpper)
-		
-		// Create regex pattern for whole-word matching
-		// \b matches word boundaries (between word and non-word characters)
-		pattern := `\b` + keywordEscaped + `\b`
-		re, err := regexp.Compile(pattern)
+		// Look up (or compile) the cached regex for this keyword.
+		re, err := matcher.getCompiledPattern(keywordUpper)
 		if err != nil {
 			// If regex compilation fails, fall back to simple substring matching
 			// but still check word boundaries manually

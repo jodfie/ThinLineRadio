@@ -58,7 +58,7 @@ type CallMeta struct {
 type CallUnit struct {
 	Id      uint64
 	CallId  uint64
-	Label   string  // P25 talker alias or other unit label (dynamic, from call upload)
+	Label   string // P25 talker alias or other unit label (dynamic, from call upload)
 	Offset  float32
 	UnitRef uint
 }
@@ -68,8 +68,8 @@ type Call struct {
 	Audio                []byte
 	AudioFilename        string
 	AudioMime            string
-	OriginalAudio        []byte  // Original audio before AAC conversion (used for transcription)
-	OriginalAudioMime    string  // Original audio MIME type
+	OriginalAudio        []byte // Original audio before AAC conversion (used for transcription)
+	OriginalAudioMime    string // Original audio MIME type
 	Delayed              bool
 	Frequencies          []CallFrequency
 	Frequency            uint
@@ -85,7 +85,7 @@ type Call struct {
 	Transcript           string
 	TranscriptConfidence float64
 	TranscriptionStatus  string
-	AlertSummary         string // Optional short LLM summary for alerts (when summarized alerts enabled)
+	AlertSummary         string  // Optional short LLM summary for alerts (when summarized alerts enabled)
 	ApiKeyId             *uint64 // API key used for upload (for preferred API key logic)
 
 	// Add back simple fields for compatibility with v6 uploads
@@ -99,6 +99,11 @@ type Call struct {
 	RequestId      string    // upstream request correlation ID
 	SignalJobId    string    // upstream signal job ID (e.g. 1772856910589-fd88c97f)
 	ReceivedAt     time.Time // when TLR received this call
+
+	// Cached audio duration in seconds. Computed once on first call to getCallDuration
+	// and reused for all subsequent checks (duration check, tone-only check, etc.).
+	// Not persisted to DB or included in JSON output.
+	Duration float64
 }
 
 func NewCall() *Call {
@@ -507,6 +512,167 @@ func (calls *Calls) GetCall(id uint64) (*Call, error) {
 	}
 
 	return &call, nil
+}
+
+// GetCallsBulk fetches multiple calls in 3 queries instead of N×2 round-trips.
+//
+//  Query 1 — metadata + patches (no audio blob; avoids GROUP BY on blobs):
+//            callId, timestamp, patches, systemId, talkgroupId, frequency,
+//            toneSequence, hasTones, transcript, transcriptConfidence,
+//            transcriptionStatus, alertSummary
+//  Query 2 — audio bytes + filenames: callId, audio, audioFilename, audioMime, siteRef
+//  Query 3 — units:                   callId, offset, unitRef, label
+//
+// Any IDs currently in the delay queue are silently skipped.
+func (calls *Calls) GetCallsBulk(ids []uint64) []*Call {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	// Filter out calls currently being held in the delay queue.
+	var active []uint64
+	for _, id := range ids {
+		if !calls.controller.Delayer.IsCallDelayed(id) {
+			active = append(active, id)
+		}
+	}
+	if len(active) == 0 {
+		return nil
+	}
+
+	// Build the IN clause (safe: IDs are uint64, no user input).
+	inParts := make([]string, len(active))
+	for i, id := range active {
+		inParts[i] = strconv.FormatUint(id, 10)
+	}
+	inClause := strings.Join(inParts, ",")
+
+	// --- Query 1: metadata ---
+	// Audio blobs are intentionally excluded from this query so they don't
+	// participate in the GROUP BY (which would force a full blob comparison
+	// for every row in the aggregation).
+	var metaQuery string
+	if calls.controller.Database.Config.DbType == DbTypePostgresql {
+		metaQuery = `SELECT c."callId", c."timestamp", STRING_AGG(CAST(COALESCE(cpt."talkgroupRef", 0) AS text), ','), sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary" FROM "calls" AS c LEFT JOIN "callPatches" AS cp ON cp."callId" = c."callId" LEFT JOIN "talkgroups" AS cpt ON cpt."talkgroupId" = cp."talkgroupId" LEFT JOIN "systems" AS sy ON sy."systemId" = c."systemId" LEFT JOIN "talkgroups" AS t ON t."talkgroupId" = c."talkgroupId" WHERE c."callId" IN (` + inClause + `) GROUP BY c."callId", c."timestamp", sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary" ORDER BY c."timestamp" ASC`
+	} else {
+		metaQuery = `SELECT c."callId", c."timestamp", GROUP_CONCAT(COALESCE(cpt."talkgroupRef", 0)), sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary" FROM "calls" AS c LEFT JOIN "callPatches" AS cp ON cp."callId" = c."callId" LEFT JOIN "talkgroups" AS cpt ON cpt."talkgroupId" = cp."talkgroupId" LEFT JOIN "systems" AS sy ON sy."systemId" = c."systemId" LEFT JOIN "talkgroups" AS t ON t."talkgroupId" = c."talkgroupId" WHERE c."callId" IN (` + inClause + `) GROUP BY c."callId" ORDER BY c."timestamp" ASC`
+	}
+
+	metaRows, err := calls.controller.Database.Sql.Query(metaQuery)
+	if err != nil {
+		return nil
+	}
+	defer metaRows.Close()
+
+	byId := make(map[uint64]*Call, len(active))
+	var ordered []*Call
+
+	for metaRows.Next() {
+		var id uint64
+		var patch string
+		var systemId, talkgroupId uint64
+		var timestamp int64
+		var frequency sql.NullInt64
+		var toneSeqJson, transcript, transcriptionStatus, alertSummary sql.NullString
+		var transcriptConfidence sql.NullFloat64
+		var hasTones bool
+
+		if err = metaRows.Scan(&id, &timestamp, &patch, &systemId, &talkgroupId, &frequency, &toneSeqJson, &hasTones, &transcript, &transcriptConfidence, &transcriptionStatus, &alertSummary); err != nil {
+			continue
+		}
+
+		call := &Call{Id: id}
+		call.Timestamp = time.UnixMilli(timestamp)
+
+		if frequency.Valid && frequency.Int64 > 0 {
+			call.Frequency = uint(frequency.Int64)
+			call.Frequencies = []CallFrequency{{Frequency: call.Frequency}}
+		}
+		if toneSeqJson.Valid && toneSeqJson.String != "" && toneSeqJson.String != "[]" {
+			var ts ToneSequence
+			if json.Unmarshal([]byte(toneSeqJson.String), &ts) == nil {
+				call.ToneSequence = &ts
+				call.HasTones = len(ts.Tones) > 0
+			}
+		} else {
+			call.HasTones = hasTones
+		}
+		if transcript.Valid {
+			call.Transcript = transcript.String
+		}
+		if transcriptConfidence.Valid {
+			call.TranscriptConfidence = transcriptConfidence.Float64
+		}
+		if transcriptionStatus.Valid {
+			call.TranscriptionStatus = transcriptionStatus.String
+		}
+		if alertSummary.Valid {
+			call.AlertSummary = alertSummary.String
+		}
+		if len(patch) > 0 {
+			for _, s := range strings.Split(patch, ",") {
+				if i, err2 := strconv.Atoi(s); err2 == nil && i > 0 {
+					call.Patches = append(call.Patches, uint(i))
+				}
+			}
+		}
+		if system, ok := calls.controller.Systems.GetSystemById(systemId); ok {
+			call.System = system
+		} else {
+			continue
+		}
+		if tg, ok := call.System.Talkgroups.GetTalkgroupById(talkgroupId); ok {
+			call.Talkgroup = tg
+		} else {
+			continue
+		}
+
+		byId[id] = call
+		ordered = append(ordered, call)
+	}
+	metaRows.Close()
+
+	if len(byId) == 0 {
+		return nil
+	}
+
+	// --- Query 2: audio blobs ---
+	audioRows, err := calls.controller.Database.Sql.Query(
+		`SELECT "callId", "audio", "audioFilename", "audioMime", "siteRef" FROM "calls" WHERE "callId" IN (`+inClause+`)`)
+	if err == nil {
+		defer audioRows.Close()
+		for audioRows.Next() {
+			var cid uint64
+			var audio []byte
+			var filename, mime, siteRef string
+			if audioRows.Scan(&cid, &audio, &filename, &mime, &siteRef) == nil {
+				if c, ok := byId[cid]; ok {
+					c.Audio = audio
+					c.AudioFilename = filename
+					c.AudioMime = mime
+					c.SiteRef = siteRef
+				}
+			}
+		}
+	}
+
+	// --- Query 3: units ---
+	unitRows, err := calls.controller.Database.Sql.Query(
+		`SELECT "callId", "offset", "unitRef", COALESCE("label", '') FROM "callUnits" WHERE "callId" IN (`+inClause+`) ORDER BY "callId", "offset" ASC`)
+	if err == nil {
+		defer unitRows.Close()
+		for unitRows.Next() {
+			var cid uint64
+			unit := CallUnit{}
+			if unitRows.Scan(&cid, &unit.Offset, &unit.UnitRef, &unit.Label) == nil {
+				if c, ok := byId[cid]; ok {
+					c.Units = append(c.Units, unit)
+				}
+			}
+		}
+	}
+
+	return ordered
 }
 
 func (calls *Calls) Prune(db *Database, pruneDays uint) error {

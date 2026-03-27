@@ -264,6 +264,7 @@ func (logs *Logs) Search(searchOptions *LogsSearchOptions, db *Database) (*LogsS
 	if rows, err = db.Sql.QueryContext(ctx, query); err != nil && err != sql.ErrNoRows {
 		return nil, formatError(err, query)
 	}
+	defer rows.Close()
 
 	var totalRows int
 
@@ -313,8 +314,6 @@ func (logs *Logs) Search(searchOptions *LogsSearchOptions, db *Database) (*LogsS
 			logResults.Logs = append(logResults.Logs, *l)
 		}
 	}
-
-	rows.Close()
 
 	if err != nil {
 		return nil, formatError(err, "")

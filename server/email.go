@@ -3281,3 +3281,157 @@ func getTestEmailHTML(branding, logoURL, borderRadius string) string {
 
 	return buf.String()
 }
+
+// SendAppUpdateRequiredEmail notifies a user that their push notifications have stopped
+// working because the app needs to be updated. Called when a legacy OneSignal device
+// token is detected at push-send time.
+func (es *EmailService) SendAppUpdateRequiredEmail(user *User) error {
+	if !es.Controller.Options.EmailServiceEnabled {
+		return fmt.Errorf("email service is disabled")
+	}
+	if es.Controller.Options.EmailProvider == "" {
+		return fmt.Errorf("email provider not configured")
+	}
+	if es.Controller.Options.EmailSmtpFromEmail == "" {
+		return fmt.Errorf("from email address not configured")
+	}
+	if user.Email == "" {
+		return fmt.Errorf("user has no email address")
+	}
+
+	branding := es.Controller.Options.Branding
+	if branding == "" {
+		branding = "ThinLine Radio"
+	}
+	fromName := es.Controller.Options.EmailSmtpFromName
+	if fromName == "" {
+		fromName = branding
+	}
+	fromEmail := es.Controller.Options.EmailSmtpFromEmail
+
+	var logoURL string
+	if es.Controller.Options.EmailLogoFilename != "" {
+		base := es.Controller.Options.BaseUrl
+		if base == "" {
+			base = "https://localhost:8080"
+		} else if strings.HasPrefix(base, "http://") {
+			base = strings.Replace(base, "http://", "https://", 1)
+		} else if !strings.HasPrefix(base, "https://") {
+			base = "https://" + base
+		}
+		logoURL = base + "/email-logo"
+	}
+
+	displayName := user.FirstName
+	if displayName == "" {
+		displayName = extractNameFromEmail(user.Email)
+	}
+
+	subject := fmt.Sprintf("Action Required: Update the %s App to Continue Receiving Alerts", branding)
+	htmlBody := getAppUpdateRequiredEmailHTML(displayName, branding, logoURL)
+
+	if err := es.sendEmail(fromName, fromEmail, user.Email, subject, htmlBody); err != nil {
+		return err
+	}
+
+	log.Printf("App update required email sent to user %d (%s)", user.Id, user.Email)
+	return nil
+}
+
+func getAppUpdateRequiredEmailHTML(displayName, branding, logoURL string) string {
+	if branding == "" {
+		branding = "ThinLine Radio"
+	}
+
+	logo := ""
+	if logoURL != "" {
+		logo = fmt.Sprintf(`<img src="%s" alt="%s" style="max-height:60px;max-width:200px;margin-bottom:12px;">`, logoURL, branding)
+	} else {
+		logo = fmt.Sprintf(`<div style="font-size:48px;margin-bottom:8px;">📻</div>`)
+	}
+
+	greeting := "Hello"
+	if displayName != "" {
+		greeting = fmt.Sprintf("Hi %s", displayName)
+	}
+
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Update Required – %s</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table width="100%%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td align="center" style="background:#1a1a2e;padding:32px 40px;">
+              %s
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:600;letter-spacing:0.5px;">%s</h1>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:36px 40px;">
+              <p style="margin:0 0 16px;font-size:16px;color:#333;line-height:1.6;">%s,</p>
+
+              <p style="margin:0 0 16px;font-size:16px;color:#333;line-height:1.6;">
+                We noticed that your push notifications for <strong>%s</strong> are no longer being delivered to one or more of your devices.
+              </p>
+
+              <p style="margin:0 0 16px;font-size:16px;color:#333;line-height:1.6;">
+                This happened because our app has upgraded its push notification system and <strong>your app version is out of date</strong>. We've removed the stale notification token from your account.
+              </p>
+
+              <!-- Action box -->
+              <table width="100%%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
+                <tr>
+                  <td style="background:#fff3cd;border-left:4px solid #f59e0b;border-radius:4px;padding:16px 20px;">
+                    <p style="margin:0;font-size:15px;color:#92400e;font-weight:600;">Action required</p>
+                    <p style="margin:6px 0 0;font-size:14px;color:#78350f;line-height:1.5;">
+                      Please update the <strong>%s</strong> app from the App Store or Google Play Store to restore your push notifications.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 16px;font-size:16px;color:#333;line-height:1.6;">
+                After updating, simply open the app and your alerts will automatically re-register. You don't need to do anything else.
+              </p>
+
+              <p style="margin:24px 0 0;font-size:14px;color:#666;line-height:1.6;">
+                If you believe this was sent in error or need help, please contact your system administrator.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#f8f8f8;padding:20px 40px;border-top:1px solid #e8e8e8;">
+              <p style="margin:0;font-size:12px;color:#999;text-align:center;">
+                This is an automated message from %s. Please do not reply to this email.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+		branding,
+		logo,
+		branding,
+		greeting,
+		branding,
+		branding,
+		branding,
+	)
+}

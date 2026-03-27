@@ -36,7 +36,7 @@ type CentralUserGrantRequest struct {
 	LastName        string      `json:"lastName"`
 	PIN             string      `json:"pin"`
 	Systems         interface{} `json:"systems"`         // can be "*" or array of system IDs
-	Talkgroups      interface{} `json:"talkgroups"`       // can be "*" or array of talkgroup IDs
+	Talkgroups      interface{} `json:"talkgroups"`      // can be "*" or array of talkgroup IDs
 	GroupID         *uint64     `json:"group_id"`        // optional user group ID
 	ConnectionLimit uint        `json:"connectionLimit"` // 0 = unlimited
 }
@@ -382,10 +382,10 @@ func (api *Api) CentralWebhookSystemsTalkgroupsGroupsHandler(w http.ResponseWrit
 				}
 			}
 			talkgroups = append(talkgroups, map[string]interface{}{
-				"id":          tg.TalkgroupRef,
-				"label":       tg.Label,
-				"name":        tg.Name,
-				"tag":         tagLabel,
+				"id":    tg.TalkgroupRef,
+				"label": tg.Label,
+				"name":  tg.Name,
+				"tag":   tagLabel,
 			})
 		}
 
@@ -409,9 +409,9 @@ func (api *Api) CentralWebhookSystemsTalkgroupsGroupsHandler(w http.ResponseWrit
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":     "ok",
-		"systems":    systemsList,
-		"groups":     groupsList,
+		"status":  "ok",
+		"systems": systemsList,
+		"groups":  groupsList,
 	})
 }
 
@@ -501,14 +501,14 @@ func parseJSONStringOrNumberID(raw json.RawMessage) string {
 // canonical identifier stored as centralManagementServerID and sent on TLR register/heartbeat.
 // server_id is still accepted when rr_system_id is omitted (backward compatibility).
 type CentralManagementPairRequest struct {
-	AdminPassword         string          `json:"admin_password"`
-	NewAdminPassword      string          `json:"new_admin_password,omitempty"` // if set, scanner admin password is changed to this after a successful pair
-	CentralManagementURL  string          `json:"central_management_url"`
-	APIKey                string          `json:"api_key"`
-	ServerName            string          `json:"server_name"`
-	ServerID              string          `json:"server_id"`
-	RrSystemID            json.RawMessage `json:"rr_system_id,omitempty"`
-	ServerURL             string          `json:"server_url"` // the TLR server's own public URL, so it can register back correctly
+	AdminPassword        string          `json:"admin_password"`
+	NewAdminPassword     string          `json:"new_admin_password,omitempty"` // if set, scanner admin password is changed to this after a successful pair
+	CentralManagementURL string          `json:"central_management_url"`
+	APIKey               string          `json:"api_key"`
+	ServerName           string          `json:"server_name"`
+	ServerID             string          `json:"server_id"`
+	RrSystemID           json.RawMessage `json:"rr_system_id,omitempty"`
+	ServerURL            string          `json:"server_url"` // the TLR server's own public URL, so it can register back correctly
 }
 
 // PairWithCentralManagementHandler is called by the Central Management backend to authenticate
@@ -950,7 +950,7 @@ func (api *Api) CentralWebhookSetHydraConfigHandler(w http.ResponseWriter, r *ht
 	}
 
 	var req struct {
-		HydraAPIKey              string `json:"hydra_api_key"`
+		HydraAPIKey               string `json:"hydra_api_key"`
 		HydraTranscriptionEnabled bool   `json:"hydra_transcription_enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -962,7 +962,7 @@ func (api *Api) CentralWebhookSetHydraConfigHandler(w http.ResponseWriter, r *ht
 	api.Controller.Options.mutex.Lock()
 	api.Controller.Options.HydraAPIKey = req.HydraAPIKey
 	api.Controller.Options.HydraTranscriptionEnabled = req.HydraTranscriptionEnabled
-	
+
 	// If Hydra transcription is enabled, enable transcription and set provider to "hydra"
 	if req.HydraTranscriptionEnabled && req.HydraAPIKey != "" {
 		api.Controller.Options.TranscriptionConfig.Enabled = true

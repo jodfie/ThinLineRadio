@@ -98,6 +98,9 @@ type Controller struct {
 	authMutexes      map[uint64]*sync.Mutex // Key: user ID
 	authMutexesMutex sync.Mutex
 
+	// Stop channel for the system health monitoring ticker (StartSystemHealthMonitoring)
+	healthMonitorStop chan struct{}
+
 	// Rate limiting
 	RateLimiter         *RateLimiter
 	LoginAttemptTracker *LoginAttemptTracker
@@ -954,10 +957,15 @@ func (controller *Controller) processToneDetectionAsync(toneDetectionCall *Call,
 				duration, toneDetectionCall.Id, systemId, talkgroupRef, len(toneDetectionCall.Audio)))
 	}
 
-	// Update the original call object with the results
+	// Propagate tone results back to the original call.
 	if toneDetectionCall.ToneSequence != nil {
 		originalCall.ToneSequence = toneDetectionCall.ToneSequence
 		originalCall.HasTones = toneDetectionCall.HasTones
+	}
+	// Propagate the cached duration so transcription and other downstream
+	// checks don't re-invoke ffprobe on the same audio.
+	if toneDetectionCall.Duration > 0 && originalCall.Duration == 0 {
+		originalCall.Duration = toneDetectionCall.Duration
 	}
 }
 
@@ -1013,7 +1021,7 @@ func (controller *Controller) processToneDetection(call *Call) {
 		for i, tone := range toneSequence.Tones {
 			toneFreqs[i] = fmt.Sprintf("%.1f Hz (%.2fs)", tone.Frequency, tone.Duration)
 		}
-		audioDuration, err := controller.getAudioDuration(call.Audio, call.AudioMime)
+		audioDuration, err := controller.getCallDuration(call)
 		if err != nil {
 			controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("failed to get audio duration for call %d: %v", call.Id, err))
 			audioDuration = 0.0
@@ -1150,6 +1158,24 @@ func (controller *Controller) processToneDetection(call *Call) {
 	}
 }
 
+// pruneAuthMutexes removes entries from authMutexes for user IDs that no longer exist.
+// Called periodically by the scheduler to prevent unbounded map growth.
+func (controller *Controller) pruneAuthMutexes() {
+	liveIDs := make(map[uint64]struct{})
+	for _, u := range controller.Users.GetAllUsers() {
+		liveIDs[u.Id] = struct{}{}
+	}
+
+	controller.authMutexesMutex.Lock()
+	defer controller.authMutexesMutex.Unlock()
+
+	for id := range controller.authMutexes {
+		if _, alive := liveIDs[id]; !alive {
+			delete(controller.authMutexes, id)
+		}
+	}
+}
+
 // getAudioDuration gets the actual audio duration using ffprobe
 // Returns duration in seconds and an error if ffprobe fails
 // This function requires ffprobe to be installed and working - no fallback estimation
@@ -1217,6 +1243,20 @@ func (controller *Controller) getAudioDuration(audio []byte, audioMime string) (
 	return duration, nil
 }
 
+// getCallDuration returns the audio duration for a call, computing it with ffprobe on the
+// first invocation and caching the result on call.Duration for all subsequent calls.
+// This avoids spawning multiple ffprobe processes for the same call across the pipeline.
+func (controller *Controller) getCallDuration(call *Call) (float64, error) {
+	if call.Duration > 0 {
+		return call.Duration, nil
+	}
+	d, err := controller.getAudioDuration(call.Audio, call.AudioMime)
+	if err == nil && d > 0 {
+		call.Duration = d
+	}
+	return d, err
+}
+
 // isToneOnlyCall determines if a call contains only tones (no voice/audio content)
 // This is a heuristic: if the call is very short (< 3 seconds) or will likely not have voice
 func (controller *Controller) isToneOnlyCall(call *Call) bool {
@@ -1225,8 +1265,8 @@ func (controller *Controller) isToneOnlyCall(call *Call) bool {
 	// For now, if call has tones and no transcript yet, we'll check again after transcription
 	// But if it's very short, assume tone-only
 
-	// Check audio duration using ffprobe
-	audioDuration, err := controller.getAudioDuration(call.Audio, call.AudioMime)
+	// Check audio duration
+	audioDuration, err := controller.getCallDuration(call)
 	if err != nil {
 		// If we can't get duration, we can't determine if it's tone-only
 		// Log the error but don't assume it's tone-only
@@ -1718,7 +1758,7 @@ func (controller *Controller) checkAndAttachPendingTones(call *Call) bool {
 	// Cross-talkgroup minimum duration check: filter out mic clicks on the linked voice channel.
 	// Only applies when the pending entry has MinVoiceDurationSeconds > 0 (cross-TGID entries).
 	if pending.MinVoiceDurationSeconds > 0 {
-		dur, durErr := controller.getAudioDuration(call.Audio, call.AudioMime)
+		dur, durErr := controller.getCallDuration(call)
 		if durErr != nil || dur < float64(pending.MinVoiceDurationSeconds) {
 			controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf(
 				"cross-talkgroup: skipping voice call %d (%.1fs) — shorter than minimum %.0fs, treating as mic click",
@@ -1796,7 +1836,7 @@ func (controller *Controller) checkAndAttachPendingTones(call *Call) bool {
 	}
 	controller.pendingTonesMutex.Unlock()
 
-	audioDuration, err := controller.getAudioDuration(call.Audio, call.AudioMime)
+	audioDuration, err := controller.getCallDuration(call)
 	if err != nil {
 		controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("failed to get audio duration for call %d: %v", call.Id, err))
 		audioDuration = 0.0
@@ -1851,8 +1891,8 @@ func (controller *Controller) callHasVoice(call *Call) bool {
 		return false
 	}
 
-	// Get audio duration using ffprobe
-	audioDuration, err := controller.getAudioDuration(call.Audio, call.AudioMime)
+	// Get audio duration
+	audioDuration, err := controller.getCallDuration(call)
 	if err != nil {
 		// If we can't get duration, we can't determine if it has voice
 		// Log the error but assume it might have voice if transcription is in progress
@@ -2309,7 +2349,7 @@ func (controller *Controller) queueTranscriptionIfNeeded(call *Call) {
 	if minDuration > 0 {
 		// Check duration in a separate goroutine to avoid blocking
 		go func() {
-			audioDuration, err := controller.getAudioDuration(call.Audio, call.AudioMime)
+			audioDuration, err := controller.getCallDuration(call)
 			if err != nil {
 				// ffprobe failed - log but don't block
 				controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("ffprobe failed for call %d (will skip transcription): %v", call.Id, err))
@@ -2718,30 +2758,24 @@ func (controller *Controller) sendAvailableCallsToClient(client *Client) {
 		controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("sendAvailableCallsToClient query failed: %v", err))
 		return
 	}
+	defer rows.Close()
 
-	// Collect all IDs before closing the cursor so that GetCall (which opens its
-	// own transaction) does not compete for connections while the outer rows are
-	// still held open. Without this, up to 1000 concurrent transactions would be
-	// in flight simultaneously against the pool.
-	type callRef struct {
-		id        uint64
-		timestamp int64
-	}
-	var callRefs []callRef
+	// Collect all IDs then fetch them in 3 bulk queries instead of N×2 individual
+	// GetCall round-trips (1 transaction + 2 queries each = up to 3000 DB ops saved
+	// for a full 1000-call backlog).
+	var ids []uint64
 	for rows.Next() {
-		var ref callRef
-		if err = rows.Scan(&ref.id, &ref.timestamp); err != nil {
-			continue
+		var id uint64
+		var ts int64
+		if err = rows.Scan(&id, &ts); err == nil {
+			ids = append(ids, id)
 		}
-		callRefs = append(callRefs, ref)
 	}
 	rows.Close()
 
-	for _, ref := range callRefs {
-		call, err := controller.Calls.GetCall(ref.id)
-		if err != nil || call == nil {
-			continue
-		}
+	backlogCalls := controller.Calls.GetCallsBulk(ids)
+
+	for _, call := range backlogCalls {
 
 		if controller.requiresUserAuth() {
 			if client.User == nil || !controller.userHasAccess(client.User, call) {
@@ -2937,6 +2971,8 @@ func (controller *Controller) Start() error {
 		log.Printf("base folder is %s\n", controller.Config.BaseDir)
 	}
 
+	startupStart := time.Now()
+
 	// Clear any pending tones and waiting short calls from previous session
 	controller.clearPendingState()
 
@@ -2944,13 +2980,16 @@ func (controller *Controller) Start() error {
 	controller.resetStuckTranscriptions()
 
 	// Batch database reads for better performance
+	dbReadStart := time.Now()
 	if err = controller.readAllData(); err != nil {
 		return err
 	}
+	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("startup: database load completed in %s", time.Since(dbReadStart).Round(time.Millisecond)))
 
-	// Fetch Radio Reference API key from relay server if not already stored
+	// Fetch Radio Reference API key from relay server if not already stored.
+	// Run in background — the server does not need this key to start accepting calls.
 	if controller.Options.RadioReferenceAPIKey == "" {
-		controller.fetchRadioReferenceAPIKey()
+		go controller.fetchRadioReferenceAPIKey()
 	}
 
 	// Initialize transcription queue after options are loaded
@@ -3047,6 +3086,7 @@ func (controller *Controller) Start() error {
 		emitClientsCount := func() {
 			if timer == nil {
 				timer = time.AfterFunc(time.Duration(5)*time.Second, func() {
+					timer = nil
 					controller.LogClientsCount()
 					if controller.Options.ShowListenersCount {
 						controller.Clients.EmitListenersCount()
@@ -3067,12 +3107,17 @@ func (controller *Controller) Start() error {
 				emitClientsCount()
 
 			case <-ctx.Done():
+				if timer != nil {
+					timer.Stop()
+				}
 				return
 			}
 		}
 	}()
 
 	controller.Dirwatches.Start(controller)
+
+	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("startup: server ready in %s", time.Since(startupStart).Round(time.Millisecond)))
 
 	return nil
 }
@@ -3103,8 +3148,14 @@ func (controller *Controller) readAllData() error {
 
 	readFunc := func(fn func() error, name string) {
 		defer wg.Done()
+		t := time.Now()
 		if err := fn(); err != nil {
 			errChan <- fmt.Errorf("failed to read %s: %v", name, err)
+			return
+		}
+		elapsed := time.Since(t)
+		if elapsed > 500*time.Millisecond {
+			controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("startup: loaded %s in %s", name, elapsed.Round(time.Millisecond)))
 		}
 	}
 
@@ -3342,6 +3393,16 @@ func (controller *Controller) Terminate() {
 		case <-time.After(10 * time.Second):
 			log.Println("Worker shutdown timeout reached (10s), proceeding with shutdown")
 		}
+	}
+
+	// Stop scheduler
+	if controller.Scheduler != nil {
+		controller.Scheduler.Stop()
+	}
+
+	// Stop system health monitoring ticker
+	if controller.healthMonitorStop != nil {
+		close(controller.healthMonitorStop)
 	}
 
 	// Stop auto-updater background goroutine

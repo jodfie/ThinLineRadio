@@ -228,6 +228,20 @@ func (queue *TranscriptionQueue) worker(workerId int) {
 			}
 
 			queue.updateCallTranscriptionStatus(job.CallId, "failed", errorMsg)
+
+			// Release the pending-tones lock so future voice calls can still attach tones.
+			// Without this, a transcription failure would permanently lock the talkgroup's
+			// pending tones until the server restarts.
+			if call != nil && call.System != nil && call.Talkgroup != nil {
+				key := fmt.Sprintf("%d:%d", call.System.Id, call.Talkgroup.Id)
+				queue.controller.pendingTonesMutex.Lock()
+				if pending, exists := queue.controller.pendingTones[key]; exists && pending != nil && pending.Locked {
+					pending.Locked = false
+					queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("transcription worker %d: unlocked pending tones for talkgroup %d after transcription failure (call %d)", workerId, call.Talkgroup.TalkgroupRef, job.CallId))
+				}
+				queue.controller.pendingTonesMutex.Unlock()
+			}
+
 			continue
 		}
 
@@ -243,6 +257,12 @@ func (queue *TranscriptionQueue) worker(workerId int) {
 		}
 		go queue.storeTranscription(job.CallId, cleanedResult)
 
+		// Capture the pre-transcription call for the post-transcription goroutine.
+		// Tone detection has almost certainly completed by the time transcription finishes,
+		// so we re-fetch HasTones from DB only once (at the HasTones check below) rather
+		// than fetching the entire call a second time here.
+		postCall := call
+
 		// After transcription completes, check if we should attach pending tones to this call
 		// or if this call has its own tones with voice (trigger alert)
 		go func() {
@@ -251,9 +271,8 @@ func (queue *TranscriptionQueue) worker(workerId int) {
 			jobSystemId := job.SystemId
 			jobTalkgroupId := job.TalkgroupId
 
-			// Load the call to check for pending tones
-			call, err := queue.controller.Calls.GetCall(job.CallId)
-			if err == nil && call != nil {
+			if postCall != nil {
+				call := postCall
 				// Update call with cleaned transcript
 				call.Transcript = cleanedTranscript
 				call.TranscriptionStatus = "completed"
@@ -580,15 +599,12 @@ func (queue *TranscriptionQueue) processKeywords(callId uint64, systemId uint64,
 			var eligibleUserIds []uint64
 			var usersWithToneAlerts []uint64 // Users who have both keyword and tone alerts enabled
 
+			// Batch-store all keyword matches for all users in one INSERT instead of
+			// one INSERT per match per user (reduces N×M round-trips to 1).
+			queue.storeKeywordMatchesBatch(callId, group.userIds, matches)
+
 			for _, userId := range group.userIds {
 				queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("found %d keyword matches for user %d on call %d", len(matches), userId, callId))
-
-				// Create keyword matches in database
-				for _, match := range matches {
-					match.UserId = userId
-					match.CallId = callId
-					queue.storeKeywordMatch(&match)
-				}
 
 				// Trigger alerts (creates DB records and WebSocket notifications)
 				go queue.controller.AlertEngine.TriggerKeywordAlerts(callId, systemId, talkgroupId, userId, matches, result)
@@ -672,6 +688,45 @@ func (queue *TranscriptionQueue) storeKeywordMatch(match *KeywordMatch) {
 		_, err := queue.controller.Database.Sql.Exec(query, match.Keyword, match.Context)
 		if err != nil {
 			queue.controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("failed to store keyword match: %v", err))
+		}
+	}
+}
+
+// storeKeywordMatchesBatch stores all keyword matches for all users in a single
+// multi-row INSERT, replacing the previous N×M individual INSERT approach.
+func (queue *TranscriptionQueue) storeKeywordMatchesBatch(callId uint64, userIds []uint64, matches []KeywordMatch) {
+	if len(matches) == 0 || len(userIds) == 0 {
+		return
+	}
+
+	// Build parameter slices for a single VALUES (...),(...) INSERT.
+	// Total rows = len(userIds) × len(matches).
+	var args []any
+	var placeholders []string
+
+	if queue.controller.Database.Config.DbType == DbTypePostgresql {
+		idx := 1
+		for _, userId := range userIds {
+			for _, match := range matches {
+				placeholders = append(placeholders, fmt.Sprintf("(%d, %d, $%d, $%d, %d, false)", callId, userId, idx, idx+1, match.Position))
+				args = append(args, match.Keyword, match.Context)
+				idx += 2
+			}
+		}
+		query := `INSERT INTO "keywordMatches" ("callId", "userId", "keyword", "context", "position", "alerted") VALUES ` + strings.Join(placeholders, ", ")
+		if _, err := queue.controller.Database.Sql.Exec(query, args...); err != nil {
+			queue.controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("failed to batch-store keyword matches: %v", err))
+		}
+	} else {
+		for _, userId := range userIds {
+			for _, match := range matches {
+				placeholders = append(placeholders, fmt.Sprintf("(%d, %d, ?, ?, %d, false)", callId, userId, match.Position))
+				args = append(args, match.Keyword, match.Context)
+			}
+		}
+		query := `INSERT INTO "keywordMatches" ("callId", "userId", "keyword", "context", "position", "alerted") VALUES ` + strings.Join(placeholders, ", ")
+		if _, err := queue.controller.Database.Sql.Exec(query, args...); err != nil {
+			queue.controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("failed to batch-store keyword matches: %v", err))
 		}
 	}
 }

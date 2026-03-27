@@ -2331,7 +2331,7 @@ func (admin *Admin) GetConfig() map[string]any {
 		deviceTokenList = append(deviceTokenList, map[string]any{
 			"id":        token.Id,
 			"userId":    token.UserId,
-			"token":     token.Token, // OneSignal player ID
+			"token":     token.Token, // Legacy field (kept for reference)
 			"platform":  token.Platform,
 			"sound":     token.Sound,
 			"createdAt": token.CreatedAt,

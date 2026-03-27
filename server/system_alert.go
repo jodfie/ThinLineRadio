@@ -154,11 +154,10 @@ func (controller *Controller) SendSystemAlertNotification(title, message, alertT
 	for _, userId := range targetUserIds {
 		tokens := controller.DeviceTokens.GetByUser(userId)
 		for _, device := range tokens {
-			// Prefer FCM token (new system), fall back to OneSignal token (legacy)
-			token := device.FCMToken
-			if token == "" {
-				token = device.Token
+			if isLegacyOneSignalToken(device) {
+				continue // Skip; will be cleaned up at next push attempt
 			}
+			token := device.FCMToken
 			if token == "" {
 				continue
 			}
@@ -751,11 +750,18 @@ func (controller *Controller) RestartNoAudioMonitoringForSystem(systemId uint64)
 // StartSystemHealthMonitoring starts periodic system health checks
 func (controller *Controller) StartSystemHealthMonitoring() {
 	// Start hourly checks for transcription failures and tone detection issues
-	ticker := time.NewTicker(1 * time.Hour) // Check every hour
+	ticker := time.NewTicker(1 * time.Hour)
+	controller.healthMonitorStop = make(chan struct{})
 	go func() {
-		for range ticker.C {
-			controller.MonitorTranscriptionFailures()
-			controller.MonitorToneDetectionIssues()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				controller.MonitorTranscriptionFailures()
+				controller.MonitorToneDetectionIssues()
+			case <-controller.healthMonitorStop:
+				return
+			}
 		}
 	}()
 

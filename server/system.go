@@ -533,14 +533,10 @@ func (systems *Systems) GetScopedSystems(client *Client, groups *Groups, tags *T
 	return systemsMap
 }
 
+// Read loads all systems with their sites, talkgroups, and units using 4 bulk queries
+// instead of 3N+1 per-system queries. For large installations this reduces startup
+// time from O(systems) queries to a constant 4 queries regardless of system count.
 func (systems *Systems) Read(db *Database) error {
-	var (
-		err   error
-		query string
-		rows  *sql.Rows
-		tx    *sql.Tx
-	)
-
 	systems.mutex.Lock()
 	defer systems.mutex.Unlock()
 
@@ -548,65 +544,149 @@ func (systems *Systems) Read(db *Database) error {
 
 	formatError := errorFormatter("systems", "read")
 
-	if tx, err = db.Sql.Begin(); err != nil {
-		return formatError(err, "")
-	}
-
-	query = `SELECT "systemId", "autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes" FROM "systems"`
-	if rows, err = tx.Query(query); err != nil {
-		tx.Rollback()
+	// --- Query 1: systems ---
+	query := `SELECT "systemId", "autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes" FROM "systems"`
+	rows, err := db.Sql.Query(query)
+	if err != nil {
 		return formatError(err, query)
 	}
+	defer rows.Close()
 
+	systemById := make(map[uint64]*System)
 	for rows.Next() {
 		system := NewSystem()
 		var preferredApiKeyId sql.NullInt64
-
 		if err = rows.Scan(&system.Id, &system.AutoPopulate, &system.Blacklists, &system.Delay, &system.Label, &system.Order, &system.SystemRef, &system.Kind, &preferredApiKeyId, &system.NoAudioAlertsEnabled, &system.NoAudioThresholdMinutes); err != nil {
-			break
+			return formatError(err, query)
 		}
-
-		// Handle nullable preferredApiKeyId
 		if preferredApiKeyId.Valid {
 			id := uint64(preferredApiKeyId.Int64)
 			system.PreferredApiKeyId = &id
 		}
-
 		systems.List = append(systems.List, system)
+		systemById[system.Id] = system
 	}
-
 	rows.Close()
 
+	if len(systems.List) == 0 {
+		return nil
+	}
+
+	// --- Query 2: all sites (bulk, no per-system loop) ---
+	siteQuery := `SELECT "siteId", "systemId", "label", "order", "siteRef", "rfss", "frequencies", "preferred" FROM "sites" ORDER BY "systemId", "order"`
+	siteRows, err := db.Sql.Query(siteQuery)
 	if err != nil {
-		tx.Rollback()
-		return formatError(err, "")
+		return formatError(err, siteQuery)
+	}
+	defer siteRows.Close()
+
+	for siteRows.Next() {
+		site := NewSite()
+		var systemId uint64
+		var frequenciesJSON string
+		if err = siteRows.Scan(&site.Id, &systemId, &site.Label, &site.Order, &site.SiteRef, &site.RFSS, &frequenciesJSON, &site.Preferred); err != nil {
+			return formatError(err, siteQuery)
+		}
+		if len(frequenciesJSON) > 0 {
+			json.Unmarshal([]byte(frequenciesJSON), &site.Frequencies)
+		}
+		if site.Frequencies == nil {
+			site.Frequencies = []float64{}
+		}
+		if sys, ok := systemById[systemId]; ok {
+			sys.Sites.mutex.Lock()
+			sys.Sites.List = append(sys.Sites.List, site)
+			sys.Sites.mutex.Unlock()
+		}
+	}
+	siteRows.Close()
+
+	// Sort sites per system
+	for _, sys := range systems.List {
+		sort.Slice(sys.Sites.List, func(i, j int) bool {
+			return sys.Sites.List[i].Order < sys.Sites.List[j].Order
+		})
 	}
 
-	for _, system := range systems.List {
-		if err = system.Sites.ReadTx(tx, system.Id); err != nil {
-			break
-		}
-
-		if err = system.Talkgroups.ReadTx(tx, system.Id, db.Config.DbType); err != nil {
-			break
-		}
-
-		if err = system.Units.ReadTx(tx, system.Id); err != nil {
-			break
-		}
+	// --- Query 3: all talkgroups (bulk, no per-system loop) ---
+	var tgQuery string
+	if db.Config.DbType == DbTypePostgresql {
+		tgQuery = `SELECT t."talkgroupId", t."systemId", t."delay", t."frequency", t."label", t."name", t."order", t."tagId", t."talkgroupRef", t."type", t."toneDetectionEnabled", t."toneSets", t."preferredApiKeyId", t."excludeFromPreferredSite", t."toneDownstreamEnabled", t."toneDownstreamURL", t."toneDownstreamAPIKey", t."alertCooldownSeconds", t."linkedVoiceTalkgroupRef", t."linkedVoiceWindowSeconds", t."linkedVoiceMinDurationSeconds", STRING_AGG(CAST(COALESCE(tg."groupId", 0) AS text), ',') FROM "talkgroups" AS t LEFT JOIN "talkgroupGroups" AS tg ON tg."talkgroupId" = t."talkgroupId" GROUP BY t."talkgroupId", t."systemId", t."preferredApiKeyId", t."excludeFromPreferredSite", t."toneDownstreamEnabled", t."toneDownstreamURL", t."toneDownstreamAPIKey", t."alertCooldownSeconds", t."linkedVoiceTalkgroupRef", t."linkedVoiceWindowSeconds", t."linkedVoiceMinDurationSeconds" ORDER BY t."systemId", t."order", t."talkgroupId"`
+	} else {
+		tgQuery = `SELECT t."talkgroupId", t."systemId", t."delay", t."frequency", t."label", t."name", t."order", t."tagId", t."talkgroupRef", t."type", t."toneDetectionEnabled", t."toneSets", t."preferredApiKeyId", t."excludeFromPreferredSite", t."toneDownstreamEnabled", t."toneDownstreamURL", t."toneDownstreamAPIKey", t."alertCooldownSeconds", t."linkedVoiceTalkgroupRef", t."linkedVoiceWindowSeconds", t."linkedVoiceMinDurationSeconds", GROUP_CONCAT(COALESCE(tg."groupId", 0)) FROM "talkgroups" AS t LEFT JOIN "talkgroupGroups" AS tg ON tg."talkgroupId" = t."talkgroupId" GROUP BY t."talkgroupId" ORDER BY t."systemId", t."order", t."talkgroupId"`
 	}
 
+	tgRows, err := db.Sql.Query(tgQuery)
 	if err != nil {
-		tx.Rollback()
-		return formatError(err, "")
+		return formatError(err, tgQuery)
+	}
+	defer tgRows.Close()
+
+	for tgRows.Next() {
+		talkgroup := NewTalkgroup()
+		var systemId uint64
+		var toneSetsJson string
+		var groupIds string
+		var preferredApiKeyId sql.NullInt64
+
+		if err = tgRows.Scan(&talkgroup.Id, &systemId, &talkgroup.Delay, &talkgroup.Frequency, &talkgroup.Label, &talkgroup.Name, &talkgroup.Order, &talkgroup.TagId, &talkgroup.TalkgroupRef, &talkgroup.Kind, &talkgroup.ToneDetectionEnabled, &toneSetsJson, &preferredApiKeyId, &talkgroup.ExcludeFromPreferredSite, &talkgroup.ToneDownstreamEnabled, &talkgroup.ToneDownstreamURL, &talkgroup.ToneDownstreamAPIKey, &talkgroup.AlertCooldownSeconds, &talkgroup.LinkedVoiceTalkgroupRef, &talkgroup.LinkedVoiceWindowSeconds, &talkgroup.LinkedVoiceMinDurationSeconds, &groupIds); err != nil {
+			return formatError(err, tgQuery)
+		}
+		if preferredApiKeyId.Valid {
+			id := uint64(preferredApiKeyId.Int64)
+			talkgroup.PreferredApiKeyId = &id
+		}
+		if toneSetsJson != "" && toneSetsJson != "[]" {
+			if toneSets, err := ParseToneSets(toneSetsJson); err == nil {
+				talkgroup.ToneSets = toneSets
+			}
+		}
+		for _, s := range strings.Split(groupIds, ",") {
+			if i, err := strconv.Atoi(s); err == nil && i > 0 {
+				talkgroup.GroupIds = append(talkgroup.GroupIds, uint64(i))
+			}
+		}
+		if sys, ok := systemById[systemId]; ok {
+			sys.Talkgroups.mutex.Lock()
+			sys.Talkgroups.List = append(sys.Talkgroups.List, talkgroup)
+			sys.Talkgroups.mutex.Unlock()
+		}
+	}
+	tgRows.Close()
+
+	// Sort talkgroups per system
+	for _, sys := range systems.List {
+		sort.SliceStable(sys.Talkgroups.List, func(i, j int) bool {
+			if sys.Talkgroups.List[i].Order != sys.Talkgroups.List[j].Order {
+				return sys.Talkgroups.List[i].Order < sys.Talkgroups.List[j].Order
+			}
+			return sys.Talkgroups.List[i].Id < sys.Talkgroups.List[j].Id
+		})
 	}
 
-	if err = tx.Commit(); err != nil {
-		tx.Rollback()
-		return formatError(err, "")
+	// --- Query 4: all units (bulk, no per-system loop) ---
+	unitQuery := `SELECT "unitId", "systemId", "label", "order", "unitRef", "unitFrom", "unitTo" FROM "units" ORDER BY "systemId", "order"`
+	unitRows, err := db.Sql.Query(unitQuery)
+	if err != nil {
+		return formatError(err, unitQuery)
 	}
+	defer unitRows.Close()
 
-	sort.Slice(systems.List, func(i int, j int) bool {
+	for unitRows.Next() {
+		unit := NewUnit()
+		var systemId uint64
+		if err = unitRows.Scan(&unit.Id, &systemId, &unit.Label, &unit.Order, &unit.UnitRef, &unit.UnitFrom, &unit.UnitTo); err != nil {
+			return formatError(err, unitQuery)
+		}
+		if sys, ok := systemById[systemId]; ok {
+			sys.Units.mutex.Lock()
+			sys.Units.List = append(sys.Units.List, unit)
+			sys.Units.mutex.Unlock()
+		}
+	}
+	unitRows.Close()
+
+	sort.Slice(systems.List, func(i, j int) bool {
 		return systems.List[i].Order < systems.List[j].Order
 	})
 

@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -27,12 +28,17 @@ type AlertEngine struct {
 	controller *Controller
 
 	// cooldownMu protects lastAlertFiredAt.
-	cooldownMu      sync.Mutex
+	cooldownMu sync.Mutex
 	// lastAlertFiredAt tracks when the most recent tone alert notification was sent
 	// for each talkgroup (keyed by talkgroupId).  Used to enforce per-talkgroup
 	// alert cooldowns so that departments who double-page don't generate duplicate
 	// push notifications within the configured window.
 	lastAlertFiredAt map[uint64]time.Time
+
+	// lastCleanupUnix is the Unix timestamp (seconds) of the most recent
+	// cleanupOldAlerts run.  Compared atomically so that concurrent createAlert
+	// calls don't launch redundant cleanup goroutines.
+	lastCleanupUnix atomic.Int64
 }
 
 // NewAlertEngine creates a new alert engine
@@ -741,30 +747,46 @@ func (engine *AlertEngine) createAlert(alert *AlertRecord) {
 		engine.controller.DebugLogger.LogAlert(alert.AlertType, alert.CallId, alert.SystemId, alert.TalkgroupId, details)
 	}
 
-	// Cleanup old alerts
-	go engine.cleanupOldAlerts()
+	// Cleanup old alerts at most once per hour. The scheduler also runs this
+	// hourly, so this guard prevents a goroutine storm when many alerts fire
+	// in a short window (e.g. mass keyword hits or tone storms).
+	now := time.Now().Unix()
+	last := engine.lastCleanupUnix.Load()
+	if now-last >= 3600 && engine.lastCleanupUnix.CompareAndSwap(last, now) {
+		go engine.cleanupOldAlerts()
+	}
 }
 
-// sendAlertNotification sends a WebSocket notification to the user
+// sendAlertNotification sends a WebSocket notification to the user.
+// The clients map lock is held only long enough to snapshot matching clients;
+// the actual channel sends happen after the lock is released so that slow or
+// full client queues cannot block other goroutines from acquiring the lock.
 func (engine *AlertEngine) sendAlertNotification(userId uint64, callId uint64, alertType string) {
+	// Snapshot matching clients under the shortest possible lock window.
 	engine.controller.Clients.mutex.Lock()
-	defer engine.controller.Clients.mutex.Unlock()
-
-	// Find all clients for this user
+	var targets []*Client
 	for client := range engine.controller.Clients.Map {
 		if client.User != nil && client.User.Id == userId {
-			// Send alert notification message
-			notification := map[string]any{
-				"type":      "alert",
-				"callId":    callId,
-				"alertType": alertType,
-			}
-			select {
-			case client.Send <- &Message{Command: MessageCommandAlert, Payload: notification}:
-				// Notification sent
-			default:
-				// Channel full, skip
-			}
+			targets = append(targets, client)
+		}
+	}
+	engine.controller.Clients.mutex.Unlock()
+
+	if len(targets) == 0 {
+		return
+	}
+
+	notification := map[string]any{
+		"type":      "alert",
+		"callId":    callId,
+		"alertType": alertType,
+	}
+	msg := &Message{Command: MessageCommandAlert, Payload: notification}
+	for _, client := range targets {
+		select {
+		case client.Send <- msg:
+		default:
+			// Channel full, skip
 		}
 	}
 }
@@ -787,4 +809,15 @@ func (engine *AlertEngine) cleanupOldAlerts() {
 	if _, err := engine.controller.Database.Sql.Exec(query, cutoffTime); err != nil {
 		engine.controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("failed to cleanup old alerts: %v", err))
 	}
+
+	// Prune lastAlertFiredAt entries that are older than the longest possible cooldown
+	// (capped at 24 hours) so the map doesn't grow unboundedly over time.
+	pruneBefore := time.Now().Add(-24 * time.Hour)
+	engine.cooldownMu.Lock()
+	for talkgroupId, firedAt := range engine.lastAlertFiredAt {
+		if firedAt.Before(pruneBefore) {
+			delete(engine.lastAlertFiredAt, talkgroupId)
+		}
+	}
+	engine.cooldownMu.Unlock()
 }

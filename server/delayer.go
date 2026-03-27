@@ -180,6 +180,7 @@ func (delayer *Delayer) Start() error {
 	if rows, err = delayer.controller.Database.Sql.Query(query); err != nil {
 		return formatError(err, query)
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var (
@@ -193,8 +194,6 @@ func (delayer *Delayer) Start() error {
 
 		callIds[callId] = timestamp
 	}
-
-	rows.Close()
 
 	if err != nil {
 		return formatError(err, "")

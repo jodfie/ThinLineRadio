@@ -25,9 +25,9 @@ import (
 type DeviceToken struct {
 	Id        uint64
 	UserId    uint64
-	Token     string // OneSignal player ID (legacy) or unique device identifier
-	FCMToken  string // Firebase Cloud Messaging token
-	PushType  string // "onesignal" or "fcm"
+	Token     string // Legacy field; kept for DB compatibility. No longer used for push delivery.
+	FCMToken  string // Firebase Cloud Messaging token — the active push token.
+	PushType  string // "fcm"
 	Platform  string // "ios" or "android"
 	Sound     string // Notification sound preference
 	CreatedAt int64
@@ -36,15 +36,27 @@ type DeviceToken struct {
 
 type DeviceTokens struct {
 	mutex      sync.RWMutex
-	tokens     map[uint64]*DeviceToken // Map by device token ID
-	userTokens map[uint64][]*DeviceToken // Map user ID to their devices
+	tokens     map[uint64]*DeviceToken    // by device token ID
+	userTokens map[uint64][]*DeviceToken  // by user ID
+	// tokenIndex provides O(1) lookup by FCM token string.
+	// Used to efficiently clean up invalid tokens reported by the relay server
+	// without scanning all users.
+	tokenIndex map[string]*DeviceToken
 }
 
 func NewDeviceTokens() *DeviceTokens {
 	return &DeviceTokens{
 		tokens:     make(map[uint64]*DeviceToken),
 		userTokens: make(map[uint64][]*DeviceToken),
+		tokenIndex: make(map[string]*DeviceToken),
 	}
+}
+
+// GetByToken returns the DeviceToken whose token value matches the given string, or nil.
+func (dt *DeviceTokens) GetByToken(tokenValue string) *DeviceToken {
+	dt.mutex.RLock()
+	defer dt.mutex.RUnlock()
+	return dt.tokenIndex[tokenValue]
 }
 
 func (dt *DeviceTokens) Load(db *Database) error {
@@ -59,6 +71,7 @@ func (dt *DeviceTokens) Load(db *Database) error {
 
 	dt.tokens = make(map[uint64]*DeviceToken)
 	dt.userTokens = make(map[uint64][]*DeviceToken)
+	dt.tokenIndex = make(map[string]*DeviceToken)
 
 	tokenCount := 0
 	userTokenCounts := make(map[uint64]int)
@@ -89,11 +102,19 @@ func (dt *DeviceTokens) Load(db *Database) error {
 		if pushType != nil {
 			token.PushType = *pushType
 		} else {
-			token.PushType = "onesignal" // Default to OneSignal for existing tokens
+			token.PushType = "onesignal"
 		}
 
 		dt.tokens[token.Id] = token
 		dt.userTokens[token.UserId] = append(dt.userTokens[token.UserId], token)
+		// Index by FCMToken (the value we send to the relay server) so that
+		// invalid-token responses can be matched back to the right record.
+		if token.FCMToken != "" {
+			dt.tokenIndex[token.FCMToken] = token
+		} else if token.Token != "" {
+			// Legacy OneSignal record — still index it so it can be cleaned up.
+			dt.tokenIndex[token.Token] = token
+		}
 		tokenCount++
 		userTokenCounts[token.UserId]++
 		uniqueUsers[token.UserId] = true
@@ -147,6 +168,11 @@ func (dt *DeviceTokens) Add(token *DeviceToken, db *Database) error {
 	token.Id = uint64(tokenId)
 	dt.tokens[token.Id] = token
 	dt.userTokens[token.UserId] = append(dt.userTokens[token.UserId], token)
+	if token.FCMToken != "" {
+		dt.tokenIndex[token.FCMToken] = token
+	} else if token.Token != "" {
+		dt.tokenIndex[token.Token] = token
+	}
 
 	return nil
 }
@@ -176,6 +202,11 @@ func (dt *DeviceTokens) Update(token *DeviceToken, db *Database) error {
 	}
 
 	dt.tokens[token.Id] = token
+	if token.FCMToken != "" {
+		dt.tokenIndex[token.FCMToken] = token
+	} else if token.Token != "" {
+		dt.tokenIndex[token.Token] = token
+	}
 	return nil
 }
 
@@ -202,6 +233,12 @@ func (dt *DeviceTokens) Delete(id uint64, db *Database) error {
 	}
 
 	delete(dt.tokens, id)
+	if token.FCMToken != "" {
+		delete(dt.tokenIndex, token.FCMToken)
+	}
+	if token.Token != "" {
+		delete(dt.tokenIndex, token.Token)
+	}
 
 	// Remove from userTokens map
 	userTokens := dt.userTokens[token.UserId]
@@ -242,60 +279,52 @@ func (dt *DeviceTokens) FindByUserAndToken(userId uint64, token string) *DeviceT
 	return nil
 }
 
-// RemoveAllOneSignalTokensForUser removes all OneSignal tokens for a user
-// This should be called when a user registers an FCM token
-func (dt *DeviceTokens) RemoveAllOneSignalTokensForUser(userId uint64, db *Database) error {
+// RemoveAllLegacyTokensForUser removes all device tokens that do not have an FCM token
+// (i.e. old OneSignal registrations). Called when a user successfully registers via FCM
+// so stale tokens are not left in the database.
+func (dt *DeviceTokens) RemoveAllLegacyTokensForUser(userId uint64, db *Database) error {
 	dt.mutex.Lock()
 	defer dt.mutex.Unlock()
 
 	userTokens := dt.userTokens[userId]
-	if userTokens == nil {
-		return nil // No tokens for this user
+	if len(userTokens) == 0 {
+		return nil
 	}
 
-	// Collect OneSignal token IDs to delete
 	var toDelete []uint64
 	for _, t := range userTokens {
-		if t.PushType == "onesignal" || t.PushType == "" {
+		if t.FCMToken == "" || t.PushType == "onesignal" {
 			toDelete = append(toDelete, t.Id)
 		}
 	}
-
 	if len(toDelete) == 0 {
-		return nil // No OneSignal tokens to delete
+		return nil
 	}
 
-	log.Printf("DeviceTokens.RemoveAllOneSignalTokensForUser: removing %d OneSignal tokens for user %d", len(toDelete), userId)
+	log.Printf("DeviceTokens.RemoveAllLegacyTokensForUser: removing %d legacy token(s) for user %d", len(toDelete), userId)
 
-	// Delete from database
 	for _, id := range toDelete {
-		_, err := db.Sql.Exec(`DELETE FROM "deviceTokens" WHERE "deviceTokenId" = $1`, id)
-		if err != nil {
-			log.Printf("DeviceTokens.RemoveAllOneSignalTokensForUser: error deleting token %d: %v", id, err)
+		if _, err := db.Sql.Exec(`DELETE FROM "deviceTokens" WHERE "deviceTokenId" = $1`, id); err != nil {
+			log.Printf("DeviceTokens.RemoveAllLegacyTokensForUser: error deleting token %d: %v", id, err)
 			continue
 		}
 
-		// Remove from memory
-		token := dt.tokens[id]
-		if token != nil {
+		if token := dt.tokens[id]; token != nil {
 			delete(dt.tokens, id)
-
-			// Remove from userTokens map
-			updatedUserTokens := []*DeviceToken{}
+			if token.Token != "" {
+				delete(dt.tokenIndex, token.Token)
+			}
+			if token.FCMToken != "" {
+				delete(dt.tokenIndex, token.FCMToken)
+			}
+			updated := dt.userTokens[userId][:0]
 			for _, t := range dt.userTokens[userId] {
 				if t.Id != id {
-					updatedUserTokens = append(updatedUserTokens, t)
+					updated = append(updated, t)
 				}
 			}
-			dt.userTokens[userId] = updatedUserTokens
-
-			// Log deletion with truncated token
-			truncatedToken := token.Token
-			if len(truncatedToken) > 10 {
-				truncatedToken = truncatedToken[:10] + "..."
-			}
-			log.Printf("DeviceTokens.RemoveAllOneSignalTokensForUser: removed OneSignal token ID %d (token: %s, platform: %s)",
-				id, truncatedToken, token.Platform)
+			dt.userTokens[userId] = updated
+			log.Printf("DeviceTokens.RemoveAllLegacyTokensForUser: removed token ID %d (platform: %s)", id, token.Platform)
 		}
 	}
 

@@ -69,15 +69,28 @@ type User struct {
 
 type Users struct {
 	mutex sync.RWMutex
-	users map[uint64]*User
-	pins  map[string]*User
+	users       map[uint64]*User
+	pins        map[string]*User
+	// groupAdmins maps groupId → the group admin User for O(1) billing lookups.
+	// Maintained alongside users so push notification billing never has to scan
+	// the full user list just to find the admin's subscription status.
+	groupAdmins map[uint64]*User
 }
 
 func NewUsers() *Users {
 	return &Users{
-		users: make(map[uint64]*User),
-		pins:  make(map[string]*User),
+		users:       make(map[uint64]*User),
+		pins:        make(map[string]*User),
+		groupAdmins: make(map[uint64]*User),
 	}
+}
+
+// GetGroupAdmin returns the group admin for the given group ID in O(1) time,
+// or nil if the group has no admin recorded in memory.
+func (users *Users) GetGroupAdmin(groupId uint64) *User {
+	users.mutex.RLock()
+	defer users.mutex.RUnlock()
+	return users.groupAdmins[groupId]
 }
 
 const userPinByteLength = 10
@@ -533,7 +546,6 @@ func (users *Users) Add(user *User) error {
 	// For new users, don't store in memory until after database save
 	// The database will assign the real ID
 	if user.Id == 0 {
-		// Don't store in memory yet - will be stored after database save
 		return nil
 	}
 
@@ -541,6 +553,9 @@ func (users *Users) Add(user *User) error {
 	if user.Pin != "" {
 		user.Pin = strings.TrimSpace(user.Pin)
 		users.pins[user.Pin] = user
+	}
+	if user.IsGroupAdmin && user.UserGroupId > 0 {
+		users.groupAdmins[user.UserGroupId] = user
 	}
 	return nil
 }
@@ -553,14 +568,28 @@ func (users *Users) Update(user *User) error {
 	user.loadSystemScopes()
 	user.loadDelayMaps()
 
-	if existing, ok := users.users[user.Id]; ok && existing.Pin != "" && existing.Pin != user.Pin {
-		delete(users.pins, existing.Pin)
+	if existing, ok := users.users[user.Id]; ok {
+		if existing.Pin != "" && existing.Pin != user.Pin {
+			delete(users.pins, existing.Pin)
+		}
+		// If this user was previously the group admin for a different group, remove that entry.
+		if existing.IsGroupAdmin && existing.UserGroupId > 0 && existing.UserGroupId != user.UserGroupId {
+			delete(users.groupAdmins, existing.UserGroupId)
+		}
 	}
 
 	users.users[user.Id] = user
 	if user.Pin != "" {
 		user.Pin = strings.TrimSpace(user.Pin)
 		users.pins[user.Pin] = user
+	}
+	if user.IsGroupAdmin && user.UserGroupId > 0 {
+		users.groupAdmins[user.UserGroupId] = user
+	} else if !user.IsGroupAdmin {
+		// User was demoted from admin — remove from index if they were the admin.
+		if admin, ok := users.groupAdmins[user.UserGroupId]; ok && admin.Id == user.Id {
+			delete(users.groupAdmins, user.UserGroupId)
+		}
 	}
 	return nil
 }
@@ -572,6 +601,11 @@ func (users *Users) Remove(id uint64) error {
 	if user, ok := users.users[id]; ok {
 		if user.Pin != "" {
 			delete(users.pins, user.Pin)
+		}
+		if user.IsGroupAdmin && user.UserGroupId > 0 {
+			if admin, ok := users.groupAdmins[user.UserGroupId]; ok && admin.Id == id {
+				delete(users.groupAdmins, user.UserGroupId)
+			}
 		}
 		delete(users.users, id)
 	}
@@ -586,6 +620,7 @@ func (users *Users) Read(db *Database) error {
 
 	users.users = make(map[uint64]*User)
 	users.pins = make(map[string]*User)
+	users.groupAdmins = make(map[uint64]*User)
 
 	rows, err := db.Sql.Query(`SELECT "userId", "email", "password", "pin", "pinExpiresAt", "connectionLimit", "verified", "verificationToken", "createdAt", "lastLogin", "firstName", "lastName", "zipCode", "systems", "talkgroups", "delay", "systemDelays", "talkgroupDelays", "settings", "stripeCustomerId", "stripeSubscriptionId", "subscriptionStatus", "userGroupId", "isGroupAdmin", COALESCE("systemAdmin", false), "resetCode", "resetCodeExpires", "accountExpiresAt" FROM "users"`)
 	if err != nil {
@@ -674,11 +709,14 @@ func (users *Users) Read(db *Database) error {
 		user.loadSystemScopes()
 		user.loadDelayMaps()
 
-	users.users[user.Id] = user
-	if user.Pin != "" {
-		user.Pin = strings.TrimSpace(user.Pin)
-		users.pins[user.Pin] = user
-	}
+		users.users[user.Id] = user
+		if user.Pin != "" {
+			user.Pin = strings.TrimSpace(user.Pin)
+			users.pins[user.Pin] = user
+		}
+		if user.IsGroupAdmin && user.UserGroupId > 0 {
+			users.groupAdmins[user.UserGroupId] = user
+		}
 	}
 
 	return nil
@@ -974,6 +1012,9 @@ func (users *Users) SaveNewUser(user *User, db *Database) error {
 	if user.Pin != "" {
 		user.Pin = strings.TrimSpace(user.Pin)
 		users.pins[user.Pin] = user
+	}
+	if user.IsGroupAdmin && user.UserGroupId > 0 {
+		users.groupAdmins[user.UserGroupId] = user
 	}
 	users.mutex.Unlock()
 

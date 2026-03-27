@@ -78,6 +78,9 @@ func (scheduler *Scheduler) run() {
 	go func() {
 		scheduler.Controller.CleanupOldSystemAlerts()
 	}()
+
+	// Prune authMutexes entries for users that no longer exist
+	go scheduler.Controller.pruneAuthMutexes()
 }
 
 func (scheduler *Scheduler) Start() error {
@@ -116,6 +119,12 @@ func (scheduler *Scheduler) Stop() error {
 	scheduler.Ticker.Stop()
 	scheduler.Ticker = nil
 	scheduler.started = false
+
+	// Signal the goroutine to exit.
+	select {
+	case scheduler.cancel <- struct{}{}:
+	default:
+	}
 
 	return nil
 }

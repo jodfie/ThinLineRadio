@@ -25,6 +25,46 @@ import (
 	"time"
 )
 
+// isLegacyOneSignalToken returns true for device tokens that were registered via
+// OneSignal and can no longer receive notifications through the FCM-only pipeline.
+func isLegacyOneSignalToken(dt *DeviceToken) bool {
+	return dt.FCMToken == "" || dt.PushType == "onesignal"
+}
+
+// handleLegacyOneSignalToken deletes the stale OneSignal token from the database and,
+// if the owning user has an email address and hasn't been notified yet this call,
+// sends them an app-update email. The notifiedUsers set prevents sending multiple
+// emails when a user has several legacy devices.
+func (controller *Controller) handleLegacyOneSignalToken(dt *DeviceToken, notifiedUsers map[uint64]struct{}) {
+	// Delete from DB + memory
+	if err := controller.DeviceTokens.Delete(dt.Id, controller.Database); err != nil {
+		controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf(
+			"push notification: failed to delete legacy token %d for user %d: %v", dt.Id, dt.UserId, err))
+	} else {
+		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf(
+			"push notification: deleted legacy token %d for user %d (no FCM token)", dt.Id, dt.UserId))
+	}
+
+	// Send one email per user, regardless of how many legacy devices they have.
+	if _, alreadySent := notifiedUsers[dt.UserId]; alreadySent {
+		return
+	}
+	notifiedUsers[dt.UserId] = struct{}{}
+
+	user := controller.Users.GetUserById(dt.UserId)
+	if user == nil || user.Email == "" {
+		return
+	}
+
+	go func() {
+		if err := controller.EmailService.SendAppUpdateRequiredEmail(user); err != nil {
+			controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf(
+				"push notification: failed to send app update email to user %d (%s): %v",
+				user.Id, user.Email, err))
+		}
+	}()
+}
+
 // sendPushNotification sends a push notification to the relay server
 func (controller *Controller) sendPushNotification(userId uint64, alertType string, call *Call, systemLabel, talkgroupLabel string, toneSetName string, keywords []string) {
 	// Check if relay server API key is configured (URL is hardcoded)
@@ -48,31 +88,18 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 			var subscriptionStatus string
 
 			if group.BillingMode == "group_admin" {
-				// For group_admin mode, check the group admin's subscription status
-				// Find an admin in the group
-				allUsers := controller.Users.GetAllUsers()
-				foundAdmin := false
-				for _, admin := range allUsers {
-					if admin.UserGroupId == group.Id && admin.IsGroupAdmin {
-						subscriptionStatus = admin.SubscriptionStatus
-						foundAdmin = true
-						break
-					}
+				// O(1) lookup via pre-built index instead of scanning all users.
+				if admin := controller.Users.GetGroupAdmin(group.Id); admin != nil {
+					subscriptionStatus = admin.SubscriptionStatus
 				}
-				// If no admin found, allow (grace period)
-				if !foundAdmin {
-					subscriptionStatus = ""
-				}
+				// If no admin found, leave empty → grace period (allow notification)
 			} else {
-				// For all_users mode, check the user's own subscription status
 				subscriptionStatus = user.SubscriptionStatus
 			}
 
-			// Block push notification if subscription status exists and is not active or trialing
-			// Allow if status is empty/not_billed (grace period or no billing set up yet)
 			if subscriptionStatus != "" && subscriptionStatus != "not_billed" {
 				if subscriptionStatus != "active" && subscriptionStatus != "trialing" {
-					return // Block push notification - subscription not active
+					return
 				}
 			}
 		}
@@ -125,11 +152,8 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 	}
 
 	// Message: use summary if available and not generic "RADIO TRAFFIC", otherwise use transcript
-	summaryIsUseful := call != nil && call.AlertSummary != "" && strings.ToUpper(strings.TrimSpace(call.AlertSummary)) != "RADIO TRAFFIC"
 	message := ""
-	if summaryIsUseful {
-		message = strings.ToUpper(call.AlertSummary)
-	} else if call != nil && call.Transcript != "" {
+	if call != nil && call.Transcript != "" {
 		message = strings.ToUpper(call.Transcript)
 	} else {
 		// Fallback to alert type info if no transcript
@@ -177,28 +201,27 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 		}
 	}
 
-	// Group devices by platform and sound preference
+	// Group devices by platform and sound preference.
+	// Legacy OneSignal tokens are deleted on the spot and the user is emailed once.
 	androidDevices := []string{}
 	iosDevices := []string{}
 	androidSound := "startup.wav"
 	iosSound := "startup.wav"
+	notifiedUsers := make(map[uint64]struct{})
 
 	for _, device := range deviceTokens {
-		// Use FCM token if available (new system), otherwise fall back to OneSignal token (legacy)
-		token := device.FCMToken
-		if token == "" {
-			token = device.Token
+		if isLegacyOneSignalToken(device) {
+			controller.handleLegacyOneSignalToken(device, notifiedUsers)
+			continue
 		}
 
 		if device.Platform == "ios" {
-			iosDevices = append(iosDevices, token)
-			// Use this device's sound preference for iOS
+			iosDevices = append(iosDevices, device.FCMToken)
 			if device.Sound != "" {
 				iosSound = device.Sound
 			}
 		} else {
-			androidDevices = append(androidDevices, token)
-			// Use this device's sound preference for Android
+			androidDevices = append(androidDevices, device.FCMToken)
 			if device.Sound != "" {
 				androidSound = device.Sound
 			}
@@ -274,7 +297,7 @@ func (controller *Controller) sendNotificationBatch(playerIDs []string, title, s
 		"sound":      sound,
 	}
 
-	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: sending batch with %d player_ids to relay server", len(playerIDs)))
+	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: sending batch with %d FCM token(s) to relay server", len(playerIDs)))
 
 	// Add subtitle if provided
 	if subtitle != "" {
@@ -338,26 +361,23 @@ func (controller *Controller) sendNotificationBatch(playerIDs []string, title, s
 		return
 	}
 
-	// Handle invalid player IDs - remove them from user accounts
+	// Handle invalid FCM tokens — relay server reports tokens it could not deliver to.
+	// O(1) per token via tokenIndex; no need to scan all users.
 	if len(response.InvalidPlayerIDs) > 0 {
-		controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("push notification: removing %d invalid OneSignal ID(s) from user accounts: %v", len(response.InvalidPlayerIDs), response.InvalidPlayerIDs))
-		for _, invalidPlayerID := range response.InvalidPlayerIDs {
-			// Find and remove the device token with this OneSignal ID
-			allUsers := controller.Users.GetAllUsers()
-			for _, user := range allUsers {
-				deviceTokens := controller.DeviceTokens.GetByUser(user.Id)
-				for _, deviceToken := range deviceTokens {
-					if deviceToken.Token == invalidPlayerID {
-						controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: removing invalid OneSignal ID %s from user %d", invalidPlayerID, user.Id))
-						if err := controller.DeviceTokens.Delete(deviceToken.Id, controller.Database); err != nil {
-							controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("push notification: failed to remove invalid OneSignal ID %s from user %d: %v", invalidPlayerID, user.Id, err))
-						} else {
-							controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: successfully removed invalid OneSignal ID %s from user %d", invalidPlayerID, user.Id))
-						}
-						break // Found and removed, move to next invalid ID
-					}
-				}
+		controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("push notification: removing %d invalid FCM token(s) from user accounts", len(response.InvalidPlayerIDs)))
+		notifiedUsers := make(map[uint64]struct{})
+		for _, invalidToken := range response.InvalidPlayerIDs {
+			dt := controller.DeviceTokens.GetByToken(invalidToken)
+			if dt == nil {
+				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: invalid FCM token not found in index (already removed?)"))
+				continue
 			}
+			controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: removing invalid FCM token for user %d", dt.UserId))
+			if err := controller.DeviceTokens.Delete(dt.Id, controller.Database); err != nil {
+				controller.Logs.LogEvent(LogLevelError, fmt.Sprintf("push notification: failed to remove invalid FCM token for user %d: %v", dt.UserId, err))
+			}
+			// Email the user once so they know to re-register their device.
+			controller.handleLegacyOneSignalToken(dt, notifiedUsers)
 		}
 	}
 
@@ -402,11 +422,8 @@ func (controller *Controller) sendBatchedPushNotification(userIds []uint64, aler
 	}
 
 	// Message: use summary if available and not generic "RADIO TRAFFIC", otherwise use transcript
-	summaryIsUseful := call != nil && call.AlertSummary != "" && strings.ToUpper(strings.TrimSpace(call.AlertSummary)) != "RADIO TRAFFIC"
 	message := ""
-	if summaryIsUseful {
-		message = strings.ToUpper(call.AlertSummary)
-	} else if call != nil && call.Transcript != "" {
+	if call != nil && call.Transcript != "" {
 		message = strings.ToUpper(call.Transcript)
 	} else {
 		// Fallback to alert type info if no transcript
@@ -454,12 +471,13 @@ func (controller *Controller) sendBatchedPushNotification(userIds []uint64, aler
 		}
 	}
 
-	// Collect all device tokens from all users, grouped by platform and sound
-	// Key: "platform:sound" -> []playerIDs
+	// Collect all device tokens from all users, grouped by platform and sound.
+	// Key: "platform:sound" -> []FCM tokens
+	// Legacy OneSignal tokens are deleted on the spot and the user is emailed once.
 	deviceGroups := make(map[string][]string)
+	notifiedUsers := make(map[uint64]struct{})
 
 	for _, userId := range userIds {
-		// Get user
 		user := controller.Users.GetUserById(userId)
 		if user == nil {
 			continue
@@ -471,22 +489,12 @@ func (controller *Controller) sendBatchedPushNotification(userIds []uint64, aler
 			if group != nil && group.BillingEnabled {
 				var subscriptionStatus string
 
-				if group.BillingMode == "group_admin" {
-					// For group_admin mode, check the group admin's subscription status
-					// Find an admin in the group
-					allUsers := controller.Users.GetAllUsers()
-					foundAdmin := false
-					for _, admin := range allUsers {
-						if admin.UserGroupId == group.Id && admin.IsGroupAdmin {
-							subscriptionStatus = admin.SubscriptionStatus
-							foundAdmin = true
-							break
-						}
-					}
-					// If no admin found, allow (grace period)
-					if !foundAdmin {
-						subscriptionStatus = ""
-					}
+			if group.BillingMode == "group_admin" {
+				// O(1) lookup via pre-built index instead of scanning all users.
+				if admin := controller.Users.GetGroupAdmin(group.Id); admin != nil {
+					subscriptionStatus = admin.SubscriptionStatus
+				}
+				// If no admin found, leave empty → grace period (allow notification)
 				} else {
 					// For all_users mode, check the user's own subscription status
 					subscriptionStatus = user.SubscriptionStatus
@@ -529,12 +537,11 @@ func (controller *Controller) sendBatchedPushNotification(userIds []uint64, aler
 			controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification (batched): device %d for user %d - token: %s, platform: %s", i+1, userId, device.Token, device.Platform))
 		}
 
-		// Group devices by platform and sound
+		// Group devices by platform and sound; delete any legacy OneSignal tokens.
 		for _, device := range deviceTokens {
-			// Use FCM token if available (new system), otherwise fall back to OneSignal token (legacy)
-			token := device.FCMToken
-			if token == "" {
-				token = device.Token
+			if isLegacyOneSignalToken(device) {
+				controller.handleLegacyOneSignalToken(device, notifiedUsers)
+				continue
 			}
 
 			sound := device.Sound
@@ -542,7 +549,7 @@ func (controller *Controller) sendBatchedPushNotification(userIds []uint64, aler
 				sound = "startup.wav"
 			}
 			key := fmt.Sprintf("%s:%s", device.Platform, sound)
-			deviceGroups[key] = append(deviceGroups[key], token)
+			deviceGroups[key] = append(deviceGroups[key], device.FCMToken)
 		}
 	}
 
@@ -571,9 +578,8 @@ func (controller *Controller) sendBatchedPushNotification(userIds []uint64, aler
 			finalSound = strings.TrimSuffix(finalSound, ".m4a")
 		}
 
-		// Send batch notification in goroutine to ensure independent execution
-		// Each batch is sent independently, so failures in one don't affect others
-		// Add small delay between batches to avoid OneSignal rate limiting (especially on free plan)
+		// Send each platform/sound batch independently so failures don't affect others.
+		// Stagger batches slightly to avoid relay-server rate limiting.
 		delay := time.Duration(batchIndex) * 200 * time.Millisecond
 		go func(ids []string, plat string, snd string, d time.Duration) {
 			if d > 0 {

@@ -32,11 +32,11 @@ type Options struct {
 	Branding                    string `json:"branding"`
 	DefaultSystemDelay          uint   `json:"defaultSystemDelay"`
 	DimmerDelay                 uint   `json:"dimmerDelay"`
-	DisableDuplicateDetection          bool    `json:"disableDuplicateDetection"`
-	DuplicateDetectionMode             string  `json:"duplicateDetectionMode"`             // "legacy" or "advanced"
-	DuplicateDetectionTimeFrame        uint    `json:"duplicateDetectionTimeFrame"`        // Legacy mode timeframe
-	AdvancedDetectionTimeFrame         uint    `json:"advancedDetectionTimeFrame"`         // Advanced mode timeframe
-	Email                          string `json:"email"`
+	DisableDuplicateDetection   bool   `json:"disableDuplicateDetection"`
+	DuplicateDetectionMode      string `json:"duplicateDetectionMode"`      // "legacy" or "advanced"
+	DuplicateDetectionTimeFrame uint   `json:"duplicateDetectionTimeFrame"` // Legacy mode timeframe
+	AdvancedDetectionTimeFrame  uint   `json:"advancedDetectionTimeFrame"`  // Advanced mode timeframe
+	Email                       string `json:"email"`
 	KeypadBeeps                 string `json:"keypadBeeps"`
 	MaxClients                  uint   `json:"maxClients"`
 	PlaybackGoesLive            bool   `json:"playbackGoesLive"`
@@ -57,122 +57,121 @@ type Options struct {
 	EmailServiceDomain          string `json:"emailServiceDomain"`
 	EmailServiceTemplateId      string `json:"emailServiceTemplateId"`
 	// Email provider selection
-	EmailProvider               string `json:"emailProvider"` // "sendgrid", "mailgun", or "smtp"
+	EmailProvider string `json:"emailProvider"` // "sendgrid", "mailgun", or "smtp"
 	// SendGrid settings
-	EmailSendGridAPIKey         string `json:"emailSendGridApiKey"`
+	EmailSendGridAPIKey string `json:"emailSendGridApiKey"`
 	// Mailgun settings
-	EmailMailgunAPIKey          string `json:"emailMailgunApiKey"`
-	EmailMailgunDomain          string `json:"emailMailgunDomain"`
-	EmailMailgunAPIBase         string `json:"emailMailgunApiBase"` // "https://api.mailgun.net" (US) or "https://api.eu.mailgun.net" (EU)
+	EmailMailgunAPIKey  string `json:"emailMailgunApiKey"`
+	EmailMailgunDomain  string `json:"emailMailgunDomain"`
+	EmailMailgunAPIBase string `json:"emailMailgunApiBase"` // "https://api.mailgun.net" (US) or "https://api.eu.mailgun.net" (EU)
 	// SMTP settings
-	EmailSmtpHost               string `json:"emailSmtpHost"`     // SMTP server hostname
-	EmailSmtpPort               int    `json:"emailSmtpPort"`     // SMTP server port (25, 465, 587, etc.)
-	EmailSmtpUsername           string `json:"emailSmtpUsername"` // SMTP authentication username
-	EmailSmtpPassword           string `json:"emailSmtpPassword"` // SMTP authentication password
-	EmailSmtpUseTLS             bool   `json:"emailSmtpUseTLS"`   // Use TLS/SSL connection
-	EmailSmtpSkipVerify         bool   `json:"emailSmtpSkipVerify"` // Skip certificate verification (for self-signed certs)
+	EmailSmtpHost       string `json:"emailSmtpHost"`       // SMTP server hostname
+	EmailSmtpPort       int    `json:"emailSmtpPort"`       // SMTP server port (25, 465, 587, etc.)
+	EmailSmtpUsername   string `json:"emailSmtpUsername"`   // SMTP authentication username
+	EmailSmtpPassword   string `json:"emailSmtpPassword"`   // SMTP authentication password
+	EmailSmtpUseTLS     bool   `json:"emailSmtpUseTLS"`     // Use TLS/SSL connection
+	EmailSmtpSkipVerify bool   `json:"emailSmtpSkipVerify"` // Skip certificate verification (for self-signed certs)
 	// Email settings (common to all providers)
-	EmailSmtpFromEmail          string `json:"emailSmtpFromEmail"`
-	EmailSmtpFromName            string `json:"emailSmtpFromName"`
+	EmailSmtpFromEmail string `json:"emailSmtpFromEmail"`
+	EmailSmtpFromName  string `json:"emailSmtpFromName"`
 	// Email logo settings
-	EmailLogoFilename            string `json:"emailLogoFilename"` // Filename of logo file (stored in base directory)
-	EmailLogoBorderRadius       string `json:"emailLogoBorderRadius"` // Border radius for email logo (e.g., "0px", "8px", "50%")
+	EmailLogoFilename     string `json:"emailLogoFilename"`     // Filename of logo file (stored in base directory)
+	EmailLogoBorderRadius string `json:"emailLogoBorderRadius"` // Border radius for email logo (e.g., "0px", "8px", "50%")
 	// Favicon settings
-	FaviconFilename             string `json:"faviconFilename"` // Filename of favicon file (stored in base directory)
-	StripePublishableKey        string `json:"stripePublishableKey"`
-	StripeSecretKey             string `json:"stripeSecretKey"`
-	StripeWebhookSecret         string `json:"stripeWebhookSecret"`
-	StripeGracePeriodDays        uint   `json:"stripeGracePeriodDays"`
-	StripePriceId               string            `json:"stripePriceId"`
-	BaseUrl                     string            `json:"baseUrl"`
-	TranscriptionConfig         TranscriptionConfig `json:"transcriptionConfig"`
-	TranscriptionEnhancement    bool                `json:"transcriptionEnhancement"`
-	TranscriptionFailureThreshold uint            `json:"transcriptionFailureThreshold"`
-	ToneDetectionIssueThreshold uint            `json:"toneDetectionIssueThreshold"`
-	AlertRetentionDays          uint              `json:"alertRetentionDays"`
-	NoAudioThresholdMinutes     uint            `json:"noAudioThresholdMinutes"`
-	NoAudioMultiplier            float64         `json:"noAudioMultiplier"`
-	SystemHealthAlertsEnabled   bool            `json:"systemHealthAlertsEnabled"`
+	FaviconFilename               string              `json:"faviconFilename"` // Filename of favicon file (stored in base directory)
+	StripePublishableKey          string              `json:"stripePublishableKey"`
+	StripeSecretKey               string              `json:"stripeSecretKey"`
+	StripeWebhookSecret           string              `json:"stripeWebhookSecret"`
+	StripeGracePeriodDays         uint                `json:"stripeGracePeriodDays"`
+	StripePriceId                 string              `json:"stripePriceId"`
+	BaseUrl                       string              `json:"baseUrl"`
+	TranscriptionConfig           TranscriptionConfig `json:"transcriptionConfig"`
+	TranscriptionEnhancement      bool                `json:"transcriptionEnhancement"`
+	TranscriptionFailureThreshold uint                `json:"transcriptionFailureThreshold"`
+	ToneDetectionIssueThreshold   uint                `json:"toneDetectionIssueThreshold"`
+	AlertRetentionDays            uint                `json:"alertRetentionDays"`
+	NoAudioThresholdMinutes       uint                `json:"noAudioThresholdMinutes"`
+	NoAudioMultiplier             float64             `json:"noAudioMultiplier"`
+	SystemHealthAlertsEnabled     bool                `json:"systemHealthAlertsEnabled"`
 	// Individual alert type toggles
-	TranscriptionFailureAlertsEnabled bool   `json:"transcriptionFailureAlertsEnabled"`
-	ToneDetectionAlertsEnabled        bool   `json:"toneDetectionAlertsEnabled"`
-	NoAudioAlertsEnabled              bool   `json:"noAudioAlertsEnabled"`
+	TranscriptionFailureAlertsEnabled bool `json:"transcriptionFailureAlertsEnabled"`
+	ToneDetectionAlertsEnabled        bool `json:"toneDetectionAlertsEnabled"`
+	NoAudioAlertsEnabled              bool `json:"noAudioAlertsEnabled"`
 	// Time windows (in hours)
-	TranscriptionFailureTimeWindow    uint   `json:"transcriptionFailureTimeWindow"`
-	ToneDetectionTimeWindow           uint   `json:"toneDetectionTimeWindow"`
-	NoAudioTimeWindow                 uint   `json:"noAudioTimeWindow"`
+	TranscriptionFailureTimeWindow uint `json:"transcriptionFailureTimeWindow"`
+	ToneDetectionTimeWindow        uint `json:"toneDetectionTimeWindow"`
+	NoAudioTimeWindow              uint `json:"noAudioTimeWindow"`
 	// Historical data window for no audio (in days)
-	NoAudioHistoricalDataDays         uint   `json:"noAudioHistoricalDataDays"`
+	NoAudioHistoricalDataDays uint `json:"noAudioHistoricalDataDays"`
 	// Repeat alert intervals (in minutes)
 	TranscriptionFailureRepeatMinutes uint   `json:"transcriptionFailureRepeatMinutes"`
 	ToneDetectionRepeatMinutes        uint   `json:"toneDetectionRepeatMinutes"`
 	NoAudioRepeatMinutes              uint   `json:"noAudioRepeatMinutes"`
-	RelayServerURL              string            `json:"relayServerURL"`
-	RelayServerAPIKey           string            `json:"relayServerAPIKey"`
-	RadioReferenceAPIKey        string            `json:"radioReferenceAPIKey"`
-	AdminLocalhostOnly          bool              `json:"adminLocalhostOnly"`
+	RelayServerURL                    string `json:"relayServerURL"`
+	RelayServerAPIKey                 string `json:"relayServerAPIKey"`
+	RadioReferenceAPIKey              string `json:"radioReferenceAPIKey"`
+	AdminLocalhostOnly                bool   `json:"adminLocalhostOnly"`
 	// When true, the traditional admin password login form is disabled. Admin access is only
 	// possible via system admin user SSO or Central Management one-click login.
 	// Guard: the server refuses to set this if no SystemAdmin user exists.
-	AdminPasswordLoginDisabled  bool              `json:"adminPasswordLoginDisabled"`
+	AdminPasswordLoginDisabled bool `json:"adminPasswordLoginDisabled"`
 	// Comma or newline-separated list of IP addresses and/or CIDR ranges that are allowed to
 	// access admin routes.  Localhost (127.0.0.1, ::1) is always allowed regardless of this list.
 	// When non-empty this overrides AdminLocalhostOnly for IPs that are in the list.
 	// When empty, AdminLocalhostOnly governs access as before.  Default: "" (no extra IPs).
-	AdminAllowedIPs             string            `json:"adminAllowedIPs"`
-	ConfigSyncEnabled           bool              `json:"configSyncEnabled"`
-	ConfigSyncPath              string            `json:"configSyncPath"`
+	AdminAllowedIPs   string `json:"adminAllowedIPs"`
+	ConfigSyncEnabled bool   `json:"configSyncEnabled"`
+	ConfigSyncPath    string `json:"configSyncPath"`
 	// Cloudflare Turnstile configuration (for user registration/login and group admin login)
-	TurnstileEnabled            bool              `json:"turnstileEnabled"`
-	TurnstileSiteKey            string            `json:"turnstileSiteKey"`
-	TurnstileSecretKey          string            `json:"turnstileSecretKey"`
+	TurnstileEnabled   bool   `json:"turnstileEnabled"`
+	TurnstileSiteKey   string `json:"turnstileSiteKey"`
+	TurnstileSecretKey string `json:"turnstileSecretKey"`
 	// Reconnection manager configuration
-	ReconnectionEnabled         bool              `json:"reconnectionEnabled"`
-	ReconnectionGracePeriod     uint              `json:"reconnectionGracePeriod"` // In seconds
-	ReconnectionMaxBufferSize   uint              `json:"reconnectionMaxBufferSize"` // Maximum calls to buffer per user
+	ReconnectionEnabled       bool `json:"reconnectionEnabled"`
+	ReconnectionGracePeriod   uint `json:"reconnectionGracePeriod"`   // In seconds
+	ReconnectionMaxBufferSize uint `json:"reconnectionMaxBufferSize"` // Maximum calls to buffer per user
 	// Centralized Management Integration
-	CentralManagementEnabled    bool              `json:"centralManagementEnabled"`
-	CentralManagementURL        string            `json:"centralManagementURL"`
-	CentralManagementAPIKey     string            `json:"centralManagementAPIKey"`
-	CentralManagementServerName string            `json:"centralManagementServerName"` // Optional friendly name for this server
-	CentralManagementServerID   string            `json:"centralManagementServerID"`   // CM correlation id; when provisioned from CM with Hydra, equals rr_system_id (Radio Reference system id)
+	CentralManagementEnabled    bool   `json:"centralManagementEnabled"`
+	CentralManagementURL        string `json:"centralManagementURL"`
+	CentralManagementAPIKey     string `json:"centralManagementAPIKey"`
+	CentralManagementServerName string `json:"centralManagementServerName"` // Optional friendly name for this server
+	CentralManagementServerID   string `json:"centralManagementServerID"`   // CM correlation id; when provisioned from CM with Hydra, equals rr_system_id (Radio Reference system id)
 	// Hydra transcription integration (provisioned from Central Management)
-	HydraAPIKey                 string            `json:"hydraAPIKey"`                 // Hydra API key for transcription retrieval
-	HydraTranscriptionEnabled   bool              `json:"hydraTranscriptionEnabled"`   // Per-server toggle for Hydra transcription
-	adminPassword               string
-	adminPasswordNeedChange     bool
-	mutex                       sync.Mutex
-	secret                      string
+	HydraAPIKey               string `json:"hydraAPIKey"`               // Hydra API key for transcription retrieval
+	HydraTranscriptionEnabled bool   `json:"hydraTranscriptionEnabled"` // Per-server toggle for Hydra transcription
+	adminPassword             string
+	adminPasswordNeedChange   bool
+	mutex                     sync.Mutex
+	secret                    string
 }
 
 // TranscriptionConfig contains configuration for transcription
 type TranscriptionConfig struct {
-	Enabled                      bool     `json:"enabled"`
-	Provider                     string   `json:"provider"`                     // "whisper-api", "azure", "google", "assemblyai"
-	Language                     string   `json:"language"`                     // "en", "auto"
-	Prompt                       string   `json:"prompt"`                       // Custom prompt for Whisper to guide transcription (e.g., terminology, formatting)
-	WorkerPoolSize               int      `json:"workerPoolSize"`
-	MinCallDuration              float64  `json:"minCallDuration"`              // Minimum call duration in seconds to transcribe (default: 0 = transcribe all)
-	WhisperAPIURL                string   `json:"whisperAPIURL"`                // Base URL for external Whisper API server (e.g., "http://localhost:8000") or OpenAI API URL
-	WhisperAPIKey                string   `json:"whisperAPIKey"`                // Optional API key for external Whisper API server or OpenAI API key
-	WhisperAPIModel              string   `json:"whisperAPIModel"`              // Model to use for transcription (e.g., "whisper-1", "gpt-4o-transcribe")
-	AzureKey                     string   `json:"azureKey"`                     // Azure Speech Services subscription key
-	AzureRegion                  string   `json:"azureRegion"`                  // Azure Speech Services region (e.g., "eastus", "westus2")
-	GoogleAPIKey                 string   `json:"googleAPIKey"`                 // Google Cloud Speech-to-Text API key
-	GoogleCredentials            string   `json:"googleCredentials"`            // Google Cloud service account JSON credentials (alternative to API key)
-	AssemblyAIKey                string   `json:"assemblyAIKey"`                // AssemblyAI API key
-	AssemblyAISpeechModel        string   `json:"assemblyAISpeechModel"`        // Speech model for AssemblyAI: "universal-2" (default) or "universal-3-pro"
-	AssemblyAIWordBoost          []string `json:"assemblyAIWordBoost"`          // Word boost/keyterms for AssemblyAI (max 100 terms, 50 chars each)
-	HallucinationPatterns        []string `json:"hallucinationPatterns"`        // Patterns to remove from transcripts (Whisper hallucinations)
-	HallucinationDetectionMode   string   `json:"hallucinationDetectionMode"`   // "off", "manual", "auto"
-	HallucinationMinOccurrences  int      `json:"hallucinationMinOccurrences"`  // Minimum times a phrase must appear in rejected calls before flagging (default: 5)
+	Enabled                     bool     `json:"enabled"`
+	Provider                    string   `json:"provider"` // "whisper-api", "azure", "google", "assemblyai"
+	Language                    string   `json:"language"` // "en", "auto"
+	Prompt                      string   `json:"prompt"`   // Custom prompt for Whisper to guide transcription (e.g., terminology, formatting)
+	WorkerPoolSize              int      `json:"workerPoolSize"`
+	MinCallDuration             float64  `json:"minCallDuration"`             // Minimum call duration in seconds to transcribe (default: 0 = transcribe all)
+	WhisperAPIURL               string   `json:"whisperAPIURL"`               // Base URL for external Whisper API server (e.g., "http://localhost:8000") or OpenAI API URL
+	WhisperAPIKey               string   `json:"whisperAPIKey"`               // Optional API key for external Whisper API server or OpenAI API key
+	WhisperAPIModel             string   `json:"whisperAPIModel"`             // Model to use for transcription (e.g., "whisper-1", "gpt-4o-transcribe")
+	AzureKey                    string   `json:"azureKey"`                    // Azure Speech Services subscription key
+	AzureRegion                 string   `json:"azureRegion"`                 // Azure Speech Services region (e.g., "eastus", "westus2")
+	GoogleAPIKey                string   `json:"googleAPIKey"`                // Google Cloud Speech-to-Text API key
+	GoogleCredentials           string   `json:"googleCredentials"`           // Google Cloud service account JSON credentials (alternative to API key)
+	AssemblyAIKey               string   `json:"assemblyAIKey"`               // AssemblyAI API key
+	AssemblyAISpeechModel       string   `json:"assemblyAISpeechModel"`       // Speech model for AssemblyAI: "universal-2" (default) or "universal-3-pro"
+	AssemblyAIWordBoost         []string `json:"assemblyAIWordBoost"`         // Word boost/keyterms for AssemblyAI (max 100 terms, 50 chars each)
+	HallucinationPatterns       []string `json:"hallucinationPatterns"`       // Patterns to remove from transcripts (Whisper hallucinations)
+	HallucinationDetectionMode  string   `json:"hallucinationDetectionMode"`  // "off", "manual", "auto"
+	HallucinationMinOccurrences int      `json:"hallucinationMinOccurrences"` // Minimum times a phrase must appear in rejected calls before flagging (default: 5)
 	// TimeoutSeconds controls the maximum time to wait for a transcription response.
 	// This sets both the overall HTTP client timeout and the per-transport response-header timeout,
 	// which is the one most likely to fire on slow local Whisper servers (they don't send headers
 	// until transcription is complete).  Default: 300 seconds (5 minutes).  Set higher for very
 	// slow CPUs.  0 = use default.
 	TimeoutSeconds int `json:"timeoutSeconds"`
-
 }
 
 const (
@@ -948,7 +947,7 @@ func (options *Options) Read(db *Database) error {
 	options.ReconnectionEnabled = defaults.options.reconnectionEnabled
 	options.ReconnectionGracePeriod = defaults.options.reconnectionGracePeriod
 	options.ReconnectionMaxBufferSize = defaults.options.reconnectionMaxBufferSize
-	
+
 	// Initialize Radio Reference credentials with defaults, but they will be overridden by database values
 	options.RadioReferenceEnabled = defaults.options.radioReferenceEnabled
 	options.RadioReferenceUsername = defaults.options.radioReferenceUsername
@@ -960,6 +959,7 @@ func (options *Options) Read(db *Database) error {
 	if rows, err = db.Sql.Query(query); err != nil {
 		return formatError(err, query)
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		if err = rows.Scan(&key, &value); err != nil {
@@ -1053,7 +1053,7 @@ func (options *Options) Read(db *Database) error {
 					options.AdvancedDetectionTimeFrame = uint(v)
 				}
 			}
-	case "email":
+		case "email":
 			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
 				switch v := f.(type) {
 				case string:
@@ -1564,7 +1564,7 @@ func (options *Options) Read(db *Database) error {
 					options.ConfigSyncPath = v
 				}
 			}
-	case "turnstileEnabled":
+		case "turnstileEnabled":
 			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
 				switch v := f.(type) {
 				case bool:
@@ -1608,9 +1608,6 @@ func (options *Options) Read(db *Database) error {
 			}
 		}
 	}
-
-	// Close the rows to prevent resource leaks
-	rows.Close()
 
 	return nil
 }

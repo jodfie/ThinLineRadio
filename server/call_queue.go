@@ -54,6 +54,12 @@ func (cq *CallQueue) Add(call *Call, waitDuration time.Duration, onExpire func(*
 
 	key := cq.generateKey(call)
 
+	// Stop any existing timer for this key before replacing it to avoid a stale
+	// AfterFunc firing with the old call after the map entry is overwritten.
+	if existing, exists := cq.queue[key]; exists {
+		existing.Timer.Stop()
+	}
+
 	// Create timer that will process the call after waiting period
 	timer := time.AfterFunc(waitDuration, func() {
 		cq.mutex.Lock()

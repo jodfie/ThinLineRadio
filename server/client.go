@@ -29,22 +29,22 @@ import (
 )
 
 type Client struct {
-	User              *User
-	AuthCount         int
-	Controller        *Controller
-	Conn              *websocket.Conn
-	Send              chan *Message
-	IsAdmin           bool // Set to true when authenticated with admin token
-	PinExpired        bool // Set to true when user's PIN is expired
-	BacklogSent       bool // Set to true after initial backlog has been sent (prevents resending on channel toggle)
-	Systems           []System
-	GroupsData        []Group
-	GroupsMap         GroupsMap
-	TagsData          []Tag
-	TagsMap           TagsMap
-	Livefeed          *Livefeed
-	SystemsMap        SystemsMap
-	request           *http.Request
+	User        *User
+	AuthCount   int
+	Controller  *Controller
+	Conn        *websocket.Conn
+	Send        chan *Message
+	IsAdmin     bool // Set to true when authenticated with admin token
+	PinExpired  bool // Set to true when user's PIN is expired
+	BacklogSent bool // Set to true after initial backlog has been sent (prevents resending on channel toggle)
+	Systems     []System
+	GroupsData  []Group
+	GroupsMap   GroupsMap
+	TagsData    []Tag
+	TagsMap     TagsMap
+	Livefeed    *Livefeed
+	SystemsMap  SystemsMap
+	request     *http.Request
 }
 
 func (client *Client) Init(controller *Controller, request *http.Request, conn *websocket.Conn) error {
@@ -180,7 +180,7 @@ func (client *Client) Init(controller *Controller, request *http.Request, conn *
 				if client.Conn == nil {
 					return
 				}
-				
+
 				if err := client.Conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
 					controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("websocket set write deadline error for ping to ip %s: %v", client.GetRemoteAddr(), err))
 					return
@@ -396,7 +396,6 @@ func (clients *Clients) Remove(client *Client) {
 	delete(clients.Map, client)
 }
 
-
 func (clients *Clients) UserConnectionCount(user *User) uint {
 	if user == nil {
 		return 0
@@ -407,7 +406,7 @@ func (clients *Clients) UserConnectionCount(user *User) uint {
 
 	var count uint
 	var toRemove []*Client
-	
+
 	for c := range clients.Map {
 		if c.User == user {
 			// Check if connection is still alive
@@ -416,18 +415,18 @@ func (clients *Clients) UserConnectionCount(user *User) uint {
 				toRemove = append(toRemove, c)
 				continue
 			}
-			
+
 			// Check if websocket connection is still open
 			if c.Conn == nil {
 				toRemove = append(toRemove, c)
 				continue
 			}
-			
+
 			// Connection appears to be alive
 			count++
 		}
 	}
-	
+
 	// Remove dead connections immediately
 	for _, c := range toRemove {
 		delete(clients.Map, c)
