@@ -1,5 +1,56 @@
 # Change log
 
+## Version 7.0 Beta 9.7.25 - Released Mar 27, 2026
+
+### Performance
+
+- **Server — Startup time (large systems)**
+  - `Systems.Read` now loads all sites, talkgroups, and units in **4 total queries** regardless of system count, down from 3N+1 sequential queries inside a single transaction (e.g. 10 systems: 31 queries → 4 queries)
+  - `fetchRadioReferenceAPIKey` moved to a background goroutine — no longer blocks server startup waiting on a network call (up to 10 s saved on cold start)
+  - Startup timing now logged: database load time per slow reader (>500 ms) and total server-ready time appear in the event log
+
+- **Server — CPU efficiency**
+  - Keyword regex patterns are compiled once per pattern for the lifetime of the process and cached on the `KeywordMatcher` singleton; previously compiled fresh for every keyword on every transcribed call
+  - `cleanupOldAlerts` is now rate-limited to at most once per hour via an atomic timestamp; previously a goroutine was launched on every single alert insert, potentially firing dozens of times per minute during tone storms
+  - `sendAlertNotification` now snapshots matching clients under the shortest possible lock window and releases the mutex before sending on channels; previously the global clients map lock was held for the entire fan-out
+  - ffprobe audio duration computed during tone detection is now propagated back to the original call struct, preventing a redundant ffprobe invocation during transcription duration checks
+
+- **Server — Database hot paths**
+  - Group admin subscription status lookup is now O(1) via a `groupAdmins map[uint64]*User` index maintained alongside the users map; previously `GetAllUsers()` was called and scanned linearly on every push notification sent to a billing group
+  - Invalid FCM token cleanup is now O(1) via a `tokenIndex map[string]*DeviceToken` keyed by FCM token value; previously a nested scan over all users and all their tokens was performed per invalid token reported by the relay server
+  - Keyword match database writes are now batched into a single multi-row `INSERT` per transcription; previously one `INSERT` per match per user
+  - Client backlog send (`sendAvailableCallsToClient`) now fetches up to 1000 calls in 3 bulk queries instead of N individual `GetCall` round-trips (each of which opened a transaction and ran 2 queries)
+
+### New
+
+- **TLR Time Sync — standalone clock synchronisation client**
+  - New separate tool (`tlr-time-sync`) for keeping SDR-Trunk machine clocks aligned with the TLR server, improving duplicate call detection accuracy
+  - Queries the new `GET /api/time` endpoint, applies NTP-style round-trip compensation (offset = serverTime − (t1+t3)/2), and sets the OS system clock
+  - Takes multiple samples per sync cycle (configurable, default 4) and uses the lowest-RTT sample for the most accurate measurement
+  - Dead-zone filter: offsets within half the RTT are treated as measurement noise and skipped
+  - Exponential back-off after repeated failures (5 s → 10 s → 20 s … capped at 10 minutes)
+  - Installs as a native system service on all platforms: Windows Service (LocalSystem), Linux systemd, macOS LaunchDaemon — auto-starts at boot, no recurring privilege prompts
+  - Configured via `tlr-time-sync.ini` (server URL, sync interval, sample count, failure threshold)
+  - Permission-denied errors logged with a clear actionable message
+  - Lives in its own repository; excluded from the TLR repo via `.gitignore`
+
+- **Server — `GET /api/time` endpoint**
+  - New lightweight endpoint returning the server's current UTC time as a nanosecond Unix timestamp (`{"unix_ns": ...}`)
+  - No authentication, no database access — intentionally minimal so it remains accurate under heavy server load
+  - Used by the `tlr-time-sync` client; registered outside the rate-limiting and security-header middleware stack
+
+### Changes
+
+- **Server — Push notifications: OneSignal removed, FCM only**
+  - OneSignal is no longer supported as a push provider
+  - The device registration endpoint now requires `fcm_token` and rejects any registration without one; all remaining legacy OneSignal tokens for the user are deleted on registration
+  - At push-send time, any device token without an FCM token (`PushType == "onesignal"` or `FCMToken == ""`) is detected as legacy, deleted from the database immediately, and the user is emailed once per event to update their app — regardless of how many legacy devices they have
+  - New email: **"Action Required: Update the App"** — informs the user their push notifications have stopped and instructs them to update from the App Store or Google Play; sent automatically, no admin action required
+  - `RemoveAllOneSignalTokensForUser` renamed to `RemoveAllLegacyTokensForUser` with updated detection logic
+  - `tokenIndex` on `DeviceTokens` now keys by `FCMToken` so invalid-token responses from the relay server are matched correctly
+
+---
+
 ## Version 7.0 Beta 9.7.24 - Released Mar 22, 2026
 
 ### Improvements

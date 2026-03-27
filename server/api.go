@@ -50,6 +50,18 @@ func NewApi(controller *Controller) *Api {
 	return &Api{Controller: controller}
 }
 
+// TimeHandler returns the server's current UTC time as a nanosecond Unix timestamp.
+// It is intentionally minimal — no DB access, no auth — so it stays accurate under load.
+// Used by the tlr-time-sync client to synchronise SDR-Trunk machine clocks with the server.
+func (api *Api) TimeHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"unix_ns":%d}`, time.Now().UnixNano())
+}
+
 // isMobileAppRequest checks if the request is from a mobile app by examining the User-Agent header
 func (api *Api) isMobileAppRequest(r *http.Request) bool {
 	userAgent := r.Header.Get("User-Agent")
@@ -7857,9 +7869,9 @@ func (api *Api) UserDeviceTokenHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		// Register or update device token
 		var request struct {
-			Token    string `json:"token"`     // OneSignal player ID (legacy) or device ID
+			Token    string `json:"token"`     // Legacy field, ignored for new registrations
 			FCMToken string `json:"fcm_token"` // Firebase Cloud Messaging token
-			PushType string `json:"push_type"` // "onesignal" or "fcm"
+			PushType string `json:"push_type"` // "fcm" (legacy: "onesignal")
 			Platform string `json:"platform"`  // "ios" or "android"
 			Sound    string `json:"sound"`     // Notification sound preference
 		}
@@ -7869,49 +7881,26 @@ func (api *Api) UserDeviceTokenHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Determine push type if not provided
-		if request.PushType == "" {
-			if request.FCMToken != "" {
-				request.PushType = "fcm"
-			} else if request.Token != "" {
-				request.PushType = "onesignal"
-			} else {
-				api.exitWithError(w, http.StatusBadRequest, "Either token or fcm_token is required")
-				return
-			}
-		}
-
-		// Validate that we have the appropriate token for the push type
-		if request.PushType == "fcm" && request.FCMToken == "" {
-			api.exitWithError(w, http.StatusBadRequest, "fcm_token is required for FCM push type")
+		// Only FCM registrations are accepted. Reject anything that doesn't provide an FCM token.
+		if request.FCMToken == "" {
+			api.exitWithError(w, http.StatusBadRequest, "fcm_token is required")
 			return
 		}
-		if request.PushType == "onesignal" && request.Token == "" {
-			api.exitWithError(w, http.StatusBadRequest, "token is required for OneSignal push type")
-			return
-		}
+		request.PushType = "fcm"
 
 		if request.Platform != "ios" && request.Platform != "android" {
-			request.Platform = "android" // Default
+			request.Platform = "android"
 		}
-
 		if request.Sound == "" {
-			request.Sound = "startup.wav" // Default
+			request.Sound = "startup.wav"
 		}
 
-		// If registering an FCM token, remove all OneSignal tokens for this user
-		if request.PushType == "fcm" {
-			if err := api.Controller.DeviceTokens.RemoveAllOneSignalTokensForUser(client.User.Id, api.Controller.Database); err != nil {
-				log.Printf("Error removing OneSignal tokens for user %d: %v", client.User.Id, err)
-				// Don't fail the request, just log the error
-			}
+		// Clean up any remaining legacy tokens for this user now that they've registered via FCM.
+		if err := api.Controller.DeviceTokens.RemoveAllLegacyTokensForUser(client.User.Id, api.Controller.Database); err != nil {
+			log.Printf("Error removing legacy tokens for user %d: %v", client.User.Id, err)
 		}
 
-		// For FCM, use FCMToken as the lookup key, for OneSignal use Token
-		lookupToken := request.Token
-		if request.PushType == "fcm" {
-			lookupToken = request.FCMToken
-		}
+		lookupToken := request.FCMToken
 
 		// Check if device token already exists for this user
 		existingToken := api.Controller.DeviceTokens.FindByUserAndToken(client.User.Id, lookupToken)

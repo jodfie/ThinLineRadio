@@ -500,6 +500,10 @@ func main() {
 	// Log that routes have been registered
 	log.Printf("All HTTP routes registered successfully")
 
+	// Time sync endpoint — no auth, no DB, intentionally bare-minimum for accuracy under load.
+	// Used by the tlr-time-sync client on SDR-Trunk machines to align their clocks with the server.
+	http.HandleFunc("/api/time", controller.Api.TimeHandler)
+
 	// Call upload endpoints - exclude from security headers and rate limiting (machine-to-machine APIs)
 	// These endpoints handle their own validation and need to accept frequent uploads
 	// Match v6 registration pattern exactly - pass handler directly without wrapping
