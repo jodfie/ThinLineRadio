@@ -1265,7 +1265,14 @@ func (controller *Controller) getCallDuration(call *Call) (float64, error) {
 	if call.Duration > 0 {
 		return call.Duration, nil
 	}
-	d, err := controller.getAudioDuration(call.Audio, call.AudioMime)
+	// Prefer original audio (no conversion overhead); fall back to converted audio if needed.
+	audio := call.OriginalAudio
+	mime := call.OriginalAudioMime
+	if len(audio) == 0 {
+		audio = call.Audio
+		mime = call.AudioMime
+	}
+	d, err := controller.getAudioDuration(audio, mime)
 	if err == nil && d > 0 {
 		call.Duration = d
 	}
@@ -2409,9 +2416,9 @@ func (controller *Controller) queueTranscriptionIfNeeded(call *Call) {
 				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("call %d on tone-enabled talkgroup: meets global minimum (%.1fs >= %.1fs)", call.Id, audioDuration, minDuration))
 				// Continue to alert checks
 			} else if toneDetectionEnabled && audioDuration < minDuration {
-				// Tone-enabled talkgroup without tones, shorter than minimum - still allow (might be voice after tone call)
-				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("call %d on tone-enabled talkgroup: bypassing global minimum (%.1fs < %.1fs), no tones in this call", call.Id, audioDuration, minDuration))
-				// Continue to alert checks
+				// Tone-enabled talkgroup, no tones detected in this call, shorter than minimum - skip
+				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("skipping transcription for call %d on tone-enabled talkgroup: duration %.1fs is less than minimum %.1fs (no tones detected)", call.Id, audioDuration, minDuration))
+				return
 			} else if audioDuration < minDuration {
 				// Normal check for non-tone-enabled talkgroups or calls without tones
 				controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("skipping transcription for call %d: duration %.1fs is less than minimum %.1fs", call.Id, audioDuration, minDuration))

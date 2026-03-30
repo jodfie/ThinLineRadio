@@ -1,5 +1,18 @@
 # Change log
 
+## Version 26.04.013 - Released Mar 30, 2026
+
+### Fixed
+
+- **Transcription: short calls on tone-detection-enabled talkgroups no longer bypass minimum duration**
+  - Calls on tone-detection-enabled talkgroups that had no tones detected and were shorter than the configured minimum call duration were silently bypassing the minimum duration check and getting queued for transcription
+  - These calls are now correctly skipped, consistent with non-tone-detection talkgroups
+  - Calls that do have tones detected continue to use the existing remaining-audio logic unchanged
+
+- **Transcription: duration check now uses original audio instead of converted audio**
+  - `getCallDuration` was probing `call.Audio` (AAC-converted audio) to measure duration, which would fail or return incorrect results for servers not using audio conversion
+  - Duration is now measured from `call.OriginalAudio` first, with `call.Audio` as a fallback — matching the same audio precedence used by the transcription workers themselves
+
 ## Version 7.0 Beta 9.7.26 - Released Mar 28, 2026
 
 ### New
