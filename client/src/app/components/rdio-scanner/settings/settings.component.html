@@ -110,7 +110,7 @@
                                 <div *ngIf="isTagExpanded(system.id + ':' + tag)" class="cs-channels">
                                     <div *ngFor="let pref of getChannelPrefsForSystemAndTag(system.id, tag)" class="cs-channel-row">
                                         <span class="cs-channel-name">
-                                            {{ getTalkgroupLabel(system.id, pref.talkgroupRef ?? pref.talkgroupId ?? 0) }}
+                                            {{ getTalkgroupLabelForPref(system, pref) }}
                                         </span>
                                         <div class="cs-channel-controls">
                                             <mat-form-field appearance="outline" class="cs-sound-field">

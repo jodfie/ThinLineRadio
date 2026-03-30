@@ -155,34 +155,99 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
         });
     }
 
+    /** Loose numeric compare for refs/ids (same idea as mobile `sameNum` / JSON quirks). */
+    private sameNum(a: unknown, b: unknown): boolean {
+        if (a == null || b == null) return false;
+        if (a === b) return true;
+        const na = Number(a);
+        const nb = Number(b);
+        return !Number.isNaN(na) && !Number.isNaN(nb) && na === nb;
+    }
+
+    /**
+     * Client listener config uses system.id / talkgroup.id as radio refs (systemRef / talkgroupRef).
+     * API prefs also include internal DB ids (systemId, talkgroupId). Never fall back with ?? from
+     * ref to DB id — that compares incompatible identifiers and mis-associates channels.
+     */
+    private prefMatchesSystem(pref: RdioScannerAlertPreference, system: any): boolean {
+        const ref = pref.systemRef;
+        if (ref !== undefined && ref !== null) {
+            return this.sameNum(ref, system.id);
+        }
+        const dbSys = pref.systemId;
+        if (dbSys !== undefined && dbSys !== null && system.systemId !== undefined && system.systemId !== null) {
+            return this.sameNum(dbSys, system.systemId);
+        }
+        return false;
+    }
+
+    private findTalkgroupForPref(system: any, pref: RdioScannerAlertPreference): any | undefined {
+        const tgs = system.talkgroups as any[] | undefined;
+        if (!tgs?.length) return undefined;
+        const ref = pref.talkgroupRef;
+        if (ref !== undefined && ref !== null) {
+            return tgs.find(
+                (t: any) => this.sameNum(t.talkgroupRef, ref) || this.sameNum(t.id, ref),
+            );
+        }
+        const dbTg = pref.talkgroupId;
+        if (dbTg !== undefined && dbTg !== null) {
+            return tgs.find((t: any) => this.sameNum(t.talkgroupId, dbTg));
+        }
+        return undefined;
+    }
+
+    private getSystemConfigByListenerId(systemListenerId: number): any | undefined {
+        return (this.config?.systems as any[] | undefined)?.find((s: any) => s.id === systemListenerId);
+    }
+
     /** Returns active channel preferences for a given system, sorted by talkgroup label */
-    getChannelPrefsForSystem(systemRef: number): RdioScannerAlertPreference[] {
-        return this.channelPreferences.filter(p => (p.systemRef ?? p.systemId) === systemRef);
+    getChannelPrefsForSystem(systemListenerId: number): RdioScannerAlertPreference[] {
+        const system = this.getSystemConfigByListenerId(systemListenerId);
+        if (!system) return [];
+        return this.channelPreferences.filter(p => this.prefMatchesSystem(p, system));
     }
 
     /** Returns all unique systems that have at least one active channel preference */
     getSystemsWithActivePrefs(): any[] {
         if (!this.config?.systems) return [];
         return (this.config.systems as any[]).filter(s =>
-            this.channelPreferences.some(p => (p.systemRef ?? p.systemId) === s.id)
+            this.channelPreferences.some(p => this.prefMatchesSystem(p, s))
         );
     }
 
-    getTalkgroupLabel(systemRef: number, talkgroupRef: number): string {
-        const system = (this.config?.systems as any[] | undefined)?.find((s: any) => s.id === systemRef);
-        if (!system) return `Channel ${talkgroupRef}`;
-        const tg = (system.talkgroups as any[] | undefined)?.find((t: any) => t.talkgroupRef === talkgroupRef || t.id === talkgroupRef);
-        return tg?.label || tg?.name || `Channel ${talkgroupRef}`;
+    /** Label for a preference row; resolves talkgroup via ref or DB id like Alert Preferences. */
+    getTalkgroupLabelForPref(system: any, pref: RdioScannerAlertPreference): string {
+        const tg = this.findTalkgroupForPref(system, pref);
+        if (tg) {
+            return tg.label || tg.name || `Channel ${tg.talkgroupRef ?? tg.id}`;
+        }
+        const hint = pref.talkgroupRef ?? pref.talkgroupId;
+        return hint !== undefined && hint !== null ? `Channel ${hint}` : 'Channel';
     }
 
+    /**
+     * Tone-set sound rows: only tone sets the user enabled for alerts when toneSetIds is non-empty;
+     * otherwise all tone sets on the channel (same semantics as “leave unchecked for all” in Alert Preferences).
+     * IDs are normalized (trim + lowercase) to match mobile app and avoid UUID/string mismatches.
+     */
     getToneSetsForPref(pref: RdioScannerAlertPreference): any[] {
         if (!pref.toneAlerts) return [];
-        const sysRef = pref.systemRef ?? pref.systemId;
-        const tgRef = pref.talkgroupRef ?? pref.talkgroupId;
-        const system = (this.config?.systems as any[] | undefined)?.find((s: any) => s.id === sysRef);
+        const system = (this.config?.systems as any[] | undefined)?.find((s: any) => this.prefMatchesSystem(pref, s));
         if (!system) return [];
-        const tg = (system.talkgroups as any[] | undefined)?.find((t: any) => t.talkgroupRef === tgRef || t.id === tgRef);
-        return tg?.toneSets || [];
+        const tg = this.findTalkgroupForPref(system, pref);
+        const all = (tg?.toneSets as any[] | undefined) || [];
+        const selected = pref.toneSetIds;
+        if (!selected?.length) return all;
+        const allow = new Set(
+            selected
+                .map((id) => String(id).trim().toLowerCase())
+                .filter((s) => s.length > 0),
+        );
+        return all.filter((ts: any) => {
+            const id = String(ts.id ?? '').trim().toLowerCase();
+            return id.length > 0 && allow.has(id);
+        });
     }
 
     /** Convert web sound name ('alert') to filename ('alert.wav') */
@@ -236,7 +301,7 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
     private saveChannelPref(pref: RdioScannerAlertPreference): void {
         const pin = this.getPin();
         if (!pin) return;
-        const key = `${pref.systemRef ?? pref.systemId}:${pref.talkgroupRef ?? pref.talkgroupId}`;
+        const key = this.prefSavingKey(pref);
         this.savingChannelSound.add(key);
         // Send the full list so nothing else gets wiped
         this.alertsService.updatePreferences(this.channelPreferences, pin).subscribe({
@@ -249,8 +314,15 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
     }
 
     isChannelSoundSaving(pref: RdioScannerAlertPreference): boolean {
-        const key = `${pref.systemRef ?? pref.systemId}:${pref.talkgroupRef ?? pref.talkgroupId}`;
-        return this.savingChannelSound.has(key);
+        return this.savingChannelSound.has(this.prefSavingKey(pref));
+    }
+
+    /** Stable key for in-flight saves; prefer DB ids when present. */
+    private prefSavingKey(pref: RdioScannerAlertPreference): string {
+        if (pref.systemId != null && pref.talkgroupId != null) {
+            return `db:${pref.systemId}:${pref.talkgroupId}`;
+        }
+        return `ref:${pref.systemRef ?? '?'}:${pref.talkgroupRef ?? '?'}`;
     }
 
     // ── Collapse helpers ──────────────────────────────────────────────────────
@@ -281,19 +353,17 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
 
     // ── Tag-grouping helpers ──────────────────────────────────────────────────
 
-    private getTalkgroupTag(systemRef: number, talkgroupRef: number): string {
-        const system = (this.config?.systems as any[] | undefined)
-            ?.find((s: any) => s.id === systemRef);
-        if (!system) return 'Untagged';
-        const tg = (system.talkgroups as any[] | undefined)
-            ?.find((t: any) => t.talkgroupRef === talkgroupRef || t.id === talkgroupRef);
+    private getTalkgroupTagForPref(system: any, pref: RdioScannerAlertPreference): string {
+        const tg = this.findTalkgroupForPref(system, pref);
         return tg?.tag || 'Untagged';
     }
 
     getTagsForSystem(systemId: number): string[] {
+        const system = this.getSystemConfigByListenerId(systemId);
+        if (!system) return [];
         const tags = new Set<string>();
         for (const pref of this.getChannelPrefsForSystem(systemId)) {
-            tags.add(this.getTalkgroupTag(systemId, pref.talkgroupRef ?? pref.talkgroupId ?? 0));
+            tags.add(this.getTalkgroupTagForPref(system, pref));
         }
         return Array.from(tags).sort((a, b) => {
             if (a === 'Untagged') return 1;
@@ -303,8 +373,10 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
     }
 
     getChannelPrefsForSystemAndTag(systemId: number, tag: string): RdioScannerAlertPreference[] {
+        const system = this.getSystemConfigByListenerId(systemId);
+        if (!system) return [];
         return this.getChannelPrefsForSystem(systemId).filter(pref =>
-            this.getTalkgroupTag(systemId, pref.talkgroupRef ?? pref.talkgroupId ?? 0) === tag
+            this.getTalkgroupTagForPref(system, pref) === tag
         );
     }
 
