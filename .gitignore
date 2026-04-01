@@ -26,6 +26,11 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.cursor/
+
+# Node
+node_modules/
+create-ico-temp.js
 *.swp
 *.swo
 *~
@@ -58,3 +63,4 @@ tlr-time-sync/
 # Config files
 
 ThinLineRadioV7-config.json
+node_modules
