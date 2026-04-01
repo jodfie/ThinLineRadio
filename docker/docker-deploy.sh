@@ -5,6 +5,9 @@
 
 set -e
 
+# Change to the docker/ directory so compose and relative paths work correctly
+cd "$(dirname "$0")"
+
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -33,12 +36,12 @@ echo -e "${GREEN}✓ Docker installed:${NC} $(docker --version)"
 echo -e "${GREEN}✓ Docker Compose installed:${NC} $(docker compose version)"
 echo ""
 
-# Check if .env file exists
-if [ ! -f .env ]; then
+# Check if .env file exists (lives in repo root, one level up)
+if [ ! -f ../.env ]; then
     echo -e "${YELLOW}Creating .env file from template...${NC}"
     
     if [ -f env.docker.example ]; then
-        cp env.docker.example .env
+        cp env.docker.example ../.env
         echo -e "${GREEN}✓ Created .env file${NC}"
         echo ""
         echo -e "${YELLOW}IMPORTANT: You must edit .env and set a secure database password!${NC}"
@@ -58,7 +61,7 @@ else
     echo -e "${GREEN}✓ .env file exists${NC}"
     
     # Check if password was changed
-    if grep -q "change_this_password_immediately" .env; then
+    if grep -q "change_this_password_immediately" ../.env; then
         echo -e "${RED}WARNING: Default database password detected!${NC}"
         echo "You MUST change the database password in .env"
         echo "Edit now? (y/n)"
@@ -77,15 +80,15 @@ echo ""
 # Create required directories
 echo -e "${YELLOW}Creating required directories...${NC}"
 
-mkdir -p docker/data/postgres
-mkdir -p docker/data/thinline
-mkdir -p docker/data/logs
-mkdir -p docker/config/ssl
-mkdir -p docker/config/credentials
-mkdir -p docker/init-db
+mkdir -p data/postgres
+mkdir -p data/thinline
+mkdir -p data/logs
+mkdir -p config/ssl
+mkdir -p config/credentials
+mkdir -p init-db
 
 # Set permissions
-chmod -R 755 docker/
+chmod -R 755 data/ config/ init-db/
 
 echo -e "${GREEN}✓ Directories created${NC}"
 echo ""

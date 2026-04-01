@@ -5,6 +5,9 @@
 
 set -e
 
+# Change to the docker/ directory so compose and relative paths work correctly
+cd "$(dirname "$0")"
+
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -54,13 +57,13 @@ echo ""
 echo -e "${YELLOW}Test 4: Checking required files...${NC}"
 
 required_files=(
-    "Dockerfile"
+    "../Dockerfile"
     "docker-compose.yml"
-    ".dockerignore"
+    "README.md"
+    "config/README.md"
+    "init-db/README.md"
+    "../.dockerignore"
     "env.docker.example"
-    "docker/README.md"
-    "docker/config/README.md"
-    "docker/init-db/README.md"
 )
 
 all_files_exist=true
@@ -81,18 +84,18 @@ fi
 echo ""
 echo -e "${YELLOW}Test 5: Checking .env configuration...${NC}"
 
-if [ ! -f .env ]; then
+if [ ! -f ../.env ]; then
     echo -e "${YELLOW}⚠ .env file not found (use env.docker.example)${NC}"
     echo "  Creating .env from template for testing..."
-    cp env.docker.example .env
+    cp env.docker.example ../.env
     # Set a test password
-    sed -i.bak 's/change_this_password_immediately/test_password_12345/g' .env
-    rm -f .env.bak
+    sed -i.bak 's/change_this_password_immediately/test_password_12345/g' ../.env
+    rm -f ../.env.bak
     echo -e "${GREEN}✓ Created test .env file${NC}"
 else
     echo -e "${GREEN}✓ .env file exists${NC}"
     
-    if grep -q "change_this_password_immediately" .env; then
+    if grep -q "change_this_password_immediately" ../.env; then
         echo -e "${RED}✗ Default password still in use!${NC}"
         echo "  Please change DB_PASS in .env"
         exit 1

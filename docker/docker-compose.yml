@@ -38,8 +38,8 @@ services:
       - postgres_data:/var/lib/postgresql/data
       
       # Optional: Custom initialization scripts
-      # Place .sql or .sh files in ./docker/init-db/ to run on first startup
-      - ./docker/init-db:/docker-entrypoint-initdb.d:ro
+      # Place .sql or .sh files in ./init-db/ to run on first startup
+      - ./init-db:/docker-entrypoint-initdb.d:ro
     
     ports:
       # Expose PostgreSQL port (optional, for external access)
@@ -71,7 +71,7 @@ services:
   # =============================================================================
   thinline-radio:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
       args:
         - BUILD_DATE=${BUILD_DATE:-unknown}
@@ -126,7 +126,7 @@ services:
     
     volumes:
       # Configuration files
-      - ./docker/config:/app/config:ro
+      - ./config:/app/config:ro
       
       # Data storage (audio files, database files, etc.)
       # WARNING: This can grow large - ensure sufficient disk space
@@ -195,7 +195,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-./docker/data}/postgres
+      device: ${DATA_PATH:-./data}/postgres
   
   # ThinLine Radio data - audio files and application data
   thinline_data:
@@ -203,7 +203,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-./docker/data}/thinline
+      device: ${DATA_PATH:-./data}/thinline
   
   # Application logs
   thinline_logs:
@@ -211,5 +211,5 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${DATA_PATH:-./docker/data}/logs
+      device: ${DATA_PATH:-./data}/logs
 
