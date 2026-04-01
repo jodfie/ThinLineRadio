@@ -1,5 +1,20 @@
 # Change log
 
+## Version 26.04.016 - Released Apr 1, 2026
+
+### Fixed
+
+- **Web Client — Now Playing row not always showing active transmission**
+  - `event.emit({ call })` was only fired after `decodeAudioData` completed (an async operation), meaning the Now Playing row stayed blank for the entire 1-second inter-call gap plus however long browser audio decoding took
+  - Moved the call emit to immediately after the call is dequeued, before decryption and decode begin — Now Playing metadata now appears as soon as the next call is selected, with no visible blank period between transmissions
+  - Removed the now-redundant emit inside the `decodeAudioData` error callback
+
+- **Duplicate alerts in web app for the same call**
+  - Keyword alert deduplication was checking `callId + keywordsMatched` (exact match), so `["FIRE"]` and `["FIRE","MEDICAL","BREATHING"]` would both insert as separate rows for the same call
+  - Changed the server-side check to match by `callId` only; if an alert already exists for that call it now `UPDATE`s the row with a merged, deduplicated keyword set instead of inserting a new row
+  - Added `mergeKeywordsJson` helper that unions two JSON keyword arrays with deduplication
+  - Client-side: `recentAlertsFlat` now deduplicates by `callId`, keeping the alert with the most keywords, as a safety net for existing duplicate rows in the database
+
 ## Version 26.04.015 - Released Mar 31, 2026
 
 ### Performance

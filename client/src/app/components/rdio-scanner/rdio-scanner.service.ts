@@ -599,6 +599,11 @@ export class RdioScannerService implements OnDestroy {
             ? this.getPlaybackQueueCount()
             : this.callQueue.length;
 
+        // Emit the call immediately so Now Playing updates as soon as the call is
+        // dequeued — before decoding starts. This eliminates the blank gap between
+        // transmissions caused by the async decode + skipDelay timer.
+        this.event.emit({ call: this.call, queue });
+
         // If the audio is encrypted, decrypt it first before building the ArrayBuffer.
         let audioBytes: Uint8Array;
         if (this.call.audioType === 'EncryptedAES256GCM' && typeof this.call.audio?.data === 'string') {
@@ -638,8 +643,6 @@ export class RdioScannerService implements OnDestroy {
             this.audioSource.onended = () => this.skip({ delay: true });
             this.audioSource.start();
 
-            this.event.emit({ call: this.call, queue });
-
             interval(500).pipe(takeWhile(() => !!this.call)).subscribe(() => {
                 if (this.audioContext && !isNaN(this.audioContext.currentTime)) {
                     if (isNaN(this.audioSourceStartTime)) {
@@ -652,8 +655,6 @@ export class RdioScannerService implements OnDestroy {
                 }
             });
         }, () => {
-            this.event.emit({ call: this.call, queue });
-
             this.skip({ delay: false });
         });
     }
