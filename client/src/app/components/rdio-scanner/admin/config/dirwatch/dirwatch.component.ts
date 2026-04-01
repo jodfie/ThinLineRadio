@@ -77,7 +77,7 @@ export class RdioScannerAdminDirwatchComponent implements OnChanges {
             deleteAfter: true,
         });
 
-        dirwatch.markAllAsTouched();
+        dirwatch.markAsDirty({ onlySelf: false });
 
         this.registerOnChanges(dirwatch);
 
@@ -119,9 +119,9 @@ export class RdioScannerAdminDirwatchComponent implements OnChanges {
         const talkgroupId = control.get('talkgroupId');
 
         systemId?.updateValueAndValidity();
-        systemId?.markAsTouched();
+        systemId?.markAsDirty({ onlySelf: true });
 
         talkgroupId?.updateValueAndValidity();
-        talkgroupId?.markAsTouched();
+        talkgroupId?.markAsDirty({ onlySelf: true });
     }
 }

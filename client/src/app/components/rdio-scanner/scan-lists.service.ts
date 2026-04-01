@@ -66,13 +66,23 @@ export class ScanListsService implements OnDestroy {
         return [...this.lists];
     }
 
-    createList(name: string): void {
+    createList(name: string): ScanList {
         const newList: ScanList = {
             id: `list-${Date.now()}`,
             name,
             channels: [],
         };
         this.lists = [...this.lists, newList];
+        this.lists$.next([...this.lists]);
+        this.scheduleSave();
+        return newList;
+    }
+
+    reorderLists(fromIndex: number, toIndex: number): void {
+        const lists = [...this.lists];
+        const [moved] = lists.splice(fromIndex, 1);
+        lists.splice(toIndex, 0, moved);
+        this.lists = lists;
         this.lists$.next([...this.lists]);
         this.scheduleSave();
     }

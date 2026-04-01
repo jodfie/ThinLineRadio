@@ -816,8 +816,7 @@
       <span class="mat-caption">AES-256-GCM encryption for all audio streamed over WebSocket. Zero playback overhead — hardware-accelerated on modern devices.</span>
     </p>
     <div>
-      <mat-slide-toggle color="primary" formControlName="audioEncryptionEnabled"
-        [disabled]="!form!.get('relayServerAPIKey')!.value">
+      <mat-slide-toggle color="primary" formControlName="audioEncryptionEnabled">
       </mat-slide-toggle>
     </div>
   </div>
@@ -827,32 +826,43 @@
     <h4 style="width: 100%; margin: 0 0 6px 0; color: #ccc;">Download Rate Limiting</h4>
     <p style="width: 100%; margin: 0; color: #aaa; font-size: 13px;">
       Limit how many audio files a single WebSocket connection can download within a rolling time window.
-      Set <strong>Max Downloads</strong> to <code>0</code> to disable rate limiting.
     </p>
   </div>
 
   <div class="row">
     <p>
-      <span class="mat-body">Max Downloads per Window</span><br>
-      <span class="mat-caption">Maximum number of audio download requests allowed per client per window. Set to 0 to disable.</span>
+      <span class="mat-body">Enable Download Rate Limiting</span><br>
+      <span class="mat-caption">Restrict how many audio files each client can download per time window.</span>
     </p>
-    <mat-form-field floatLabel="auto">
-      <input matInput type="number" formControlName="maxDownloadsPerWindow" placeholder="0 = disabled">
-      <mat-error *ngIf="form?.get('maxDownloadsPerWindow')?.hasError('min')">Must be 0 or greater</mat-error>
-    </mat-form-field>
+    <div>
+      <mat-slide-toggle color="primary" formControlName="rateLimitingEnabled"></mat-slide-toggle>
+    </div>
   </div>
 
-  <div class="row" *ngIf="form?.get('maxDownloadsPerWindow')?.value > 0">
-    <p>
-      <span class="mat-body">Window Duration (minutes)</span><br>
-      <span class="mat-caption">Rolling window size in minutes (1–60). Downloads are counted within this window.</span>
-    </p>
-    <mat-form-field floatLabel="auto">
-      <input matInput type="number" formControlName="downloadWindowMinutes" placeholder="60">
-      <mat-error *ngIf="form?.get('downloadWindowMinutes')?.hasError('min')">Must be at least 1</mat-error>
-      <mat-error *ngIf="form?.get('downloadWindowMinutes')?.hasError('max')">Must be 60 or less</mat-error>
-    </mat-form-field>
-  </div>
+  <ng-container *ngIf="form?.get('rateLimitingEnabled')?.value">
+    <div class="row">
+      <p>
+        <span class="mat-body">Max Downloads per Window</span><br>
+        <span class="mat-caption">Maximum number of audio download requests allowed per client per window.</span>
+      </p>
+      <mat-form-field floatLabel="auto">
+        <input matInput type="number" formControlName="maxDownloadsPerWindow" placeholder="100">
+        <mat-error *ngIf="form?.get('maxDownloadsPerWindow')?.hasError('min')">Must be at least 1</mat-error>
+      </mat-form-field>
+    </div>
+
+    <div class="row">
+      <p>
+        <span class="mat-body">Window Duration (minutes)</span><br>
+        <span class="mat-caption">Rolling window size in minutes (1–60). Downloads are counted within this window.</span>
+      </p>
+      <mat-form-field floatLabel="auto">
+        <input matInput type="number" formControlName="downloadWindowMinutes" placeholder="60">
+        <mat-error *ngIf="form?.get('downloadWindowMinutes')?.hasError('min')">Must be at least 1</mat-error>
+        <mat-error *ngIf="form?.get('downloadWindowMinutes')?.hasError('max')">Must be 60 or less</mat-error>
+      </mat-form-field>
+    </div>
+  </ng-container>
 
 
 </ng-container>

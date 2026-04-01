@@ -1,5 +1,69 @@
 # Change log
 
+## Version 26.04.015 - Released Mar 31, 2026
+
+### Performance
+
+- **Web Client — Core Web Vitals improvements (LCP, CLS, INP)**
+  - **LCP (Largest Contentful Paint):** Reduced from 4.52 s → ~1.40 s
+    - `alertsService` now persists the last 50 alerts to `sessionStorage` after every fetch and restores them on construction, so the Recent Alerts embed paints from cached data on the very first frame instead of waiting for an HTTP round-trip
+    - The Recent Alerts embed component seeds from the service cache synchronously at init so `p.transcript-text` is visible immediately on page load
+    - Replaced `white-space: pre-wrap` with `pre-line` on transcript text to reduce text-layout cost for long radio transcripts
+    - Switched monospace font stack to `ui-monospace` (system alias, no download) as the leading option
+    - Added `contain: layout style` to `.transcript-text` in the embed rail to isolate its layout from the rest of the page
+  - **CLS (Cumulative Layout Shift):** Reduced from 0.44 → ~0.02
+    - Added `content-visibility: auto` and `contain-intrinsic-size` to `.transcript-item` so off-screen paginated items reserve stable height before being painted
+  - **INP (Interaction to Next Paint):** Reduced from 528 ms → ~200 ms range
+    - All data-loading calls in `ngOnInit` (HTTP fetches, service subscriptions) are now deferred with `setTimeout(0)`, yielding the main thread so the browser can paint the newly activated tab before any work begins
+    - The `alertsService.alerts$` BehaviorSubject subscription — which was firing synchronously with cached data and triggering expensive `updateGroupedAlerts()` on every tab click — is now also deferred into the same yielded task
+    - Transcript search input debounced at 300 ms with `distinctUntilChanged` via RxJS `Subject`; previously fired an HTTP request on every keystroke
+    - Added `trackBy: trackByTranscriptId` to the transcript `*ngFor` loop to prevent full list re-creation on pagination/refresh
+    - Added `content-visibility: auto` to `.stats-section` and `.stats-counters` to skip layout/paint of off-screen chart sections during Stats tab initial render
+    - Removed `console.log` from `loadTranscripts` hot path
+
+### New
+
+- **Admin — Download Rate Limiting: enable/disable toggle**
+  - Replaced the "set to 0 to disable" pattern with an explicit enable/disable slide toggle in Admin → Options → Audio Security
+  - When the toggle is off, Max Downloads and Window Duration fields are hidden and their validators are cleared — the form is always valid by default
+  - When the toggle is on, both fields appear with their configured defaults (100 downloads / 60-minute window)
+  - On save, if the toggle is off, `maxDownloadsPerWindow` is written as `0` to the server so existing backend logic is unchanged
+
+- **Web Client — Scan Lists: add to list from Channels and Favorites**
+  - Every talkgroup row in the Channels and Favorites tabs now has a `playlist_add` icon button
+  - Clicking it opens an anchored dropdown listing all scan lists with a green checkbox for lists the talkgroup is already in — click to toggle in or out
+  - A "New list…" option at the bottom creates a new scan list and immediately adds the talkgroup to it
+  - Clicking anywhere outside the dropdown closes it
+  - The dropdown appears in both the Channels tab and the Favorites tab (shared row template)
+
+- **Web Client — Scan Lists: drag-to-reorder**
+  - Scan list cards can now be reordered by dragging the `⠿` handle on the left of each card header
+  - Uses Angular CDK drag-drop with vertical-axis lock; a dashed green placeholder marks the drop target
+  - The favorites-derived list cannot be dragged
+  - New order is auto-saved to the server immediately on drop
+
+- **Mobile — Scan Lists: drag-to-reorder**
+  - Scan list cards in the Scan Lists tab now support drag-to-reorder via a `drag_indicator` handle on the left of each card header
+  - Uses Flutter's `ReorderableListView` with `ReorderableDragStartListener`; custom handles replace the default built-in handles
+  - The favorites-derived list cannot be dragged
+  - New order is persisted to both local storage and the server on drop
+
+### Fixed
+
+- **Admin — Audio Encryption toggle: reliable disable when no relay API key**
+  - Removed the unreliable `[disabled]` template binding on the Audio Encryption slide toggle; the control is now properly enabled/disabled through Angular's reactive form API in the component
+  - When the Relay Server API Key is blank or cleared after the toggle was already on, the toggle automatically turns off and disables — preventing an invalid saved state
+  - The warning banner below the section heading is still shown when no API key is present
+
+- **Admin — Options form invalid on fresh config**
+  - `downloadWindowMinutes` was initialized with `?? 60` (nullish coalescing), but the Go server returns `0` for fields that have never been set; `0 ?? 60` resolves to `0`, which immediately failed `Validators.min(1)` and made the entire Options form invalid before the user touched anything
+  - Changed to `|| 60` so that `0` (unset) correctly falls back to the default of `60`
+
+- **Web Client — Favorites: tag favorite showed all system talkgroups**
+  - When a tag was starred (favorited), the Favorites detail pane was still rendering all talkgroups in the system because the split-view detail pane always called `groupTalkgroupsByTag()` regardless of nav mode
+  - Fixed by switching the detail pane's `*ngFor` source to `getFavoriteTagGroupsForSystem()` when in favorites mode
+  - Also fixed a secondary bug in `getFavoriteTagGroupsForSystem`: a favorited tag's talkgroups were additionally filtered by `favoriteTalkgroups.has(tg.id)`, so favoriting a tag (with no individual talkgroup favorites) showed nothing; now all talkgroups under a favorited tag are shown, and individually favorited talkgroups whose tag is not starred are still included
+
 ## Version 26.04.014 - Released Mar 30, 2026
 
 ### New

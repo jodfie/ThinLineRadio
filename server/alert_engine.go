@@ -499,19 +499,30 @@ func (engine *AlertEngine) TriggerKeywordAlerts(callId uint64, systemId uint64, 
 		}
 	}
 
-	// Check if alert already exists for this call + keyword combination
-	// This prevents duplicate alerts if called multiple times for the same keyword match
+	// Check if any keyword alert already exists for this call — match on callId only,
+	// not on the keyword set, so we never create a second row for the same call.
 	var existingAlertId uint64
+	var existingKeywordsJson string
 	var checkQuery string
 	if engine.controller.Database.Config.DbType == DbTypePostgresql {
-		checkQuery = `SELECT "alertId" FROM "alerts" WHERE "callId" = $1 AND "systemId" = $2 AND "talkgroupId" = $3 AND "alertType" = 'keyword' AND "keywordsMatched" = $4 LIMIT 1`
+		checkQuery = `SELECT "alertId", "keywordsMatched" FROM "alerts" WHERE "callId" = $1 AND "systemId" = $2 AND "talkgroupId" = $3 AND "alertType" = 'keyword' LIMIT 1`
 	} else {
-		checkQuery = `SELECT "alertId" FROM "alerts" WHERE "callId" = ? AND "systemId" = ? AND "talkgroupId" = ? AND "alertType" = 'keyword' AND "keywordsMatched" = ? LIMIT 1`
+		checkQuery = `SELECT "alertId", "keywordsMatched" FROM "alerts" WHERE "callId" = ? AND "systemId" = ? AND "talkgroupId" = ? AND "alertType" = 'keyword' LIMIT 1`
 	}
-	if err := engine.controller.Database.Sql.QueryRow(checkQuery, callId, systemId, talkgroupId, keywordsJsonStr).Scan(&existingAlertId); err == nil {
-		// Alert already exists, skip creation but still send notifications
+	if err := engine.controller.Database.Sql.QueryRow(checkQuery, callId, systemId, talkgroupId).Scan(&existingAlertId, &existingKeywordsJson); err == nil {
+		// Alert already exists — merge any new keywords into it.
+		mergedJson := mergeKeywordsJson(existingKeywordsJson, keywordsJsonStr)
+		if mergedJson != existingKeywordsJson {
+			var updateQuery string
+			if engine.controller.Database.Config.DbType == DbTypePostgresql {
+				updateQuery = `UPDATE "alerts" SET "keywordsMatched" = $1 WHERE "alertId" = $2`
+			} else {
+				updateQuery = `UPDATE "alerts" SET "keywordsMatched" = ? WHERE "alertId" = ?`
+			}
+			engine.controller.Database.Sql.Exec(updateQuery, mergedJson, existingAlertId)
+		}
 	} else {
-		// Create alert once for this keyword match
+		// No alert yet — create one.
 		engine.createAlert(&AlertRecord{
 			CallId:            callId,
 			SystemId:          systemId,
@@ -822,4 +833,25 @@ func (engine *AlertEngine) cleanupOldAlerts() {
 		}
 	}
 	engine.cooldownMu.Unlock()
+}
+
+// mergeKeywordsJson merges two JSON keyword arrays, deduplicating entries.
+// Returns the merged JSON string. Falls back to existingJson on any parse error.
+func mergeKeywordsJson(existingJson, newJson string) string {
+	var existing, incoming []string
+	json.Unmarshal([]byte(existingJson), &existing)
+	json.Unmarshal([]byte(newJson), &incoming)
+
+	seen := make(map[string]struct{}, len(existing)+len(incoming))
+	merged := make([]string, 0, len(existing)+len(incoming))
+	for _, kw := range append(existing, incoming...) {
+		if _, ok := seen[kw]; !ok {
+			seen[kw] = struct{}{}
+			merged = append(merged, kw)
+		}
+	}
+	if result, err := json.Marshal(merged); err == nil {
+		return string(result)
+	}
+	return existingJson
 }

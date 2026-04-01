@@ -19,7 +19,7 @@
 
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Observable, BehaviorSubject } from 'rxjs';
+import { Observable, BehaviorSubject, of } from 'rxjs';
 import { RdioScannerAlert, RdioScannerAlertPreference, RdioScannerKeywordList } from '../rdio-scanner';
 
 @Injectable()
@@ -32,14 +32,46 @@ export class AlertsService {
     // Optional base URL for cross-origin requests (e.g., when embedded in Central Management)
     private baseUrl: string | null = null;
 
+    private readonly SESSION_KEY = 'tlr_alerts_cache';
+    private readonly SESSION_MAX = 50;
+
     // Shared alerts cache - single source of truth
     private alertsCache: RdioScannerAlert[] = [];
     private lastFetchTime: number = 0;
     private isFetching: boolean = false;
-    private alertsSubject = new BehaviorSubject<RdioScannerAlert[]>([]);
-    public alerts$ = this.alertsSubject.asObservable();
+    private alertsSubject: BehaviorSubject<RdioScannerAlert[]>;
+    public alerts$: Observable<RdioScannerAlert[]>;
 
     constructor(private http: HttpClient) {
+        // Restore from sessionStorage so the UI can paint cached data before the first HTTP response.
+        const stored = this.readSessionCache();
+        this.alertsCache = stored.alerts;
+        this.lastFetchTime = stored.lastFetchTime;
+        this.alertsSubject = new BehaviorSubject<RdioScannerAlert[]>([...this.alertsCache]);
+        this.alerts$ = this.alertsSubject.asObservable();
+    }
+
+    private readSessionCache(): { alerts: RdioScannerAlert[]; lastFetchTime: number } {
+        try {
+            const raw = sessionStorage.getItem(this.SESSION_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                return {
+                    alerts: Array.isArray(parsed.alerts) ? parsed.alerts : [],
+                    lastFetchTime: parsed.lastFetchTime || 0,
+                };
+            }
+        } catch { /* ignore parse errors */ }
+        return { alerts: [], lastFetchTime: 0 };
+    }
+
+    private writeSessionCache(): void {
+        try {
+            sessionStorage.setItem(this.SESSION_KEY, JSON.stringify({
+                alerts: this.alertsCache.slice(0, this.SESSION_MAX),
+                lastFetchTime: this.lastFetchTime,
+            }));
+        } catch { /* quota exceeded — silently skip */ }
     }
 
     /**
@@ -157,8 +189,9 @@ export class AlertsService {
                             }
                         }
 
-                        // Emit updated alerts
+                        // Emit updated alerts and persist to sessionStorage
                         this.alertsSubject.next([...this.alertsCache]);
+                        this.writeSessionCache();
 
                         this.isFetching = false;
                         observer.next(forceFullRefresh ? this.alertsCache : alertsToAdd);
@@ -192,6 +225,7 @@ export class AlertsService {
         this.alertsCache = [];
         this.lastFetchTime = 0;
         this.alertsSubject.next([]);
+        try { sessionStorage.removeItem(this.SESSION_KEY); } catch { /* ignore */ }
     }
 
     getTranscripts(limit: number = 50, offset: number = 0, pin?: string, systemId?: number, talkgroupId?: number, dateFrom?: number, dateTo?: number, search?: string): Observable<any[]> {

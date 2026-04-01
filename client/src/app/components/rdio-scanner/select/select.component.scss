@@ -1038,6 +1038,42 @@
   overflow: hidden;
 
   &.expanded { border-color: rgba(0, 230, 118, 0.25); }
+
+  &.cdk-drag-animating { transition: transform 250ms cubic-bezier(0, 0, 0.2, 1); }
+  &.cdk-drag-preview {
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+    opacity: 0.92;
+  }
+}
+
+.scan-list-drag-placeholder {
+  height: 56px;
+  margin-bottom: 8px;
+  border: 2px dashed rgba(0, 230, 118, 0.35);
+  border-radius: 12px;
+  background: rgba(0, 230, 118, 0.04);
+  transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.scan-lists-body.cdk-drop-list-dragging .scan-list-card:not(.cdk-drag-placeholder) {
+  transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
+  cursor: grab;
+  color: rgba(255, 255, 255, 0.25);
+  touch-action: none;
+
+  mat-icon { font-size: 18px; width: 18px; height: 18px; }
+
+  &:hover { color: rgba(255, 255, 255, 0.55); }
+  &:active { cursor: grabbing; }
 }
 
 .scan-list-card-header {
@@ -1208,4 +1244,77 @@
   width: 16px;
   height: 16px;
   font-size: 16px;
+}
+
+// ── Scan List add-to-list dropdown ──────────────────────────────────────────
+.scan-list-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.scan-list-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 200;
+  min-width: 180px;
+  max-width: 260px;
+  background: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  padding: 4px 0;
+
+  .scan-list-dropdown-empty {
+    padding: 10px 14px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.45);
+    font-style: italic;
+  }
+
+  .scan-list-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+    cursor: pointer;
+    transition: background 0.15s ease;
+
+    mat-icon {
+      width: 18px;
+      height: 18px;
+      font-size: 18px;
+      flex-shrink: 0;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    .dropdown-check {
+      color: #00e676;
+    }
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    &.create {
+      color: rgba(255, 255, 255, 0.55);
+      font-size: 12px;
+
+      mat-icon { color: rgba(255, 255, 255, 0.35); }
+
+      &:hover {
+        color: rgba(255, 255, 255, 0.85);
+        mat-icon { color: rgba(255, 255, 255, 0.65); }
+      }
+    }
+  }
+
+  .scan-list-dropdown-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 4px 0;
+  }
 }

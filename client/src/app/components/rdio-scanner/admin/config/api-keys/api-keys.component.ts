@@ -52,7 +52,7 @@ export class RdioScannerAdminApiKeysComponent {
             systems: '*',
         });
 
-        apiKey.markAllAsTouched();
+        apiKey.markAsDirty({ onlySelf: false });
 
         this.form?.insert(0, apiKey);
 

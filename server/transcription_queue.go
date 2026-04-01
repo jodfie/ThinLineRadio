@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -38,12 +39,13 @@ type TranscriptionJob struct {
 
 // TranscriptionQueue manages transcription jobs with a worker pool
 type TranscriptionQueue struct {
-	jobs       chan TranscriptionJob
-	workers    int
-	provider   TranscriptionProvider
-	controller *Controller
-	mutex      sync.Mutex
-	running    bool
+	jobs            chan TranscriptionJob
+	workers         int
+	provider        TranscriptionProvider
+	controller      *Controller
+	mutex           sync.Mutex
+	running         bool
+	processedCount  atomic.Uint64 // total transcriptions completed since startup
 }
 
 // NewTranscriptionQueue creates a new transcription queue with worker pool
@@ -154,7 +156,21 @@ func (queue *TranscriptionQueue) worker(workerId int) {
 		}
 
 		startTime := time.Now()
-		queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("transcription worker %d starting call %d", workerId, job.CallId))
+
+		// Resolve system and talkgroup labels for richer log lines
+		systemLabel := fmt.Sprintf("sys:%d", job.SystemId)
+		talkgroupLabel := fmt.Sprintf("tg:%d", job.TalkgroupId)
+		if sys, ok := queue.controller.Systems.GetSystemById(job.SystemId); ok {
+			systemLabel = sys.Label
+			if tg, ok := sys.Talkgroups.GetTalkgroupById(job.TalkgroupId); ok {
+				talkgroupLabel = tg.Label
+			}
+		}
+
+		queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf(
+			"[transcription] worker %d | call %d | %s / %s | queued",
+			workerId, job.CallId, systemLabel, talkgroupLabel,
+		))
 
 		// Update call status to processing
 		queue.updateCallTranscriptionStatus(job.CallId, "processing")
@@ -208,9 +224,12 @@ func (queue *TranscriptionQueue) worker(workerId int) {
 
 		// Transcribe audio (filtered if tones were present, original otherwise)
 		transcriptionOpts := TranscriptionOptions{
-			Language:      queue.controller.Options.TranscriptionConfig.Language,
-			InitialPrompt: resolvedPrompt,
-			AudioMime:     audioMimeType, // Use original audio MIME type
+			Language:       queue.controller.Options.TranscriptionConfig.Language,
+			InitialPrompt:  resolvedPrompt,
+			AudioMime:      audioMimeType,
+			SystemLabel:    systemLabel,
+			TalkgroupLabel: talkgroupLabel,
+			CallID:         job.CallId,
 		}
 
 		// Add AssemblyAI-specific options if configured
@@ -406,7 +425,12 @@ func (queue *TranscriptionQueue) worker(workerId int) {
 		go queue.processKeywords(job.CallId, job.SystemId, job.TalkgroupId, cleanedResult)
 
 		duration := time.Since(startTime)
-		queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("transcription worker %d completed call %d in %v (confidence: %.2f)", workerId, job.CallId, duration, result.Confidence))
+		count := queue.processedCount.Add(1)
+		queue.controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf(
+			"[transcription] worker %d | call %d | %s / %s | done in %.2fs | confidence %.2f | total #%d",
+			workerId, job.CallId, systemLabel, talkgroupLabel,
+			duration.Seconds(), result.Confidence, count,
+		))
 	}
 }
 

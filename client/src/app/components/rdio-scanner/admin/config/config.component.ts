@@ -74,6 +74,10 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
 
     private isImportedForReview = false;
 
+    /** Preserved from the imported config file — not part of the Angular form. */
+    private importedUserAlertPreferences: any[] | null = null;
+    private importedDeviceTokens: any[] | null = null;
+
     /**
      * Timestamp of the last reset() call. Used to suppress the WebSocket
      * config push that arrives right after the HTTP GET already built the form
@@ -230,7 +234,7 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
     /** Add a new system and immediately navigate to its detail view */
     addNewSystem(): void {
         const system = this.adminService.newSystemForm();
-        system.markAllAsTouched();
+        system.markAsDirty({ onlySelf: false });
         this.systems.insert(0, system);
         this.form?.markAsDirty();
         this.systemsNavExpanded = true;
@@ -273,6 +277,19 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
         // Track if this reset is from an "Import for Review"
         this.isImportedForReview = options?.isImport === true;
 
+        // Preserve imported data that lives outside the Angular form group
+        if (options?.isImport) {
+            this.importedUserAlertPreferences = Array.isArray((config as any)?.userAlertPreferences)
+                ? (config as any).userAlertPreferences
+                : null;
+            this.importedDeviceTokens = Array.isArray((config as any)?.deviceTokens)
+                ? (config as any).deviceTokens
+                : null;
+        } else {
+            this.importedUserAlertPreferences = null;
+            this.importedDeviceTokens = null;
+        }
+
         this.statusSubscription = this.form.statusChanges.subscribe(() => {
             this.ngChangeDetectorRef.markForCheck();
         });
@@ -287,7 +304,7 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
                     groupIds.updateValueAndValidity({ onlySelf: true });
 
                     if (groupIds.errors) {
-                        groupIds.markAsTouched({ onlySelf: true });
+                        groupIds.markAsDirty({ onlySelf: true });
                     }
                 });
             });
@@ -304,7 +321,7 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
                     tagId.updateValueAndValidity({ onlySelf: true });
 
                     if (tagId.errors) {
-                        tagId.markAsTouched({ onlySelf: true });
+                        tagId.markAsDirty({ onlySelf: true });
                     }
                 });
             });
@@ -354,9 +371,19 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
             delete formValue.keywordLists;
             delete formValue.userAlertPreferences;
             delete formValue.deviceTokens;
+        } else {
+            // Splice in the arrays that never live inside the Angular form
+            if (this.importedUserAlertPreferences !== null) {
+                formValue.userAlertPreferences = this.importedUserAlertPreferences;
+            }
+            if (this.importedDeviceTokens !== null) {
+                formValue.deviceTokens = this.importedDeviceTokens;
+            }
         }
         
         this.isImportedForReview = false;
+        this.importedUserAlertPreferences = null;
+        this.importedDeviceTokens = null;
 
         // Convert tone sets from flat form structure to nested structure
         if (formValue?.systems) {
@@ -422,6 +449,14 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
                 }
                 return system;
             });
+        }
+
+        // Flatten rate limiting toggle into maxDownloadsPerWindow
+        if (formValue?.options) {
+            if (!formValue.options.rateLimitingEnabled) {
+                formValue.options.maxDownloadsPerWindow = 0;
+            }
+            delete formValue.options.rateLimitingEnabled;
         }
 
         // Convert transcription config from form structure

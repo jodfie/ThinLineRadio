@@ -1743,19 +1743,22 @@ func (admin *Admin) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 			case []any:
 				// Only delete ALL existing users for full imports, not regular saves
 				if isFullImport {
-					allUsers := admin.Controller.Users.GetAllUsers()
-					for _, existingUser := range allUsers {
-						// Delete from database first
-						_, err := admin.Controller.Database.Sql.Exec(`DELETE FROM "users" WHERE "userId" = $1`, existingUser.Id)
-						if err != nil {
-							logError(fmt.Errorf("failed to delete user %s from database during import: %v", existingUser.Email, err))
-						} else {
-							// Remove from in-memory map
-							if err := admin.Controller.Users.Remove(existingUser.Id); err != nil {
-								logError(fmt.Errorf("failed to remove user %s from memory during import: %v", existingUser.Email, err))
-							}
+				allUsers := admin.Controller.Users.GetAllUsers()
+				for _, existingUser := range allUsers {
+					// Delete dependent rows first (FK constraints have no CASCADE after migration)
+					admin.Controller.Database.Sql.Exec(`DELETE FROM "userAlertPreferences" WHERE "userId" = $1`, existingUser.Id)
+					admin.Controller.Database.Sql.Exec(`DELETE FROM "deviceTokens" WHERE "userId" = $1`, existingUser.Id)
+					// Now safe to delete the user
+					_, err := admin.Controller.Database.Sql.Exec(`DELETE FROM "users" WHERE "userId" = $1`, existingUser.Id)
+					if err != nil {
+						logError(fmt.Errorf("failed to delete user %s from database during import: %v", existingUser.Email, err))
+					} else {
+						// Remove from in-memory map
+						if err := admin.Controller.Users.Remove(existingUser.Id); err != nil {
+							logError(fmt.Errorf("failed to remove user %s from memory during import: %v", existingUser.Email, err))
 						}
 					}
+				}
 				}
 
 				// Now create/update users from import
@@ -2052,11 +2055,21 @@ func (admin *Admin) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 							}
 						}
 
-						keywordsJson, _ := json.Marshal(keywords)
-						keywordListIdsJson, _ := json.Marshal(keywordListIds)
-						toneSetIdsJson, _ := json.Marshal(toneSetIds)
+					// Use empty slices instead of nil so we always store "[]" not "null"
+					if keywords == nil {
+						keywords = []string{}
+					}
+					if keywordListIds == nil {
+						keywordListIds = []int{}
+					}
+					if toneSetIds == nil {
+						toneSetIds = []string{}
+					}
+					keywordsJson, _ := json.Marshal(keywords)
+					keywordListIdsJson, _ := json.Marshal(keywordListIds)
+					toneSetIdsJson, _ := json.Marshal(toneSetIds)
 
-						// Insert user alert preference using parameterized queries
+					// Insert user alert preference using parameterized queries
 						if admin.Controller.Database.Config.DbType == DbTypePostgresql {
 							query := `INSERT INTO "userAlertPreferences" ("userId", "systemId", "talkgroupId", "alertEnabled", "toneAlerts", "keywordAlerts", "keywords", "keywordListIds", "toneSetIds") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 							if _, err := admin.Controller.Database.Sql.Exec(query, actualUserId, systemId, talkgroupId, alertEnabled, toneAlerts, keywordAlerts, string(keywordsJson), string(keywordListIdsJson), string(toneSetIdsJson)); err != nil {
@@ -2697,6 +2710,7 @@ func (admin *Admin) LoginConfigHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"adminPasswordLoginDisabled": admin.Controller.Options.AdminPasswordLoginDisabled,
+		"version":                    Version,
 	})
 }
 

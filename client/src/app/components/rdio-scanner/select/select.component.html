@@ -75,10 +75,21 @@
       <small>Create a list to group channels for quick access</small>
     </div>
 
-    <div class="scan-lists-body">
-      <div *ngFor="let list of scanLists" class="scan-list-card" [class.expanded]="isScanListExpanded(list.id)">
+    <div class="scan-lists-body" cdkDropList (cdkDropListDropped)="onScanListDrop($event)">
+      <div *ngFor="let list of scanLists"
+           class="scan-list-card"
+           [class.expanded]="isScanListExpanded(list.id)"
+           cdkDrag
+           [cdkDragDisabled]="list.isFavoritesSource"
+           cdkDragLockAxis="y">
+        <!-- Drag placeholder shown at drop target while dragging -->
+        <div *cdkDragPlaceholder class="scan-list-drag-placeholder"></div>
+
         <!-- Card header -->
         <div class="scan-list-card-header" (click)="toggleScanListExpanded(list.id)">
+          <div *ngIf="!list.isFavoritesSource" class="drag-handle" cdkDragHandle (click)="$event.stopPropagation()">
+            <mat-icon>drag_indicator</mat-icon>
+          </div>
           <div class="scan-list-icon" [class.fav]="list.isFavoritesSource">
             <mat-icon>{{ list.isFavoritesSource ? 'star' : 'playlist_play' }}</mat-icon>
           </div>
@@ -221,7 +232,7 @@
         </div>
 
         <div class="channels-detail-body" *ngIf="getFilteredTalkgroups(ds).length > 0">
-          <div *ngFor="let tagGroup of groupTalkgroupsByTag(ds)" class="tag-group">
+          <div *ngFor="let tagGroup of (navMode === 'favorites' ? getFavoriteTagGroupsForSystem(ds) : groupTalkgroupsByTag(ds))" class="tag-group">
             <div class="tag-header"
                  (click)="toggleTag(ds.id, tagGroup.tag, $event)"
                  (contextmenu)="$event.preventDefault()">
@@ -268,6 +279,31 @@
                   <button class="favorite-toggle chip-favorite" (click)="toggleFavoriteTalkgroup(ds.id, talkgroup.id, $event)">
                     <mat-icon>{{ isFavorite(ds.id, talkgroup.id) ? 'star' : 'star_border' }}</mat-icon>
                   </button>
+                  <div class="scan-list-menu-wrap" (click)="$event.stopPropagation()">
+                    <button class="favorite-toggle chip-favorite" title="Add to scan list"
+                            (click)="openScanListMenu(ds.id, talkgroup.id, $event)">
+                      <mat-icon>playlist_add</mat-icon>
+                    </button>
+                    <div *ngIf="isScanListMenuOpen(ds.id, talkgroup.id)" class="scan-list-dropdown">
+                      <div *ngIf="getEditableScanLists().length === 0" class="scan-list-dropdown-empty">
+                        No scan lists — create one below
+                      </div>
+                      <div *ngFor="let list of getEditableScanLists()"
+                           class="scan-list-dropdown-item"
+                           (click)="toggleTalkgroupInScanList(list, ds, talkgroup, $event)">
+                        <mat-icon class="dropdown-check">
+                          {{ isTalkgroupInScanList(list, ds.id, talkgroup.id) ? 'check_box' : 'check_box_outline_blank' }}
+                        </mat-icon>
+                        <span>{{ list.name }}</span>
+                      </div>
+                      <div class="scan-list-dropdown-divider"></div>
+                      <div class="scan-list-dropdown-item create"
+                           (click)="createScanListAndAdd(ds, talkgroup, $event)">
+                        <mat-icon>add</mat-icon>
+                        <span>New list…</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

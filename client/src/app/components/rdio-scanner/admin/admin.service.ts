@@ -312,7 +312,7 @@ export interface Options {
     relayServerAPIKey?: string;
   audioEncryptionEnabled?: boolean;
   maxDownloadsPerWindow?: number;
-    downloadWindowMinutes?: number;
+  downloadWindowMinutes?: number;
     adminLocalhostOnly?: boolean;
     adminPasswordLoginDisabled?: boolean;
     adminAllowedIPs?: string;
@@ -912,9 +912,9 @@ export class RdioScannerAdminService implements OnDestroy {
     }
 
     /** Fetch whether password-based admin login is disabled (public, no auth required). */
-    async getLoginConfig(): Promise<{ adminPasswordLoginDisabled: boolean }> {
+    async getLoginConfig(): Promise<{ adminPasswordLoginDisabled: boolean; version?: string }> {
         try {
-            return await firstValueFrom(this.ngHttpClient.get<{ adminPasswordLoginDisabled: boolean }>(
+            return await firstValueFrom(this.ngHttpClient.get<{ adminPasswordLoginDisabled: boolean; version?: string }>(
                 '/api/admin/login-config',
                 { responseType: 'json' },
             ));
@@ -1223,20 +1223,20 @@ export class RdioScannerAdminService implements OnDestroy {
 		audioConversion: this.ngFormBuilder.control(options?.audioConversion),
 		autoPopulate: this.ngFormBuilder.control(options?.autoPopulate),
 		branding: this.ngFormBuilder.control(options?.branding),
-			defaultSystemDelay: this.ngFormBuilder.control(options?.defaultSystemDelay, [Validators.required, Validators.min(0)]),
-			dimmerDelay: this.ngFormBuilder.control(options?.dimmerDelay, [Validators.required, Validators.min(0)]),
-            disableDuplicateDetection: this.ngFormBuilder.control(options?.disableDuplicateDetection),
+			defaultSystemDelay: this.ngFormBuilder.control(options?.defaultSystemDelay ?? 0, [Validators.required, Validators.min(0)]),
+			dimmerDelay: this.ngFormBuilder.control(options?.dimmerDelay ?? 5000, [Validators.required, Validators.min(0)]),
+            disableDuplicateDetection: this.ngFormBuilder.control(options?.disableDuplicateDetection ?? false),
             duplicateDetectionMode: this.ngFormBuilder.control(options?.duplicateDetectionMode || 'legacy'),
-            duplicateDetectionTimeFrame: this.ngFormBuilder.control(options?.duplicateDetectionTimeFrame, [Validators.required, Validators.min(0)]),
-            advancedDetectionTimeFrame: this.ngFormBuilder.control(options?.advancedDetectionTimeFrame, [Validators.required, Validators.min(0)]),
+            duplicateDetectionTimeFrame: this.ngFormBuilder.control(options?.duplicateDetectionTimeFrame ?? 1000, [Validators.required, Validators.min(0)]),
+            advancedDetectionTimeFrame: this.ngFormBuilder.control(options?.advancedDetectionTimeFrame ?? 10000, [Validators.required, Validators.min(0)]),
             audioFingerprintEnabled: this.ngFormBuilder.control(options?.audioFingerprintEnabled ?? false),
             audioFingerprintThreshold: this.ngFormBuilder.control(options?.audioFingerprintThreshold ?? 0.25, [Validators.required, Validators.min(0), Validators.max(1)]),
             audioFingerprintTimeFrame: this.ngFormBuilder.control(options?.audioFingerprintTimeFrame ?? 5000, [Validators.required, Validators.min(0)]),
             email: this.ngFormBuilder.control(options?.email),
-            keypadBeeps: this.ngFormBuilder.control(options?.keypadBeeps, Validators.required),
-            maxClients: this.ngFormBuilder.control(options?.maxClients, [Validators.required, Validators.min(1)]),
-            playbackGoesLive: this.ngFormBuilder.control(options?.playbackGoesLive),
-            pruneDays: this.ngFormBuilder.control(options?.pruneDays, [Validators.required, Validators.min(0)]),
+            keypadBeeps: this.ngFormBuilder.control(options?.keypadBeeps || 'uniden', Validators.required),
+            maxClients: this.ngFormBuilder.control(options?.maxClients ?? 100, [Validators.required, Validators.min(1)]),
+            playbackGoesLive: this.ngFormBuilder.control(options?.playbackGoesLive ?? false),
+            pruneDays: this.ngFormBuilder.control(options?.pruneDays ?? 0, [Validators.required, Validators.min(0)]),
             showListenersCount: this.ngFormBuilder.control(options?.showListenersCount),
             sortTalkgroups: this.ngFormBuilder.control(options?.sortTalkgroups),
             time12hFormat: this.ngFormBuilder.control(options?.time12hFormat),
@@ -1307,8 +1307,9 @@ export class RdioScannerAdminService implements OnDestroy {
             relayServerURL: this.ngFormBuilder.control('https://tlradioserver.thinlineds.com'), // Hardcoded
             relayServerAPIKey: this.ngFormBuilder.control(options?.relayServerAPIKey || ''),
             audioEncryptionEnabled: this.ngFormBuilder.control(options?.audioEncryptionEnabled ?? false),
-            maxDownloadsPerWindow: this.ngFormBuilder.control(options?.maxDownloadsPerWindow ?? 0, [Validators.min(0)]),
-            downloadWindowMinutes: this.ngFormBuilder.control(options?.downloadWindowMinutes ?? 60, [Validators.min(1), Validators.max(60)]),
+            rateLimitingEnabled: this.ngFormBuilder.control(!!(options?.maxDownloadsPerWindow && options.maxDownloadsPerWindow > 0)),
+            maxDownloadsPerWindow: this.ngFormBuilder.control(options?.maxDownloadsPerWindow || 100, [Validators.min(1)]),
+            downloadWindowMinutes: this.ngFormBuilder.control(options?.downloadWindowMinutes || 60, [Validators.min(1), Validators.max(60)]),
             configSyncEnabled: this.ngFormBuilder.control(options?.configSyncEnabled || false),
             configSyncPath: this.ngFormBuilder.control(options?.configSyncPath || ''),
             turnstileEnabled: this.ngFormBuilder.control(options?.turnstileEnabled || false),

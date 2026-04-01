@@ -17,7 +17,8 @@
  * ****************************************************************************
  */
 
-import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, HostListener, OnDestroy, OnInit } from '@angular/core';
+import { CdkDragDrop } from '@angular/cdk/drag-drop';
 import { MatDialog } from '@angular/material/dialog';
 import { Subscription } from 'rxjs';
 import {
@@ -63,6 +64,7 @@ export class RdioScannerSelectComponent implements OnDestroy, OnInit {
     private expandedScanListSystems = new Set<string>();
     private expandedScanListTags = new Set<string>();
     private scanListsSubscription?: Subscription;
+    scanListMenuKey: string | null = null;
     detailSystemId: number | null = null;
     expandedTags: Map<string, boolean> = new Map();
     hiddenSystems: Set<number> = new Set();
@@ -266,9 +268,81 @@ export class RdioScannerSelectComponent implements OnDestroy, OnInit {
         }
     }
 
+    onScanListDrop(event: CdkDragDrop<ScanList[]>): void {
+        if (event.previousIndex !== event.currentIndex) {
+            this.scanListsService.reorderLists(event.previousIndex, event.currentIndex);
+        }
+    }
+
     removeScanListChannel(list: ScanList, ch: ScanListChannel, event: Event): void {
         event.stopPropagation();
         this.scanListsService.removeChannel(list.id, ch.systemId, ch.talkgroupId);
+    }
+
+    @HostListener('document:click')
+    closeScanListMenu(): void {
+        if (this.scanListMenuKey !== null) {
+            this.scanListMenuKey = null;
+            this.cdRef.markForCheck();
+        }
+    }
+
+    openScanListMenu(systemId: number, talkgroupId: number, event: Event): void {
+        event.stopPropagation();
+        const key = `${systemId}-${talkgroupId}`;
+        this.scanListMenuKey = this.scanListMenuKey === key ? null : key;
+        this.cdRef.markForCheck();
+    }
+
+    isScanListMenuOpen(systemId: number, talkgroupId: number): boolean {
+        return this.scanListMenuKey === `${systemId}-${talkgroupId}`;
+    }
+
+    getEditableScanLists(): ScanList[] {
+        return this.scanLists.filter(l => !l.isFavoritesSource);
+    }
+
+    isTalkgroupInScanList(list: ScanList, systemId: number, talkgroupId: number): boolean {
+        return list.channels.some(c => c.systemId === systemId.toString() && c.talkgroupId === talkgroupId.toString());
+    }
+
+    toggleTalkgroupInScanList(list: ScanList, system: RdioScannerSystem, talkgroup: RdioScannerTalkgroup, event: Event): void {
+        event.stopPropagation();
+        const systemId = system.id.toString();
+        const talkgroupId = talkgroup.id.toString();
+        if (this.isTalkgroupInScanList(list, system.id, talkgroup.id)) {
+            this.scanListsService.removeChannel(list.id, systemId, talkgroupId);
+        } else {
+            this.scanListsService.addChannel(list.id, {
+                systemId,
+                talkgroupId,
+                talkgroupLabel: talkgroup.label || '',
+                talkgroupName: talkgroup.name || '',
+                systemLabel: system.label || '',
+                tag: talkgroup.tag || 'Untagged',
+                isEnabled: true,
+            });
+        }
+        this.cdRef.markForCheck();
+    }
+
+    createScanListAndAdd(system: RdioScannerSystem, talkgroup: RdioScannerTalkgroup, event: Event): void {
+        event.stopPropagation();
+        const name = prompt('New list name:');
+        if (name?.trim()) {
+            const list = this.scanListsService.createList(name.trim());
+            this.scanListsService.addChannel(list.id, {
+                systemId: system.id.toString(),
+                talkgroupId: talkgroup.id.toString(),
+                talkgroupLabel: talkgroup.label || '',
+                talkgroupName: talkgroup.name || '',
+                systemLabel: system.label || '',
+                tag: talkgroup.tag || 'Untagged',
+                isEnabled: true,
+            });
+        }
+        this.scanListMenuKey = null;
+        this.cdRef.markForCheck();
     }
 
     selectDetailSystem(systemId: number): void {
@@ -895,15 +969,16 @@ export class RdioScannerSelectComponent implements OnDestroy, OnInit {
                     groups.set(tag, [...talkgroups]);
                 });
             } else {
-                // System is favorited but not all children are - only show favorited ones
+                // System is favorited but not all children are — show favorited tags (all their talkgroups)
+                // and individually favorited talkgroups
                 favoriteTags.forEach(tag => {
                     const tagTalkgroups = (system.talkgroups || []).filter(tg => (tg.tag || 'Untagged') === tag);
                     if (tagTalkgroups.length > 0) {
-                        groups.set(tag, tagTalkgroups.filter(tg => favoriteTalkgroups.has(tg.id)));
+                        groups.set(tag, tagTalkgroups);
                     }
                 });
-                
-                // Add individually favorited talkgroups that might not have their tag favorited
+
+                // Add individually favorited talkgroups whose tag is not itself favorited
                 (system.talkgroups || []).forEach(tg => {
                     if (favoriteTalkgroups.has(tg.id)) {
                         const tag = tg.tag || 'Untagged';
@@ -917,15 +992,16 @@ export class RdioScannerSelectComponent implements OnDestroy, OnInit {
                 });
             }
         } else {
-            // System is not favorited - only show individually favorited tags and talkgroups
+            // System is not favorited — show all talkgroups under favorited tags,
+            // plus any individually favorited talkgroups
             favoriteTags.forEach(tag => {
                 const tagTalkgroups = (system.talkgroups || []).filter(tg => (tg.tag || 'Untagged') === tag);
                 if (tagTalkgroups.length > 0) {
-                    groups.set(tag, tagTalkgroups.filter(tg => favoriteTalkgroups.has(tg.id)));
+                    groups.set(tag, tagTalkgroups);
                 }
             });
-            
-            // Add individually favorited talkgroups that might not have their tag favorited
+
+            // Add individually favorited talkgroups whose tag is not itself favorited
             (system.talkgroups || []).forEach(tg => {
                 if (favoriteTalkgroups.has(tg.id)) {
                     const tag = tg.tag || 'Untagged';

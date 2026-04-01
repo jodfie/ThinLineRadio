@@ -25,14 +25,17 @@ type TranscriptionProvider interface {
 
 // TranscriptionOptions contains options for transcription
 type TranscriptionOptions struct {
-	Language      string   // "en", "auto", etc.
-	Model         string   // "tiny", "base", "small", "medium", "large" (for Whisper)
-	Device        string   // "cpu", "cuda", "metal" (for GPU)
-	Temperature   float64  // Temperature for sampling (0.0-1.0)
-	InitialPrompt string   // Initial prompt/context
-	AudioMime     string   // MIME type of audio (e.g., "audio/mp4", "audio/mpeg")
-	WordBoost     []string // Word boost/keyterms for AssemblyAI (max 100 terms, 50 chars each)
-	SpeechModel   string   // Speech model for AssemblyAI (e.g., "universal-2", "universal-3-pro")
+	Language       string   // "en", "auto", etc.
+	Model          string   // "tiny", "base", "small", "medium", "large" (for Whisper)
+	Device         string   // "cpu", "cuda", "metal" (for GPU)
+	Temperature    float64  // Temperature for sampling (0.0-1.0)
+	InitialPrompt  string   // Initial prompt/context
+	AudioMime      string   // MIME type of audio (e.g., "audio/mp4", "audio/mpeg")
+	WordBoost      []string // Word boost/keyterms for AssemblyAI (max 100 terms, 50 chars each)
+	SpeechModel    string   // Speech model for AssemblyAI (e.g., "universal-2", "universal-3-pro")
+	SystemLabel    string   // Human-readable system name (passed to Whisper server for logging)
+	TalkgroupLabel string   // Human-readable talkgroup name (passed to Whisper server for logging)
+	CallID         uint64   // Call ID (passed to Whisper server for log correlation)
 }
 
 // TranscriptionResult contains the transcription result

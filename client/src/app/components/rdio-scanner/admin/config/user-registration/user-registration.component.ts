@@ -189,9 +189,13 @@ export class RdioScannerAdminUserRegistrationComponent implements OnInit, OnChan
       }, 100);
     }
 
-    // Subscribe to form changes to automatically sync (debounced to prevent loops)
+    // Subscribe to form changes to automatically sync (debounced to prevent loops).
+    // Guard at subscribe time (not just inside setTimeout) so programmatic patchValue
+    // calls from syncFromParentForm don't schedule a spurious sync that fires after
+    // isSyncing has already been reset — which would call markAsDirty on load.
     let syncToParentTimeout: any;
     this.userRegistrationForm.valueChanges.subscribe(() => {
+      if (this.isSyncing) return;
       if (syncToParentTimeout) {
         clearTimeout(syncToParentTimeout);
       }
@@ -204,7 +208,9 @@ export class RdioScannerAdminUserRegistrationComponent implements OnInit, OnChan
   }
 
   ngOnChanges(changes: SimpleChanges) {
-    // When the form input changes (e.g., during config import), re-sync
+    // When the form input changes (e.g., during config import), re-sync.
+    // isSyncing is set inside syncFromParentForm so the valueChanges subscriber
+    // won't schedule a spurious syncToParentForm → markAsDirty.
     if (changes['form'] && !changes['form'].firstChange && this.userRegistrationForm) {
       this.syncFromParentForm();
       this.cdr.detectChanges();

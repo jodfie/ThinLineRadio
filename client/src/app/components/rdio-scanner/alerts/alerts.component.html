@@ -232,7 +232,7 @@
                 
                 <div class="filter-group filter-search">
                     <label>Search</label>
-                    <input type="text" [(ngModel)]="filterSearch" (input)="applyFilters()" placeholder="Search transcripts..." class="filter-input search-input">
+                    <input type="text" [(ngModel)]="filterSearch" (input)="onSearchInput()" placeholder="Search transcripts..." class="filter-input search-input">
                 </div>
                 
                 <div class="filter-group filter-actions">
@@ -248,7 +248,7 @@
             <p>Loading transcripts...</p>
         </div>
         <div *ngIf="transcripts.length > 0" class="transcripts-list">
-            <div *ngFor="let transcript of transcripts" class="transcript-item">
+            <div *ngFor="let transcript of transcripts; trackBy: trackByTranscriptId" class="transcript-item">
                 <div class="transcript-header">
                     <div class="transcript-channel">
                         <strong>Channel:</strong>

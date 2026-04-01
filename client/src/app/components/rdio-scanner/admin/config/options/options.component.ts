@@ -68,6 +68,8 @@ export class RdioScannerAdminOptionsComponent implements OnInit, OnDestroy, OnCh
         this.setInitialRadioReferenceValidation();
         this.storeOriginalCredentials();
         this.setupRelayServerFormListeners();
+        this.setupRateLimitingToggle();
+        this.setupAudioEncryptionToggle();
         // Ensure hardcoded relay server URL is set
         this.setHardcodedRelayServerURL();
         // Initialize favicon URL
@@ -88,6 +90,8 @@ export class RdioScannerAdminOptionsComponent implements OnInit, OnDestroy, OnCh
             this.setInitialRadioReferenceValidation();
             this.storeOriginalCredentials();
             this.setupRelayServerFormListeners();
+            this.setupRateLimitingToggle();
+            this.setupAudioEncryptionToggle();
             this.setHardcodedRelayServerURL();
             this.isEditingRadioReference = false;
         }
@@ -249,6 +253,59 @@ export class RdioScannerAdminOptionsComponent implements OnInit, OnDestroy, OnCh
                 }
             });
         }
+    }
+
+    private setupRateLimitingToggle(): void {
+        if (!this.form) return;
+
+        const toggleControl = this.form.get('rateLimitingEnabled');
+        const maxControl = this.form.get('maxDownloadsPerWindow');
+        const windowControl = this.form.get('downloadWindowMinutes');
+
+        if (!toggleControl || !maxControl || !windowControl) return;
+
+        const applyState = (enabled: boolean) => {
+            if (enabled) {
+                maxControl.enable({ emitEvent: false });
+                windowControl.enable({ emitEvent: false });
+            } else {
+                maxControl.disable({ emitEvent: false });
+                windowControl.disable({ emitEvent: false });
+            }
+        };
+
+        // Apply initial state
+        applyState(toggleControl.value);
+
+        toggleControl.valueChanges.subscribe(enabled => {
+            applyState(enabled);
+            if (this.form) {
+                this.form.markAsDirty();
+            }
+        });
+    }
+
+    private setupAudioEncryptionToggle(): void {
+        if (!this.form) return;
+
+        const apiKeyControl = this.form.get('relayServerAPIKey');
+        const encryptionControl = this.form.get('audioEncryptionEnabled');
+
+        if (!apiKeyControl || !encryptionControl) return;
+
+        const applyState = (apiKey: string) => {
+            if (apiKey && apiKey.trim().length > 0) {
+                encryptionControl.enable({ emitEvent: false });
+            } else {
+                // No API key — force off and disable
+                encryptionControl.setValue(false, { emitEvent: false });
+                encryptionControl.disable({ emitEvent: false });
+            }
+        };
+
+        applyState(apiKeyControl.value);
+
+        apiKeyControl.valueChanges.subscribe(apiKey => applyState(apiKey));
     }
 
     hasRelayAPIKey(): boolean {

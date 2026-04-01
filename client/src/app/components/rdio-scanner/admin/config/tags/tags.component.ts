@@ -76,7 +76,7 @@ export class RdioScannerAdminTagsComponent {
 
     add(): void {
         const tag = this.adminService.newTagForm();
-        tag.markAllAsTouched();
+        tag.markAsDirty({ onlySelf: false });
         tag.markAsDirty();
         this.form?.insert(0, tag);
         this.form?.markAsDirty();

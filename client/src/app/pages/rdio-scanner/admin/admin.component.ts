@@ -21,7 +21,6 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { Subscription } from 'rxjs';
-import packageInfo from '../../../../../package.json';
 import { RdioScannerAdminService, AdminEvent } from '../../../components/rdio-scanner/admin/admin.service';
 
 @Component({
@@ -30,7 +29,7 @@ import { RdioScannerAdminService, AdminEvent } from '../../../components/rdio-sc
     templateUrl: './admin.component.html',
 })
 export class RdioScannerAdminPageComponent implements OnInit, OnDestroy {
-    version = packageInfo.version;
+    version = '';
     authenticated = false;
 
     private eventSubscription: Subscription | undefined;
@@ -57,6 +56,13 @@ export class RdioScannerAdminPageComponent implements OnInit, OnDestroy {
 
     ngOnInit(): void {
         this.titleService.setTitle('Admin-TLR');
+
+        // Fetch the real server version immediately — no auth required.
+        this.adminService.getLoginConfig().then(cfg => {
+            if (cfg.version) {
+                this.version = cfg.version;
+            }
+        });
 
         if (this.adminService.authenticated) {
             this.updateTitle();

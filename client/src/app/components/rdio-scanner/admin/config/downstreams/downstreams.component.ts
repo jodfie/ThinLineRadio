@@ -44,7 +44,7 @@ export class RdioScannerAdminDownstreamsComponent {
     add(): void {
         const downstream = this.adminService.newDownstreamForm({ systems: '*' });
 
-        downstream.markAllAsTouched();
+        downstream.markAsDirty({ onlySelf: false });
 
         this.form?.insert(0, downstream);
 

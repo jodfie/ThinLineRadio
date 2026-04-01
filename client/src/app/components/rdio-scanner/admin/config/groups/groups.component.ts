@@ -64,7 +64,7 @@ export class RdioScannerAdminGroupsComponent {
     add(): void {
         const group = this.adminService.newGroupForm();
 
-        group.markAllAsTouched();
+        group.markAsDirty({ onlySelf: false });
 
         this.form?.insert(0, group);
 

@@ -19,6 +19,8 @@
 
 import { Component, EventEmitter, Input, OnDestroy, OnInit, Output } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Subject, Subscription } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { RdioScannerAlert, RdioScannerCall, RdioScannerService, RdioScannerTranscript } from '../rdio-scanner';
 import { AlertsService } from './alerts.service';
 import { AlertSoundService } from '../alert-sound.service';
@@ -103,6 +105,9 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
     // Cached grouped alerts to avoid recalculation on every change detection
     allAlertGroups: Array<{key: string, alerts: RdioScannerAlert[], latestTimestamp: number, groupType: 'tone' | 'channel'}> = [];
 
+    private searchSubject = new Subject<string>();
+    private searchSubscription?: Subscription;
+
     constructor(
         private rdioScannerService: RdioScannerService,
         private alertsService: AlertsService,
@@ -115,57 +120,100 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
     }
 
     ngOnInit(): void {
+        this.searchSubscription = this.searchSubject.pipe(
+            debounceTime(300),
+            distinctUntilChanged(),
+        ).subscribe(() => {
+            this.transcriptOffset = 0;
+            this.loadTranscripts();
+        });
+
         // Refresh PIN from localStorage
         this.pin = this.rdioScannerService.readPin();
 
-        if (!this.boardEmbed && (this.panelMode === 'alertsAndPreferences' || this.panelMode === 'transcripts')) {
-            this.loadSystemsAndTalkgroups();
-        }
-
-        if (this.boardEmbed || this.panelMode !== 'stats') {
-            this.loadAlerts(true);
-        }
-        if (!this.boardEmbed && this.panelMode === 'transcripts') {
-            this.loadTranscripts();
-        }
-        if (!this.boardEmbed && this.panelMode === 'stats') {
-            this.loadStats();
-            this.startStatsRefreshInterval();
-        }
-        this.requestNotificationPermission();
-
-        // Subscribe to shared alerts service for updates
-        this.alertsService.alerts$.subscribe(alerts => {
-            this.alerts = alerts;
-            this.updateGroupedAlerts();
-        });
-
-        // Listen for real-time alerts via WebSocket
-        this.rdioScannerService.event.subscribe((event: any) => {
-            if (event.alert) {
-                if (this.boardEmbed || this.panelMode !== 'stats') {
-                    this.loadAlerts(false);
-                }
-                if (!this.boardEmbed && (this.panelMode === 'transcripts' || (this.panelMode === 'alertsAndPreferences' && this.activeTab === 'transcripts'))) {
-                    this.loadTranscripts();
-                }
-                if (this.boardEmbed || this.panelMode === 'alertsAndPreferences') {
-                    this.showNotification(event.alert);
-                    this.playAlertSound();
-                }
+        // For the embed rail, paint cached alerts immediately (synchronously) so the
+        // LCP element (p.transcript-text) is visible on the very first frame instead
+        // of waiting for the HTTP response.
+        if (this.boardEmbed) {
+            const cached = this.alertsService.getCachedAlerts();
+            if (cached.length > 0) {
+                this.alerts = cached;
+                this.updateGroupedAlerts();
             }
-            if (event.config && !this.boardEmbed && (this.panelMode === 'alertsAndPreferences' || this.panelMode === 'transcripts')) {
+        }
+
+        // Defer all remaining data-loading to a separate task so the tab paint is not blocked.
+        // The browser can render the empty shell first, then data arrives in the next task.
+        setTimeout(() => {
+            if (!this.boardEmbed && (this.panelMode === 'alertsAndPreferences' || this.panelMode === 'transcripts')) {
                 this.loadSystemsAndTalkgroups();
             }
-        });
+
+            if (this.boardEmbed || this.panelMode !== 'stats') {
+                this.loadAlerts(true);
+            }
+            if (!this.boardEmbed && this.panelMode === 'transcripts') {
+                this.loadTranscripts();
+            }
+            if (!this.boardEmbed && this.panelMode === 'stats') {
+                this.loadStats();
+                this.startStatsRefreshInterval();
+            }
+        }, 0);
+
+        this.requestNotificationPermission();
+
+        // Defer subscriptions that emit synchronously (BehaviorSubject) so the
+        // initial tab paint is not blocked by grouping/sorting cached alert data.
+        setTimeout(() => {
+            // Subscribe to shared alerts service for updates
+            this.alertsService.alerts$.subscribe(alerts => {
+                this.alerts = alerts;
+                this.updateGroupedAlerts();
+            });
+
+            // Listen for real-time alerts via WebSocket
+            this.rdioScannerService.event.subscribe((event: any) => {
+                if (event.alert) {
+                    if (this.boardEmbed || this.panelMode !== 'stats') {
+                        this.loadAlerts(false);
+                    }
+                    if (!this.boardEmbed && (this.panelMode === 'transcripts' || (this.panelMode === 'alertsAndPreferences' && this.activeTab === 'transcripts'))) {
+                        this.loadTranscripts();
+                    }
+                    if (this.boardEmbed || this.panelMode === 'alertsAndPreferences') {
+                        this.showNotification(event.alert);
+                        this.playAlertSound();
+                    }
+                }
+                if (event.config && !this.boardEmbed && (this.panelMode === 'alertsAndPreferences' || this.panelMode === 'transcripts')) {
+                    this.loadSystemsAndTalkgroups();
+                }
+            });
+        }, 0);
     }
 
     get recentAlertsFlat(): RdioScannerAlert[] {
         if (!this.boardEmbed || !this.alerts?.length) {
             return [];
         }
-        return [...this.alerts]
-            .filter((a) => a?.createdAt != null)
+        // Deduplicate by callId — keep the alert with the most keywords for each call
+        // so the same call never appears more than once in the embed rail.
+        const byCall = new Map<number, RdioScannerAlert>();
+        for (const alert of this.alerts) {
+            if (alert?.createdAt == null) continue;
+            const existing = byCall.get(alert.callId);
+            if (!existing) {
+                byCall.set(alert.callId, alert);
+            } else {
+                const existingCount = existing.keywordsMatched ? JSON.parse(existing.keywordsMatched).length : 0;
+                const newCount = alert.keywordsMatched ? JSON.parse(alert.keywordsMatched).length : 0;
+                if (newCount > existingCount || (!existing.transcript && alert.transcript)) {
+                    byCall.set(alert.callId, alert);
+                }
+            }
+        }
+        return [...byCall.values()]
             .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
             .slice(0, this.boardEmbedMax);
     }
@@ -226,9 +274,12 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
     }
     
     applyFilters(): void {
-        // Reset to first page when filters change
         this.transcriptOffset = 0;
         this.loadTranscripts();
+    }
+
+    onSearchInput(): void {
+        this.searchSubject.next(this.filterSearch);
     }
     
     clearFilters(): void {
@@ -252,6 +303,8 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
         if (this.statsRefreshInterval) {
             clearInterval(this.statsRefreshInterval);
         }
+        this.searchSubscription?.unsubscribe();
+        this.searchSubject.complete();
     }
 
     /** When true, classic sidenav shows Alerts | Preferences | Transcripts inner tabs. */
@@ -434,7 +487,6 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
             this.filterSearch
         ).subscribe({
             next: (transcripts) => {
-                console.log('Received transcripts:', transcripts?.length, 'transcripts');
                 this.transcripts = (transcripts || []).map((t: any) => {
                     return {
                         ...t,
@@ -554,6 +606,10 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
 
     trackByAlertId(index: number, alert: RdioScannerAlert): number {
         return alert.alertId;
+    }
+
+    trackByTranscriptId(index: number, transcript: RdioScannerTranscript): number | string {
+        return transcript.callId ?? index;
     }
 
     playCall(callId: number): void {

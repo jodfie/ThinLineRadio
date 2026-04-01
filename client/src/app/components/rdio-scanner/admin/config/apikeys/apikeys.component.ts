@@ -63,7 +63,7 @@ export class RdioScannerAdminApikeysComponent {
             systems: '*',
         });
 
-        apikey.markAllAsTouched();
+        apikey.markAsDirty({ onlySelf: false });
 
         this.form?.insert(0, apikey);
         this.keyVisible.unshift(true); // Show new key's value by default

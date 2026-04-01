@@ -281,8 +281,18 @@ func (api *WhisperAPITranscription) attemptTranscribe(audio []byte, options Tran
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	// Add Connection: close header to avoid connection reuse issues
 	req.Header.Set("Connection", "keep-alive")
+
+	// Pass call metadata so the Whisper server can include it in its logs
+	if options.SystemLabel != "" {
+		req.Header.Set("X-TLR-System", options.SystemLabel)
+	}
+	if options.TalkgroupLabel != "" {
+		req.Header.Set("X-TLR-Talkgroup", options.TalkgroupLabel)
+	}
+	if options.CallID > 0 {
+		req.Header.Set("X-TLR-Call-ID", fmt.Sprintf("%d", options.CallID))
+	}
 
 	if api.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+api.apiKey)

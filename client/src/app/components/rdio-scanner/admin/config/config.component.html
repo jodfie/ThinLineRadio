@@ -27,7 +27,6 @@
                 (click)="setSection('user-registration')">
             <mat-icon>person_add</mat-icon>
             <span>User Registration</span>
-            <mat-icon *ngIf="form?.get('options')?.invalid" class="error-dot" color="warn">error</mat-icon>
         </button>
 
         <button type="button" class="sidebar-item"
@@ -49,7 +48,7 @@
                 (click)="setSection('apikeys')">
             <mat-icon>vpn_key</mat-icon>
             <span>API Keys</span>
-            <mat-icon *ngIf="form?.get('apikey')?.invalid" class="error-dot" color="warn">error</mat-icon>
+            <mat-icon *ngIf="form?.dirty && form?.get('apikeys')?.invalid" class="error-dot" color="warn">error</mat-icon>
         </button>
 
         <button type="button" class="sidebar-item" *ngIf="!docker"
@@ -57,7 +56,7 @@
                 (click)="setSection('dirwatch')">
             <mat-icon>folder</mat-icon>
             <span>Dirwatch</span>
-            <mat-icon *ngIf="form?.get('dirwatch')?.invalid" class="error-dot" color="warn">error</mat-icon>
+            <mat-icon *ngIf="form?.dirty && form?.get('dirwatch')?.invalid" class="error-dot" color="warn">error</mat-icon>
         </button>
 
         <button type="button" class="sidebar-item"
@@ -65,7 +64,7 @@
                 (click)="setSection('downstreams')">
             <mat-icon>share</mat-icon>
             <span>Downstreams</span>
-            <mat-icon *ngIf="form?.get('downstreams')?.invalid" class="error-dot" color="warn">error</mat-icon>
+            <mat-icon *ngIf="form?.dirty && form?.get('downstreams')?.invalid" class="error-dot" color="warn">error</mat-icon>
         </button>
 
         <button type="button" class="sidebar-item"
@@ -73,7 +72,7 @@
                 (click)="setSection('groups')">
             <mat-icon>workspaces</mat-icon>
             <span>Groups</span>
-            <mat-icon *ngIf="form?.get('groups')?.invalid" class="error-dot" color="warn">error</mat-icon>
+            <mat-icon *ngIf="form?.dirty && form?.get('groups')?.invalid" class="error-dot" color="warn">error</mat-icon>
         </button>
 
         <button type="button" class="sidebar-item"
@@ -81,7 +80,7 @@
                 (click)="setSection('options')">
             <mat-icon>tune</mat-icon>
             <span>Options</span>
-            <mat-icon *ngIf="form?.get('options')?.invalid" class="error-dot" color="warn">error</mat-icon>
+            <mat-icon *ngIf="form?.dirty && form?.get('options')?.invalid" class="error-dot" color="warn">error</mat-icon>
         </button>
 
         <!-- ── Systems expandable nav group ── -->
@@ -92,7 +91,7 @@
                 <mat-icon>podcasts</mat-icon>
                 <span>Systems</span>
                 <div class="group-toggle-right">
-                    <mat-icon *ngIf="form?.get('systems')?.invalid" class="error-dot" color="warn">error</mat-icon>
+                    <mat-icon *ngIf="form?.dirty && form?.get('systems')?.invalid" class="error-dot" color="warn">error</mat-icon>
                     <mat-icon class="expand-chevron" [class.open]="systemsNavExpanded">expand_more</mat-icon>
                 </div>
             </button>
@@ -109,8 +108,8 @@
                         *ngFor="let sys of systemsList"
                         [class.active]="activeSection === 'system-detail' && activeSystemForm === sys"
                         (click)="selectSystem(sys)">
-                    <mat-icon class="system-icon" [class.has-error]="sys.invalid">
-                        {{ sys.invalid ? 'error' : 'radio' }}
+                    <mat-icon class="system-icon" [class.has-error]="form?.dirty && sys.invalid">
+                        {{ (form?.dirty && sys.invalid) ? 'error' : 'radio' }}
                     </mat-icon>
                     <span>{{ sys.value.label?.trim() || ('Sys ' + sys.value.systemRef) || 'New System' }}</span>
                 </button>
@@ -126,7 +125,7 @@
                 (click)="setSection('tags')">
             <mat-icon>sell</mat-icon>
             <span>Tags</span>
-            <mat-icon *ngIf="form?.get('tags')?.invalid" class="error-dot" color="warn">error</mat-icon>
+            <mat-icon *ngIf="form?.dirty && form?.get('tags')?.invalid" class="error-dot" color="warn">error</mat-icon>
         </button>
 
         <button type="button" class="sidebar-item"
