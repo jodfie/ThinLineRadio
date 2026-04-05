@@ -257,25 +257,25 @@
 
       <div class="row" *ngIf="!form?.get('disableDuplicateDetection')?.value && form?.get('duplicateDetectionMode')?.value === 'legacy'">
         <p>
-          <span class="mat-body">Legacy Detection Timeframe (minutes)</span><br>
-          <span class="mat-caption">Check for duplicate filenames within this many minutes. Shorter windows use less memory but may miss duplicates if upload is delayed.</span>
+          <span class="mat-body">Legacy Detection Timeframe (milliseconds)</span><br>
+          <span class="mat-caption">Check for duplicate calls within this many milliseconds. Default is 1000ms (1 second). Shorter windows use less memory but may miss duplicates if upload is delayed.</span>
         </p>
         <mat-form-field>
-          <input type="number" min="1" step="1" matInput formControlName="duplicateDetectionTimeFrame" placeholder="Minutes" autocomplete="off">
+          <input type="number" min="1" step="100" matInput formControlName="duplicateDetectionTimeFrame" placeholder="Milliseconds" autocomplete="off">
           <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('required')">Timeframe is required</mat-error>
-          <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('min')">Timeframe must be at least 1 minute</mat-error>
+          <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('min')">Timeframe must be at least 1ms</mat-error>
         </mat-form-field>
       </div>
 
       <div class="row" *ngIf="!form?.get('disableDuplicateDetection')?.value && form?.get('duplicateDetectionMode')?.value === 'advanced'">
         <p>
-          <span class="mat-body">Advanced Detection Timeframe (minutes)</span><br>
-          <span class="mat-caption">Check for duplicate audio hashes within this many minutes. 60 minutes recommended.</span>
+          <span class="mat-body">Advanced Detection Timeframe (milliseconds)</span><br>
+          <span class="mat-caption">Wait this many milliseconds for a preferred site/API key call before accepting a secondary. Default is 1000ms (1 second).</span>
         </p>
         <mat-form-field>
-          <input type="number" min="1" step="1" matInput formControlName="advancedDetectionTimeFrame" placeholder="Minutes" autocomplete="off">
+          <input type="number" min="1" step="100" matInput formControlName="advancedDetectionTimeFrame" placeholder="Milliseconds" autocomplete="off">
           <mat-error *ngIf="form?.get('advancedDetectionTimeFrame')?.hasError('required')">Timeframe is required</mat-error>
-          <mat-error *ngIf="form?.get('advancedDetectionTimeFrame')?.hasError('min')">Timeframe must be at least 1 minute</mat-error>
+          <mat-error *ngIf="form?.get('advancedDetectionTimeFrame')?.hasError('min')">Timeframe must be at least 1ms</mat-error>
         </mat-form-field>
       </div>
 
