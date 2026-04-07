@@ -128,17 +128,16 @@ func (client *Client) Init(controller *Controller, request *http.Request, conn *
 				var userSettings map[string]interface{}
 				if user.Settings != "" {
 					if err := json.Unmarshal([]byte(user.Settings), &userSettings); err == nil {
-						if enabled, ok := userSettings["disconnectAlertPushEnabled"].(bool); ok && enabled {
-							userId := user.Id
-					go func() {
-										// 10-second grace period lets transient reconnects suppress
-										// the notification without needing to check other sessions.
-										// FCM tokens are mobile-only so the push only reaches mobile
-										// devices regardless of any concurrent web sessions.
-										time.Sleep(10 * time.Second)
-										ctrl.sendDisconnectPushNotification(user)
-									}()
-						}
+					if enabled, ok := userSettings["disconnectAlertPushEnabled"].(bool); ok && enabled {
+						go func() {
+							// 10-second grace period lets transient reconnects suppress
+							// the notification without needing to check other sessions.
+							// FCM tokens are mobile-only so the push only reaches mobile
+							// devices regardless of any concurrent web sessions.
+							time.Sleep(10 * time.Second)
+							ctrl.sendDisconnectPushNotification(user)
+						}()
+					}
 					}
 				}
 			}
