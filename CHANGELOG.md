@@ -1,5 +1,26 @@
 # Change log
 
+## Version 26.04.020 - Released Apr 8, 2026
+
+### Fixed
+
+- **Server — Pager alert VoIP push sent for all calls regardless of user preference**
+  - `pager_alert: "true"` was unconditionally added to every call notification payload and VoIP tokens were included for all calls where `call != nil`, meaning every iOS device with a VoIP token received a PushKit/CallKit wake for every call — even talkgroups where the user never enabled pager-style playback
+  - `resolveUserPagerAlert()` added: reads from the in-memory `PreferencesCache` (O(1), no DB round-trip) and returns whether the user has pager-style audio enabled for the specific talkgroup, with tone-set-level override support
+  - VoIP tokens and the `pager_alert` flag are now only included in the notification payload when `resolveUserPagerAlert()` returns true for that user+talkgroup combination
+  - Fix applied to both `sendPushNotification` (single-user path) and `sendBatchedPushNotificationWithToneSet` (multi-user path); VoIP tokens in the batched path are now collected per-user into a separate slice and sent as their own batch with `pager_alert: "true"` only when warranted
+
+- **Server — `resolveUserAlertSound` hitting the database on every notification**
+  - `resolveUserAlertSound` was issuing a `SELECT` query per user per call instead of using the in-memory `PreferencesCache`
+  - Both `resolveUserAlertSound` and the new `resolveUserPagerAlert` now read from `PreferencesCache.GetPreference()`, consistent with the alert engine, keyword matcher, and tone detector
+
+- **Relay Server — `content-available: 1` set on every iOS FCM message**
+  - `content-available: 1` instructs iOS to wake the app silently in the background for every incoming push, including disconnect notifications
+  - The background FCM handler was receiving disconnect notifications, triggering a reconnect, and re-enabling the live feed — causing the scanner to start playing audio even when the user had closed the app
+  - `content-available: 1` is now only set on iOS FCM messages when `pager_alert == "true"` is present in the data payload; regular alert and disconnect notifications arrive as plain banner notifications only
+
+---
+
 ## Version 26.04.019 - Released Apr 7, 2026
 
 ### New

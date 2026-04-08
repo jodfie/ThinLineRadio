@@ -201,7 +201,7 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 		}
 	}
 
-	// Resolve per-channel notification sound for this user+talkgroup.
+	// Resolve per-channel notification sound and pager-alert preference for this user+talkgroup.
 	var systemId, talkgroupId uint64
 	if call != nil {
 		if call.System != nil {
@@ -213,11 +213,14 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 	}
 	channelSound := controller.resolveUserAlertSound(userId, systemId, talkgroupId, "")
 
+	// Check if this user has pager-style audio playback enabled for this talkgroup.
+	// VoIP tokens and the pager_alert data flag are only included when this is true.
+	userPagerEnabled := call != nil && controller.resolveUserPagerAlert(userId, systemId, talkgroupId, "")
+
 	// Group devices by platform and sound preference.
 	// Legacy OneSignal tokens are deleted on the spot and the user is emailed once.
 	androidDevices := []string{}
 	iosDevices := []string{}
-	iosVoIPDevices := []string{} // PushKit VoIP tokens — only sent for pager-alert calls
 	androidSound := "startup.wav"
 	iosSound := "startup.wav"
 	notifiedUsers := make(map[uint64]struct{})
@@ -238,9 +241,12 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 		}
 
 		if device.PushType == "voip" {
-			// VoIP (PushKit) tokens must only be sent for real call alerts so the
-			// CallKit UI is never triggered by test or keyword-only pushes.
-			iosVoIPDevices = append(iosVoIPDevices, device.FCMToken)
+			// VoIP (PushKit) tokens are only included when the user has pager-style
+			// audio playback enabled for this talkgroup. Any other condition must NOT
+			// trigger CallKit / wake the device via PushKit.
+			if userPagerEnabled {
+				iosDevices = append(iosDevices, device.FCMToken)
+			}
 		} else if device.Platform == "ios" {
 			iosDevices = append(iosDevices, device.FCMToken)
 			iosSound = effectiveSound
@@ -250,37 +256,37 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 		}
 	}
 
-	// Only include VoIP tokens when this is a real call notification — that is
-	// the only case where PushKit is needed to wake a killed iOS app for audio
-	// playback. Test pushes, disconnect alerts, etc. must NOT trigger CallKit.
-	if call != nil {
-		iosDevices = append(iosDevices, iosVoIPDevices...)
-	}
+	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: grouped devices for user %d - Android: %d, iOS: %d (pager enabled: %v)", userId, len(androidDevices), len(iosDevices), userPagerEnabled))
 
-	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: grouped devices for user %d - Android: %d, iOS: %d", userId, len(androidDevices), len(iosDevices)))
+	// Build per-call extra data. pager_alert is only set when the user has the
+	// feature enabled — this is what tells the relay server to send the VoIP
+	// push and tells the FCM background handler to play audio.
+	var callExtraData map[string]interface{}
+	if call != nil && userPagerEnabled {
+		callExtraData = map[string]interface{}{
+			"pager_alert": "true",
+		}
+	}
 
 	// Send to Android devices
 	if len(androidDevices) > 0 {
 		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: sending to %d Android device(s) for user %d with sound: %s", len(androidDevices), userId, androidSound))
-		// Send in goroutine to ensure independent execution - failures don't affect other batches
-		go func(ids []string, sound string) {
-			controller.sendNotificationBatch(ids, title, "", message, "android", sound, call, systemLabel, talkgroupLabel, nil)
-		}(androidDevices, androidSound)
+		go func(ids []string, sound string, extra map[string]interface{}) {
+			controller.sendNotificationBatch(ids, title, "", message, "android", sound, call, systemLabel, talkgroupLabel, extra)
+		}(androidDevices, androidSound, callExtraData)
 	}
 
 	// Send to iOS devices
 	if len(iosDevices) > 0 {
 		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: sending to %d iOS device(s) for user %d", len(iosDevices), userId))
-		// iOS requires sound name without extension (e.g., "startup" not "startup.wav")
 		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: iOS original sound: %s", iosSound))
 		iosSoundStripped := strings.TrimSuffix(iosSound, ".wav")
 		iosSoundStripped = strings.TrimSuffix(iosSoundStripped, ".mp3")
 		iosSoundStripped = strings.TrimSuffix(iosSoundStripped, ".m4a")
 		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: iOS final sound (stripped extension): %s", iosSoundStripped))
-		// Send in goroutine to ensure independent execution - failures don't affect other batches
-		go func(ids []string, sound string) {
-			controller.sendNotificationBatch(ids, title, "", message, "ios", sound, call, systemLabel, talkgroupLabel, nil)
-		}(iosDevices, iosSoundStripped)
+		go func(ids []string, sound string, extra map[string]interface{}) {
+			controller.sendNotificationBatch(ids, title, "", message, "ios", sound, call, systemLabel, talkgroupLabel, extra)
+		}(iosDevices, iosSoundStripped, callExtraData)
 	}
 }
 
@@ -312,13 +318,14 @@ func (controller *Controller) sendNotificationBatch(playerIDs []string, title, s
 				talkgroupLabel = call.Talkgroup.Label
 			}
 		}
-		// Pager-alert fields: mobile app uses these to fetch audio for background playback.
-		// scanner_url lets the app construct the audio endpoint without any prior knowledge.
-		// pager_alert is a string ("true"/"false") because FCM data values must be strings.
+		// scanner_url lets the mobile app construct the audio endpoint.
+		// pager_alert is intentionally NOT set here — it is only added by callers
+		// that have verified the user has pager-style playback enabled for this
+		// talkgroup (via resolveUserPagerAlert). Setting it unconditionally would
+		// send VoIP/background-wake pushes to users who never enabled the feature.
 		if controller.Options.BaseUrl != "" {
 			data["scanner_url"] = controller.Options.BaseUrl
 		}
-		data["pager_alert"] = "true"
 	}
 
 	if systemLabel != "" {
@@ -523,24 +530,37 @@ func (controller *Controller) sendDisconnectPushNotification(user *User) {
 	}
 }
 
-// resolveUserAlertSound returns the notification sound for a specific user+talkgroup alert.
-// Priority: per-tone-set sound → per-channel sound → "" (use device default).
-func (controller *Controller) resolveUserAlertSound(userId, systemId, talkgroupId uint64, toneSetId string) string {
-	var notificationSound, toneSetSoundsJson string
-	query := `SELECT COALESCE("notificationSound",''), COALESCE("toneSetSounds",'{}') FROM "userAlertPreferences" WHERE "userId" = $1 AND "systemId" = $2 AND "talkgroupId" = $3 LIMIT 1`
-	if err := controller.Database.Sql.QueryRow(query, userId, systemId, talkgroupId).Scan(&notificationSound, &toneSetSoundsJson); err != nil {
-		return ""
+// resolveUserPagerAlert reports whether a user has pager-style audio playback
+// enabled for a specific system+talkgroup (and optionally a specific tone set).
+// Uses the in-memory PreferencesCache — no database round-trip.
+// Returns false if no preference entry exists (safe default — no unwanted VoIP push).
+func (controller *Controller) resolveUserPagerAlert(userId, systemId, talkgroupId uint64, toneSetId string) bool {
+	pref := controller.PreferencesCache.GetPreference(userId, systemId, talkgroupId)
+	if pref == nil {
+		return false
 	}
-	// Check per-tone-set sound first
-	if toneSetId != "" && toneSetSoundsJson != "" && toneSetSoundsJson != "{}" {
-		var toneSetSounds map[string]string
-		if err := json.Unmarshal([]byte(toneSetSoundsJson), &toneSetSounds); err == nil {
-			if s, ok := toneSetSounds[toneSetId]; ok && s != "" {
-				return s
-			}
+	if toneSetId != "" && len(pref.ToneSetPagerAlerts) > 0 {
+		if enabled, ok := pref.ToneSetPagerAlerts[toneSetId]; ok {
+			return enabled
 		}
 	}
-	return notificationSound
+	return pref.PagerAlert
+}
+
+// resolveUserAlertSound returns the notification sound for a specific user+talkgroup alert.
+// Priority: per-tone-set sound → per-channel sound → "" (use device default).
+// Uses the in-memory PreferencesCache — no database round-trip.
+func (controller *Controller) resolveUserAlertSound(userId, systemId, talkgroupId uint64, toneSetId string) string {
+	pref := controller.PreferencesCache.GetPreference(userId, systemId, talkgroupId)
+	if pref == nil {
+		return ""
+	}
+	if toneSetId != "" && len(pref.ToneSetSounds) > 0 {
+		if s, ok := pref.ToneSetSounds[toneSetId]; ok && s != "" {
+			return s
+		}
+	}
+	return pref.NotificationSound
 }
 
 // sendBatchedPushNotification sends push notifications to multiple users in a single batch
@@ -629,7 +649,10 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 	// Collect all device tokens from all users, grouped by platform and sound.
 	// Key: "platform:sound" -> []FCM tokens
 	// Legacy OneSignal tokens are deleted on the spot and the user is emailed once.
+	// VoIP tokens are kept in a separate slice and only populated for users who
+	// have pager-style audio playback enabled for this talkgroup.
 	deviceGroups := make(map[string][]string)
+	voipTokens := []string{} // PushKit tokens for users with pager alerts enabled
 	notifiedUsers := make(map[uint64]struct{})
 
 	for _, userId := range userIds {
@@ -692,7 +715,7 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 			controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification (batched): device %d for user %d - token: %s, platform: %s", i+1, userId, device.Token, device.Platform))
 		}
 
-		// Resolve per-channel / per-tone-set sound for this user.
+		// Resolve per-channel / per-tone-set sound and pager preference for this user.
 		// Falls back to "" which means "use device default" below.
 		var systemId, talkgroupId uint64
 		if call != nil {
@@ -704,11 +727,22 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 			}
 		}
 		channelSound := controller.resolveUserAlertSound(userId, systemId, talkgroupId, toneSetId)
+		userPagerEnabled := call != nil && controller.resolveUserPagerAlert(userId, systemId, talkgroupId, toneSetId)
 
 		// Group devices by platform and sound; delete any legacy OneSignal tokens.
+		// VoIP tokens are collected separately and only for users with pager alerts enabled.
 		for _, device := range deviceTokens {
 			if isLegacyOneSignalToken(device) {
 				controller.handleLegacyOneSignalToken(device, notifiedUsers)
+				continue
+			}
+
+			if device.PushType == "voip" {
+				// Only include VoIP (PushKit) tokens for users who have pager-style
+				// audio playback enabled. Any other path must NOT trigger CallKit.
+				if userPagerEnabled {
+					voipTokens = append(voipTokens, device.FCMToken)
+				}
 				continue
 			}
 
@@ -725,7 +759,9 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 		}
 	}
 
-	// Send batched notifications for each platform/sound combination
+	// Send batched notifications for each platform/sound combination.
+	// Regular alert notifications carry no pager_alert flag — that is only
+	// added for the separate VoIP batch below.
 	batchIndex := 0
 	for key, playerIDs := range deviceGroups {
 		if len(playerIDs) == 0 {
@@ -760,5 +796,21 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 			controller.sendNotificationBatch(ids, title, "", message, plat, snd, call, systemLabel, talkgroupLabel, nil)
 		}(playerIDs, platform, finalSound, delay)
 		batchIndex++
+	}
+
+	// Send VoIP (PushKit) push to users who have pager-style audio enabled.
+	// These tokens are prefixed "voip:" so the relay server routes them via APNs,
+	// and pager_alert:"true" tells the relay to actually fire the VoIP push path.
+	if len(voipTokens) > 0 {
+		pagerExtra := map[string]interface{}{
+			"pager_alert": "true",
+		}
+		delay := time.Duration(batchIndex) * 200 * time.Millisecond
+		go func(ids []string, d time.Duration) {
+			if d > 0 {
+				time.Sleep(d)
+			}
+			controller.sendNotificationBatch(ids, title, "", message, "ios", "", call, systemLabel, talkgroupLabel, pagerExtra)
+		}(voipTokens, delay)
 	}
 }
