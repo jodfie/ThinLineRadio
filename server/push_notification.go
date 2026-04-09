@@ -305,15 +305,17 @@ func (controller *Controller) sendNotificationBatch(playerIDs []string, title, s
 	}
 
 	if call != nil {
-		data["callId"] = call.Id
+		// Send IDs as strings so the relay server doesn't decode them as float64
+		// and reformat them in scientific notation (e.g. 2.9874435e+07).
+		data["callId"] = fmt.Sprintf("%d", call.Id)
 		if call.System != nil {
-			data["systemId"] = call.System.Id
+			data["systemId"] = fmt.Sprintf("%d", call.System.Id)
 			if systemLabel == "" {
 				systemLabel = call.System.Label
 			}
 		}
 		if call.Talkgroup != nil {
-			data["talkgroupId"] = call.Talkgroup.Id
+			data["talkgroupId"] = fmt.Sprintf("%d", call.Talkgroup.Id)
 			if talkgroupLabel == "" {
 				talkgroupLabel = call.Talkgroup.Label
 			}

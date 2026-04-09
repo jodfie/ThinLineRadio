@@ -1,5 +1,17 @@
 # Change log
 
+## Version 26.04.024 - Released Apr 8, 2026
+
+### Fixed
+
+- **Server — Pager alert audio fetch failing with 400 (scientific-notation `callId` in URL)**
+  - `callId`, `systemId`, and `talkgroupId` were placed into the FCM data payload as raw integers
+  - Go's JSON decoder parses all JSON numbers into `float64` when unmarshalling into `interface{}`, so the relay server converted `29874435` to `float64(29874435)` and then formatted it with `%v`, producing `"2.9874435e+07"`
+  - The mobile app built the audio URL as `/api/calls/2.9874435e+07/audio`, which the server rejected with HTTP 400
+  - All three IDs are now serialised to strings with `fmt.Sprintf("%d", ...)` before being placed in the payload — the relay no longer touches them as numbers
+
+---
+
 ## Version 26.04.023 - Released Apr 9, 2026
 
 ### Changed
