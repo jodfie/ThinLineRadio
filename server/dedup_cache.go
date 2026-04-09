@@ -82,10 +82,10 @@ func (dc *DedupCache) CheckAndMarkHash(systemId, talkgroupId uint64, hash string
 // CheckAndMarkTimestamp is the last-resort duplicate check for simultaneous
 // arrivals. It records the P25 call timestamp and duration for the given
 // system+talkgroup and returns true if a previously seen call had a timestamp
-// within ±timestampFallbackWindow AND a duration within the energyDurationRatioMin
-// ratio. The duration guard prevents false positives when two genuinely different
+// within ±windowMs AND a duration within the timestampDurationRatioMin ratio.
+// The duration guard prevents false positives when two genuinely different
 // calls land at the same wall-clock second (e.g. SDR Trunk uploaders).
-func (dc *DedupCache) CheckAndMarkTimestamp(systemId, talkgroupId uint64, timestampMs int64, duration float64) bool {
+func (dc *DedupCache) CheckAndMarkTimestamp(systemId, talkgroupId uint64, timestampMs int64, duration float64, windowMs int64) bool {
 	key := fmt.Sprintf("ts:%d:%d", systemId, talkgroupId)
 	dc.mutex.Lock()
 	defer dc.mutex.Unlock()
@@ -95,7 +95,7 @@ func (dc *DedupCache) CheckAndMarkTimestamp(systemId, talkgroupId uint64, timest
 		if diff < 0 {
 			diff = -diff
 		}
-		if diff <= timestampFallbackWindow.Milliseconds() {
+		if diff <= windowMs {
 			// Apply duration ratio guard — skip if durations are known but diverge too much.
 			if duration > 0 && entry.Duration > 0 {
 				lo, hi := duration, entry.Duration

@@ -32,7 +32,8 @@ type Options struct {
 	Branding                    string `json:"branding"`
 	DefaultSystemDelay          uint   `json:"defaultSystemDelay"`
 	DisableDuplicateDetection   bool   `json:"disableDuplicateDetection"`
-	DuplicateDetectionTimeFrame uint   `json:"duplicateDetectionTimeFrame"` // ms window for same system/talkgroup
+	DuplicateDetectionTimeFrame uint   `json:"duplicateDetectionTimeFrame"` // in-memory cache TTL (ms)
+	DuplicateTimestampWindow    uint   `json:"duplicateTimestampWindow"`    // ±ms window for timestamp fallback (default 800)
 	Email                       string `json:"email"`
 	KeypadBeeps                 string `json:"keypadBeeps"`
 	MaxClients                  uint   `json:"maxClients"`
@@ -254,6 +255,17 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		options.DuplicateDetectionTimeFrame = uint(v)
 	default:
 		options.DuplicateDetectionTimeFrame = defaults.options.duplicateDetectionTimeFrame
+	}
+
+	switch v := m["duplicateTimestampWindow"].(type) {
+	case float64:
+		if uint(v) > 0 {
+			options.DuplicateTimestampWindow = uint(v)
+		} else {
+			options.DuplicateTimestampWindow = defaults.options.duplicateTimestampWindow
+		}
+	default:
+		options.DuplicateTimestampWindow = defaults.options.duplicateTimestampWindow
 	}
 
 	switch v := m["email"].(type) {
@@ -930,6 +942,7 @@ func (options *Options) Read(db *Database) error {
 	options.DefaultSystemDelay = defaults.options.defaultSystemDelay
 	options.DisableDuplicateDetection = defaults.options.disableDuplicateDetection
 	options.DuplicateDetectionTimeFrame = defaults.options.duplicateDetectionTimeFrame
+	options.DuplicateTimestampWindow = defaults.options.duplicateTimestampWindow
 	options.Email = defaults.options.email
 	options.KeypadBeeps = defaults.options.keypadBeeps
 	options.MaxClients = defaults.options.maxClients
@@ -1038,6 +1051,15 @@ func (options *Options) Read(db *Database) error {
 				switch v := f.(type) {
 				case float64:
 					options.DuplicateDetectionTimeFrame = uint(v)
+				}
+			}
+		case "duplicateTimestampWindow":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					if uint(v) > 0 {
+						options.DuplicateTimestampWindow = uint(v)
+					}
 				}
 			}
 		case "email":
@@ -1674,6 +1696,7 @@ func (options *Options) Write(db *Database) error {
 	set("defaultSystemDelay", options.DefaultSystemDelay)
 	set("disableDuplicateDetection", options.DisableDuplicateDetection)
 	set("duplicateDetectionTimeFrame", options.DuplicateDetectionTimeFrame)
+	set("duplicateTimestampWindow", options.DuplicateTimestampWindow)
 	set("email", options.Email)
 	set("keypadBeeps", options.KeypadBeeps)
 	set("maxClients", options.MaxClients)

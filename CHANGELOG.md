@@ -1,5 +1,17 @@
 # Change log
 
+## Version 26.04.023 - Released Apr 9, 2026
+
+### Changed
+
+- **Server — Duplicate timestamp match window is now configurable via the admin UI**
+  - The ±millisecond window used to compare call timestamps when detecting duplicates was previously hardcoded at 800 ms
+  - Admins can now adjust this under Options → **Timestamp Match Window** (default: 800 ms, range: 100–30,000 ms)
+  - Increasing this value (e.g. to 1200 ms) catches simulcast uploads from recorders whose clocks differ by up to 1 second
+  - The existing "Detection Timeframe" field has been renamed to **Cache Retention** with a corrected description — it controls how long call fingerprints are held in memory, not the comparison window
+
+---
+
 ## Version 26.04.022 - Released Apr 9, 2026
 
 > ⚠️ **DUPLICATE DETECTION CHANGE — READ BEFORE DEPLOYING**

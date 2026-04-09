@@ -238,6 +238,7 @@ export interface Options {
 	defaultSystemDelay?: number;
 	disableDuplicateDetection?: boolean;
 	duplicateDetectionTimeFrame?: number;
+	duplicateTimestampWindow?: number;
 	audioFingerprintEnabled?: boolean;
 	audioFingerprintThreshold?: number;
 	audioFingerprintTimeFrame?: number;
@@ -1235,7 +1236,8 @@ export class RdioScannerAdminService implements OnDestroy {
 		branding: this.ngFormBuilder.control(options?.branding),
 			defaultSystemDelay: this.ngFormBuilder.control(options?.defaultSystemDelay ?? 0, [Validators.required, Validators.min(0)]),
             disableDuplicateDetection: this.ngFormBuilder.control(options?.disableDuplicateDetection ?? false),
-            duplicateDetectionTimeFrame: this.ngFormBuilder.control(options?.duplicateDetectionTimeFrame ?? 1000, [Validators.required, Validators.min(0)]),
+            duplicateDetectionTimeFrame: this.ngFormBuilder.control(options?.duplicateDetectionTimeFrame ?? 30000, [Validators.required, Validators.min(1000)]),
+            duplicateTimestampWindow: this.ngFormBuilder.control(options?.duplicateTimestampWindow ?? 800, [Validators.required, Validators.min(100), Validators.max(30000)]),
             audioFingerprintEnabled: this.ngFormBuilder.control(options?.audioFingerprintEnabled ?? false),
             audioFingerprintThreshold: this.ngFormBuilder.control(options?.audioFingerprintThreshold ?? 0.25, [Validators.required, Validators.min(0), Validators.max(1)]),
             audioFingerprintTimeFrame: this.ngFormBuilder.control(options?.audioFingerprintTimeFrame ?? 5000, [Validators.required, Validators.min(0)]),

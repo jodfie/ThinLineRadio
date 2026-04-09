@@ -393,14 +393,9 @@ const timestampDurationRatioMin = 0.50
 // thresholds regardless of how close in time it is.
 const audioFingerprintWindow = 120 * time.Second
 
-// timestampFallbackWindow is the ±time window used by the last-resort timestamp
-// checks (CheckDuplicateByTimestamp / CheckAndMarkTimestamp). These have NO audio
-// verification — any call within the window on the same system+talkgroup is treated
-// as a duplicate — so the window must be tight enough that sequential distinct
-// calls (typically ≥1s apart on a busy P25 talkgroup) cannot fall inside it.
-// ±800ms gives extra headroom over the ±500ms P25 grant boundary while still
-// staying well clear of the ≥1s gap between distinct sequential grants.
-const timestampFallbackWindow = 800 * time.Millisecond
+// defaultTimestampFallbackWindow is the default ±window for timestamp-based
+// duplicate detection when the admin has not configured DuplicateTimestampWindow.
+const defaultTimestampFallbackWindow = 800 * time.Millisecond
 
 
 
@@ -437,14 +432,13 @@ func (calls *Calls) CheckDuplicateByHash(call *Call, db *Database) (bool, error)
 // stored duration differs by more than 15% from this call's duration, it is skipped.
 // This prevents false positives when two genuinely different calls land at the same
 // wall-clock second (e.g. SDR Trunk uploaders that don't embed true P25 timestamps).
-func (calls *Calls) CheckDuplicateByTimestamp(call *Call, db *Database) (bool, error) {
+func (calls *Calls) CheckDuplicateByTimestamp(call *Call, db *Database, windowMs int64) (bool, error) {
 	if call.System == nil || call.Talkgroup == nil {
 		return false, nil
 	}
 
 	formatError := errorFormatter("calls", "checkduplicatebytimestamp")
 
-	windowMs := timestampFallbackWindow.Milliseconds()
 	from := call.Timestamp.UnixMilli() - windowMs
 	to := call.Timestamp.UnixMilli() + windowMs
 

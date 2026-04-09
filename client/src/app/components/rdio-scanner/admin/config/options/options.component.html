@@ -241,13 +241,26 @@
 
       <div class="row" *ngIf="!form?.get('disableDuplicateDetection')?.value">
         <p>
-          <span class="mat-body">Detection Timeframe (milliseconds)</span><br>
-          <span class="mat-caption">Reject a call if another exists for the same system and talkgroup with a timestamp within this window (in-memory cache plus database check).</span>
+          <span class="mat-body">Timestamp Match Window (milliseconds)</span><br>
+          <span class="mat-caption">Two calls on the same system and talkgroup are considered duplicates if their timestamps are within this many milliseconds of each other. Default: 800 ms. Increase to catch simulcast uploads that arrive slightly out of sync (e.g. set 1200 ms to catch calls 1 second apart).</span>
         </p>
         <mat-form-field>
-          <input type="number" min="1" step="100" matInput formControlName="duplicateDetectionTimeFrame" placeholder="Milliseconds" autocomplete="off">
-          <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('required')">Timeframe is required</mat-error>
-          <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('min')">Timeframe must be at least 1ms</mat-error>
+          <input type="number" min="100" max="30000" step="100" matInput formControlName="duplicateTimestampWindow" placeholder="Milliseconds (default 800)" autocomplete="off">
+          <mat-error *ngIf="form?.get('duplicateTimestampWindow')?.hasError('required')">Window is required</mat-error>
+          <mat-error *ngIf="form?.get('duplicateTimestampWindow')?.hasError('min')">Minimum 100 ms</mat-error>
+          <mat-error *ngIf="form?.get('duplicateTimestampWindow')?.hasError('max')">Maximum 30000 ms</mat-error>
+        </mat-form-field>
+      </div>
+
+      <div class="row" *ngIf="!form?.get('disableDuplicateDetection')?.value">
+        <p>
+          <span class="mat-body">Cache Retention (milliseconds)</span><br>
+          <span class="mat-caption">How long the in-memory duplicate cache retains call fingerprints. Increase if uploads are significantly delayed. Default: 30000 ms (30 seconds).</span>
+        </p>
+        <mat-form-field>
+          <input type="number" min="1000" step="1000" matInput formControlName="duplicateDetectionTimeFrame" placeholder="Milliseconds (default 30000)" autocomplete="off">
+          <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('required')">Retention is required</mat-error>
+          <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('min')">Minimum 1000 ms</mat-error>
         </mat-form-field>
       </div>
 

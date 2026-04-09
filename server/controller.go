@@ -747,9 +747,16 @@ func (controller *Controller) IngestCall(call *Call) {
 
 		callDuration, _ := controller.getCallDuration(call)
 
+		// Resolve the timestamp window: use the admin-configured value if set,
+		// otherwise fall back to the compile-time default (800 ms).
+		tsWindowMs := defaultTimestampFallbackWindow.Milliseconds()
+		if controller.Options.DuplicateTimestampWindow > 0 {
+			tsWindowMs = int64(controller.Options.DuplicateTimestampWindow)
+		}
+
 		if !call.IsDuplicate {
 			if controller.DedupCache != nil && controller.DedupCache.CheckAndMarkTimestamp(
-				call.System.Id, call.Talkgroup.Id, call.Timestamp.UnixMilli(), callDuration,
+				call.System.Id, call.Talkgroup.Id, call.Timestamp.UnixMilli(), callDuration, tsWindowMs,
 			) {
 				logCall(call, LogLevelWarn, "duplicate (timestamp cache); storing flagged")
 				call.IsDuplicate = true
@@ -757,7 +764,7 @@ func (controller *Controller) IngestCall(call *Call) {
 		}
 
 		if !call.IsDuplicate {
-			isDuplicateTS, tsErr := controller.Calls.CheckDuplicateByTimestamp(call, controller.Database)
+			isDuplicateTS, tsErr := controller.Calls.CheckDuplicateByTimestamp(call, controller.Database, tsWindowMs)
 			if tsErr != nil {
 				logError(tsErr)
 				return
