@@ -377,6 +377,31 @@ func (db *Database) migrate() error {
 		return formatError(err, "")
 	}
 
+	// Add duplicateAudioOf + duplicateAudioOfTgRef for cross-talkgroup patch suppression
+	if err := migrateCallsDuplicateAudioOf(db); err != nil {
+		return formatError(err, "")
+	}
+
+	// Add audioDuration column for duration-ratio pre-filter in energy dedup
+	if err := migrateCallsAudioDuration(db); err != nil {
+		return formatError(err, "")
+	}
+
+	// Add isDuplicate flag so duplicate calls are stored but not emitted
+	if err := migrateCallsIsDuplicate(db); err != nil {
+		return formatError(err, "")
+	}
+
+	// Add PCM content hash for exact-duplicate detection across any time window
+	if err := migrateCallsAudioHash(db); err != nil {
+		return formatError(err, "")
+	}
+
+	// Add human-review column for duplicate verification
+	if err := migrateCallsVerifiedDuplicate(db); err != nil {
+		return formatError(err, "")
+	}
+
 	return nil
 }
 

@@ -144,6 +144,24 @@ func (admin *Admin) isAdminIPAllowed(clientIP string) bool {
 	return true
 }
 
+// requireAdminBasicAuth is an HTTP Basic Auth middleware for browser-visited admin pages
+// (e.g. the /calls debug UI).  The browser will display a login prompt; the supplied
+// password is verified against the stored bcrypt admin password hash.
+func (admin *Admin) requireAdminBasicAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, password, ok := r.BasicAuth()
+		if ok {
+			err := bcrypt.CompareHashAndPassword([]byte(admin.Controller.Options.adminPassword), []byte(password))
+			if err == nil {
+				next(w, r)
+				return
+			}
+		}
+		w.Header().Set("WWW-Authenticate", `Basic realm="Thinline Radio Admin"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	}
+}
+
 // requireLocalhost middleware for admin routes (name kept for backward compatibility;
 // behaviour now also respects AdminAllowedIPs).
 func (admin *Admin) requireLocalhost(next http.HandlerFunc) http.HandlerFunc {

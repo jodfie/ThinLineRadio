@@ -520,6 +520,12 @@ func main() {
 	// Pattern /api/calls/ also covers /api/calls/{id}/audio.
 	http.HandleFunc("/api/calls/", controller.Api.CallAudioDownloadHandler)
 
+	// Debug page — lists recent calls with audio playback and duplicate flags.
+	// Protected by HTTP Basic Auth using the admin password.
+	http.HandleFunc("/calls", controller.Admin.requireAdminBasicAuth(controller.CallsDebugHandler))
+	http.HandleFunc("/calls/audio/", controller.Admin.requireAdminBasicAuth(controller.CallsAudioHandler))
+	http.HandleFunc("/calls/verify", controller.Admin.requireAdminBasicAuth(controller.CallsVerifyHandler))
+
 	// Performance monitoring endpoint
 	http.HandleFunc("/api/status/performance", wrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

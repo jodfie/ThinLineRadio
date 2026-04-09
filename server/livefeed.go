@@ -82,6 +82,14 @@ func (livefeed *Livefeed) IsAllOff() bool {
 	return true
 }
 
+// IsEnabledForRef returns true if the client has the given systemRef+talkgroupRef
+// pair active in their livefeed. Used for cross-talkgroup duplicate filtering.
+func (livefeed *Livefeed) IsEnabledForRef(systemRef, talkgroupRef uint) bool {
+	livefeed.mutex.Lock()
+	defer livefeed.mutex.Unlock()
+	return livefeed.Matrix[systemRef][talkgroupRef]
+}
+
 func (livefeed *Livefeed) IsEnabled(call *Call) bool {
 	livefeed.mutex.Lock()
 	defer livefeed.mutex.Unlock()

@@ -50,9 +50,7 @@ type DefaultOptions struct {
 	branding                    string
 	defaultSystemDelay          uint
 	disableDuplicateDetection   bool
-	duplicateDetectionMode      string
 	duplicateDetectionTimeFrame uint
-	advancedDetectionTimeFrame  uint
 	email                       string
 	keypadBeeps                 string
 	maxClients                  uint
@@ -167,9 +165,7 @@ var defaults = Defaults{
 		branding:                    "",
 		defaultSystemDelay:          0,
 		disableDuplicateDetection:   false,
-		duplicateDetectionMode:      "legacy",
-		duplicateDetectionTimeFrame: 1000,
-		advancedDetectionTimeFrame:  1000,
+		duplicateDetectionTimeFrame: 30000,
 		email:                       "",
 		keypadBeeps:                 "uniden",
 		maxClients:                  100,

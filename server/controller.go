@@ -43,7 +43,6 @@ type Controller struct {
 	Api                              *Api
 	Apikeys                          *Apikeys
 	Calls                            *Calls
-	CallQueue                        *CallQueue
 	Clients                          *Clients
 	Config                           *Config
 	Database                         *Database
@@ -174,7 +173,6 @@ func NewController(config *Config) *Controller {
 	controller.Admin = NewAdmin(controller)
 	controller.Api = NewApi(controller)
 	controller.Calls = NewCalls(controller)
-	controller.CallQueue = NewCallQueue()
 	controller.Database = NewDatabase(config)
 	controller.Users = NewUsers()
 	controller.UserGroups = NewUserGroups()
@@ -724,143 +722,51 @@ func (controller *Controller) IngestCall(call *Call) {
 	}
 
 	if !controller.Options.DisableDuplicateDetection {
-		var isDuplicate bool
-		var err error
-		var useAdvanced bool
-
-		// Determine if we can use Advanced mode
-		// Requires: Advanced mode enabled AND system has proper site configuration
-		if controller.Options.DuplicateDetectionMode == "advanced" {
-			// Check if system has required configuration for advanced mode
-			if call.System != nil && call.System.Sites != nil && len(call.System.Sites.List) > 0 {
-				// Check if at least one site is marked as preferred
-				hasPreferredSite := false
-				for _, site := range call.System.Sites.List {
-					if site.Preferred {
-						hasPreferredSite = true
-						break
-					}
-				}
-
-				// Only use advanced mode if system has sites with at least one preferred
-				// Otherwise fall back to legacy mode for this call
-				if hasPreferredSite {
-					useAdvanced = true
-				}
-			}
-		}
-
-		if useAdvanced {
-			// Check if talkgroup excludes preferred site detection
-			// This is useful for interop/patched talkgroups that may receive calls from multiple physical systems
-			if call.Talkgroup != nil && call.Talkgroup.ExcludeFromPreferredSite {
-				useAdvanced = false
-				logCall(call, LogLevelInfo, "talkgroup excluded from preferred site detection, using legacy mode")
-			}
-		}
-
-		if useAdvanced {
-			// Advanced mode with queue-based waiting for preferred sites and/or API keys
-
-			// Determine if incoming call is from preferred site
-			isPreferredSite := false
-			if call.System.Sites != nil && call.SiteRef != "" {
-				if site, ok := call.System.Sites.GetSiteByRef(call.SiteRef); ok {
-					isPreferredSite = site.Preferred
-				}
-			}
-
-			// Determine if incoming call is from preferred API key
-			// Talkgroup-level preferred API key takes priority over system-level
-			isPreferredApiKey := false
-			if call.ApiKeyId != nil {
-				if call.Talkgroup != nil && call.Talkgroup.PreferredApiKeyId != nil {
-					isPreferredApiKey = (*call.ApiKeyId == *call.Talkgroup.PreferredApiKeyId)
-				} else if call.System != nil && call.System.PreferredApiKeyId != nil {
-					isPreferredApiKey = (*call.ApiKeyId == *call.System.PreferredApiKeyId)
-				}
-			}
-
-			// Call is "preferred" if it matches EITHER preferred site OR preferred API key
-			isPreferred := isPreferredSite || isPreferredApiKey
-
-			// Check for existing calls in database
-			var reason string
-			isDuplicate, reason, err = controller.Calls.CheckDuplicateBySiteAndFrequency(
-				call,
-				controller.Options.AdvancedDetectionTimeFrame,
-				controller.Database,
-			)
-
-			if err != nil {
-				logError(fmt.Errorf("advanced duplicate detection failed, using legacy: %w", err))
-				useAdvanced = false // Fall back to legacy
-			} else if isDuplicate {
-				logCall(call, LogLevelWarn, fmt.Sprintf("duplicate (advanced): %s", reason))
-				return
-			} else if isPreferred {
-				// Preferred call (site or API key) - accept immediately and cancel any queued non-preferred calls
-				timeWindow := time.Duration(controller.Options.AdvancedDetectionTimeFrame) * time.Millisecond
-				cancelled := controller.CallQueue.CancelPending(
-					call.System.Id,
-					call.Talkgroup.Id,
-					call.Timestamp,
-					timeWindow,
-				)
-				if cancelled > 0 {
-					preferredType := "site"
-					if isPreferredApiKey && !isPreferredSite {
-						preferredType = "API key"
-					} else if isPreferredApiKey && isPreferredSite {
-						preferredType = "site+API key"
-					}
-					logCall(call, LogLevelInfo, fmt.Sprintf("preferred %s call accepted, cancelled %d queued call(s)", preferredType, cancelled))
-				}
-				// Continue processing this preferred call immediately
-			} else {
-				// Non-preferred call - queue it and wait for preferred
-				logCall(call, LogLevelInfo, fmt.Sprintf("non-preferred call queued, waiting %dms for preferred site/API key", controller.Options.AdvancedDetectionTimeFrame))
-
-				waitDuration := time.Duration(controller.Options.AdvancedDetectionTimeFrame) * time.Millisecond
-				controller.CallQueue.Add(call, waitDuration, func(queuedCall *Call) {
-					// Timer expired - no preferred call arrived, process the non-preferred call
-					logCall(queuedCall, LogLevelInfo, "non-preferred call processing after wait period")
-					controller.processCallAfterDuplicateCheck(queuedCall)
-				})
-				return // Don't process now, will process after timer
-			}
-		}
-
-		// Legacy mode (explicit legacy setting, or fallback when advanced not configured/available)
-		// Uses legacy timeframe
-		if !useAdvanced || err != nil {
-			// In-memory check first to close the race window where two identical
-			// calls arrive simultaneously and both pass the DB check.
-			if controller.DedupCache != nil && controller.DedupCache.CheckAndMark(
-				call.System.Id, call.Talkgroup.Id,
-				call.Timestamp.UnixMilli(),
-				controller.Options.DuplicateDetectionTimeFrame,
+		// ── Pass 0: PCM content hash (exact duplicate, any time window) ──────
+		// Compute a SHA-256 hash of the decoded PCM samples. This is codec and
+		// container agnostic. If the hash matches an existing call the audio is
+		// bit-identical and no further fingerprinting is needed.
+		if audioHash, err := ComputeAudioHash(call.Audio, call.AudioMime); err == nil && audioHash != "" {
+			call.AudioHash = audioHash
+			if controller.DedupCache != nil && controller.DedupCache.CheckAndMarkHash(
+				call.System.Id, call.Talkgroup.Id, audioHash,
 			) {
-				logCall(call, LogLevelWarn, "duplicate (legacy/cache)")
-				return
+				logCall(call, LogLevelWarn, "duplicate (hash cache); storing flagged")
+				call.IsDuplicate = true
 			}
-
-			isDuplicate, err = controller.Calls.CheckDuplicate(
-				call,
-				controller.Options.DuplicateDetectionTimeFrame,
-				controller.Database,
-			)
-			if err == nil && isDuplicate {
-				logCall(call, LogLevelWarn, "duplicate (legacy)")
-				return
+			if !call.IsDuplicate {
+				isDuplicate, err := controller.Calls.CheckDuplicateByHash(call, controller.Database)
+				if err != nil {
+					logError(err)
+				} else if isDuplicate {
+					logCall(call, LogLevelWarn, "duplicate (hash); storing flagged")
+					call.IsDuplicate = true
+				}
 			}
 		}
 
-		if err != nil {
-			logError(err)
-			return
+		callDuration, _ := controller.getCallDuration(call)
+
+		if !call.IsDuplicate {
+			if controller.DedupCache != nil && controller.DedupCache.CheckAndMarkTimestamp(
+				call.System.Id, call.Talkgroup.Id, call.Timestamp.UnixMilli(), callDuration,
+			) {
+				logCall(call, LogLevelWarn, "duplicate (timestamp cache); storing flagged")
+				call.IsDuplicate = true
+			}
 		}
 
+		if !call.IsDuplicate {
+			isDuplicateTS, tsErr := controller.Calls.CheckDuplicateByTimestamp(call, controller.Database)
+			if tsErr != nil {
+				logError(tsErr)
+				return
+			}
+			if isDuplicateTS {
+				logCall(call, LogLevelWarn, "duplicate (timestamp fallback); storing flagged")
+				call.IsDuplicate = true
+			}
+		}
 	}
 
 	// Continue processing after duplicate detection
@@ -952,8 +858,10 @@ func (controller *Controller) processCallAfterDuplicateCheck(call *Call) {
 		}
 
 
-		// IMMEDIATE: Emit call to clients (users can play NOW - zero delay)
-		controller.EmitCall(call)
+		if !call.IsDuplicate {
+			// IMMEDIATE: Emit call to clients (users can play NOW - zero delay)
+			controller.EmitCall(call)
+		}
 
 		// Note: Tone detection already completed above (before encoding)
 		// Queue transcription with tone-aware decision
@@ -1290,16 +1198,19 @@ func (controller *Controller) getAudioDuration(audio []byte, audioMime string) (
 // getCallDuration returns the audio duration for a call, computing it with ffprobe on the
 // first invocation and caching the result on call.Duration for all subsequent calls.
 // This avoids spawning multiple ffprobe processes for the same call across the pipeline.
+// We always use call.Audio (the final stored/converted audio) so that audioDuration matches
+// what the browser actually plays. OriginalAudio can have incorrect container metadata
+// (e.g. SDR Trunk M4A files with pre-allocated duration headers) that diverges from the
+// real playable length after AAC re-encoding.
 func (controller *Controller) getCallDuration(call *Call) (float64, error) {
 	if call.Duration > 0 {
 		return call.Duration, nil
 	}
-	// Prefer original audio (no conversion overhead); fall back to converted audio if needed.
-	audio := call.OriginalAudio
-	mime := call.OriginalAudioMime
+	audio := call.Audio
+	mime := call.AudioMime
 	if len(audio) == 0 {
-		audio = call.Audio
-		mime = call.AudioMime
+		audio = call.OriginalAudio
+		mime = call.OriginalAudioMime
 	}
 	d, err := controller.getAudioDuration(audio, mime)
 	if err == nil && d > 0 {

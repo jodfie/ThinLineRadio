@@ -38,8 +38,6 @@ type Talkgroup struct {
 	TalkgroupRef            uint
 	ToneDetectionEnabled     bool
 	ToneSets                 []ToneSet
-	PreferredApiKeyId        *uint64 // Optional preferred API key for uploads
-	ExcludeFromPreferredSite bool    // Exclude from preferred site detection (for interop/patched talkgroups)
 	// Per-channel TonesToActive forwarding (forwards all tone sets for this talkgroup)
 	ToneDownstreamEnabled bool   `json:"toneDownstreamEnabled"`
 	ToneDownstreamURL     string `json:"toneDownstreamURL"`
@@ -148,21 +146,6 @@ func (talkgroup *Talkgroup) FromMap(m map[string]any) *Talkgroup {
 		}
 	}
 
-	// Parse preferredApiKeyId (optional/nullable)
-	switch v := m["preferredApiKeyId"].(type) {
-	case float64:
-		id := uint64(v)
-		talkgroup.PreferredApiKeyId = &id
-	case nil:
-		talkgroup.PreferredApiKeyId = nil
-	}
-
-	// Parse excludeFromPreferredSite
-	switch v := m["excludeFromPreferredSite"].(type) {
-	case bool:
-		talkgroup.ExcludeFromPreferredSite = v
-	}
-
 	// Parse per-channel TonesToActive forwarding
 	switch v := m["toneDownstreamEnabled"].(type) {
 	case bool:
@@ -252,16 +235,6 @@ func (talkgroup *Talkgroup) MarshalJSON() ([]byte, error) {
 			m["toneSets"] = json.RawMessage(toneSetsJson)
 		}
 	}
-
-	// Include preferredApiKeyId if set
-	if talkgroup.PreferredApiKeyId != nil {
-		m["preferredApiKeyId"] = *talkgroup.PreferredApiKeyId
-	} else {
-		m["preferredApiKeyId"] = nil
-	}
-
-	// Include excludeFromPreferredSite
-	m["excludeFromPreferredSite"] = talkgroup.ExcludeFromPreferredSite
 
 	// Include per-channel TonesToActive forwarding
 	m["toneDownstreamEnabled"] = talkgroup.ToneDownstreamEnabled
@@ -382,16 +355,11 @@ func (talkgroups *Talkgroups) ReadTx(tx *sql.Tx, systemId uint64, dbType string)
 	for rows.Next() {
 		talkgroup := NewTalkgroup()
 		var toneSetsJson string
-		var preferredApiKeyId sql.NullInt64
+		var preferredApiKeyUnused sql.NullInt64
+		var excludePreferredUnused bool
 
-		if err = rows.Scan(&talkgroup.Id, &talkgroup.Delay, &talkgroup.Frequency, &talkgroup.Label, &talkgroup.Name, &talkgroup.Order, &talkgroup.TagId, &talkgroup.TalkgroupRef, &talkgroup.Kind, &talkgroup.ToneDetectionEnabled, &toneSetsJson, &preferredApiKeyId, &talkgroup.ExcludeFromPreferredSite, &talkgroup.ToneDownstreamEnabled, &talkgroup.ToneDownstreamURL, &talkgroup.ToneDownstreamAPIKey, &talkgroup.AlertCooldownSeconds, &talkgroup.LinkedVoiceTalkgroupRef, &talkgroup.LinkedVoiceWindowSeconds, &talkgroup.LinkedVoiceMinDurationSeconds, &talkgroup.AlertsEnabled, &talkgroup.TranscriptionPrompt, &groupIds); err != nil {
+		if err = rows.Scan(&talkgroup.Id, &talkgroup.Delay, &talkgroup.Frequency, &talkgroup.Label, &talkgroup.Name, &talkgroup.Order, &talkgroup.TagId, &talkgroup.TalkgroupRef, &talkgroup.Kind, &talkgroup.ToneDetectionEnabled, &toneSetsJson, &preferredApiKeyUnused, &excludePreferredUnused, &talkgroup.ToneDownstreamEnabled, &talkgroup.ToneDownstreamURL, &talkgroup.ToneDownstreamAPIKey, &talkgroup.AlertCooldownSeconds, &talkgroup.LinkedVoiceTalkgroupRef, &talkgroup.LinkedVoiceWindowSeconds, &talkgroup.LinkedVoiceMinDurationSeconds, &talkgroup.AlertsEnabled, &talkgroup.TranscriptionPrompt, &groupIds); err != nil {
 			break
-		}
-
-		// Handle nullable preferredApiKeyId
-		if preferredApiKeyId.Valid {
-			id := uint64(preferredApiKeyId.Int64)
-			talkgroup.PreferredApiKeyId = &id
 		}
 
 		// Parse tone sets
@@ -552,19 +520,15 @@ func (talkgroups *Talkgroups) WriteTx(tx *sql.Tx, systemId uint64, dbType string
 			}
 		}
 
-		// Format preferredApiKeyId for SQL (NULL or number)
 		preferredApiKeyIdSQL := "NULL"
-		if talkgroup.PreferredApiKeyId != nil {
-			preferredApiKeyIdSQL = fmt.Sprintf("%d", *talkgroup.PreferredApiKeyId)
-		}
 
 		if count == 0 {
 			if talkgroup.Id > 0 {
 				// Preserve the explicit ID when inserting
-				query = fmt.Sprintf(`INSERT INTO "talkgroups" ("talkgroupId", "delay", "frequency", "label", "name", "order", "systemId", "tagId", "talkgroupRef", "type", "toneDetectionEnabled", "toneSets", "preferredApiKeyId", "excludeFromPreferredSite", "toneDownstreamEnabled", "toneDownstreamURL", "toneDownstreamAPIKey", "alertCooldownSeconds", "linkedVoiceTalkgroupRef", "linkedVoiceWindowSeconds", "linkedVoiceMinDurationSeconds", "alertsEnabled", "transcriptionPrompt") VALUES (%d, %d, %d, '%s', '%s', %d, %d, %d, %d, '%s', %t, '%s', %s, %t, %t, '%s', '%s', %d, %d, %d, %d, %t, '%s')`, talkgroup.Id, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, systemId, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson), preferredApiKeyIdSQL, talkgroup.ExcludeFromPreferredSite, talkgroup.ToneDownstreamEnabled, escapeQuotes(talkgroup.ToneDownstreamURL), escapeQuotes(talkgroup.ToneDownstreamAPIKey), talkgroup.AlertCooldownSeconds, talkgroup.LinkedVoiceTalkgroupRef, talkgroup.LinkedVoiceWindowSeconds, talkgroup.LinkedVoiceMinDurationSeconds, talkgroup.AlertsEnabled, escapeQuotes(talkgroup.TranscriptionPrompt))
+				query = fmt.Sprintf(`INSERT INTO "talkgroups" ("talkgroupId", "delay", "frequency", "label", "name", "order", "systemId", "tagId", "talkgroupRef", "type", "toneDetectionEnabled", "toneSets", "preferredApiKeyId", "excludeFromPreferredSite", "toneDownstreamEnabled", "toneDownstreamURL", "toneDownstreamAPIKey", "alertCooldownSeconds", "linkedVoiceTalkgroupRef", "linkedVoiceWindowSeconds", "linkedVoiceMinDurationSeconds", "alertsEnabled", "transcriptionPrompt") VALUES (%d, %d, %d, '%s', '%s', %d, %d, %d, %d, '%s', %t, '%s', %s, %t, %t, '%s', '%s', %d, %d, %d, %d, %t, '%s')`, talkgroup.Id, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, systemId, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson), preferredApiKeyIdSQL, false, talkgroup.ToneDownstreamEnabled, escapeQuotes(talkgroup.ToneDownstreamURL), escapeQuotes(talkgroup.ToneDownstreamAPIKey), talkgroup.AlertCooldownSeconds, talkgroup.LinkedVoiceTalkgroupRef, talkgroup.LinkedVoiceWindowSeconds, talkgroup.LinkedVoiceMinDurationSeconds, talkgroup.AlertsEnabled, escapeQuotes(talkgroup.TranscriptionPrompt))
 			} else {
 				// Let database assign auto-increment ID
-				query = fmt.Sprintf(`INSERT INTO "talkgroups" ("delay", "frequency", "label", "name", "order", "systemId", "tagId", "talkgroupRef", "type", "toneDetectionEnabled", "toneSets", "preferredApiKeyId", "excludeFromPreferredSite", "toneDownstreamEnabled", "toneDownstreamURL", "toneDownstreamAPIKey", "alertCooldownSeconds", "linkedVoiceTalkgroupRef", "linkedVoiceWindowSeconds", "linkedVoiceMinDurationSeconds", "alertsEnabled", "transcriptionPrompt") VALUES (%d, %d, '%s', '%s', %d, %d, %d, %d, '%s', %t, '%s', %s, %t, %t, '%s', '%s', %d, %d, %d, %d, %t, '%s')`, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, systemId, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson), preferredApiKeyIdSQL, talkgroup.ExcludeFromPreferredSite, talkgroup.ToneDownstreamEnabled, escapeQuotes(talkgroup.ToneDownstreamURL), escapeQuotes(talkgroup.ToneDownstreamAPIKey), talkgroup.AlertCooldownSeconds, talkgroup.LinkedVoiceTalkgroupRef, talkgroup.LinkedVoiceWindowSeconds, talkgroup.LinkedVoiceMinDurationSeconds, talkgroup.AlertsEnabled, escapeQuotes(talkgroup.TranscriptionPrompt))
+				query = fmt.Sprintf(`INSERT INTO "talkgroups" ("delay", "frequency", "label", "name", "order", "systemId", "tagId", "talkgroupRef", "type", "toneDetectionEnabled", "toneSets", "preferredApiKeyId", "excludeFromPreferredSite", "toneDownstreamEnabled", "toneDownstreamURL", "toneDownstreamAPIKey", "alertCooldownSeconds", "linkedVoiceTalkgroupRef", "linkedVoiceWindowSeconds", "linkedVoiceMinDurationSeconds", "alertsEnabled", "transcriptionPrompt") VALUES (%d, %d, '%s', '%s', %d, %d, %d, %d, '%s', %t, '%s', %s, %t, %t, '%s', '%s', %d, %d, %d, %d, %t, '%s')`, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, systemId, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson), preferredApiKeyIdSQL, false, talkgroup.ToneDownstreamEnabled, escapeQuotes(talkgroup.ToneDownstreamURL), escapeQuotes(talkgroup.ToneDownstreamAPIKey), talkgroup.AlertCooldownSeconds, talkgroup.LinkedVoiceTalkgroupRef, talkgroup.LinkedVoiceWindowSeconds, talkgroup.LinkedVoiceMinDurationSeconds, talkgroup.AlertsEnabled, escapeQuotes(talkgroup.TranscriptionPrompt))
 			}
 
 			if dbType == DbTypePostgresql {
@@ -593,7 +557,7 @@ func (talkgroups *Talkgroups) WriteTx(tx *sql.Tx, systemId uint64, dbType string
 				}
 			}
 			// preferredApiKeyIdSQL is already calculated above
-			query = fmt.Sprintf(`UPDATE "talkgroups" SET "delay" = %d, "frequency" = %d, "label" = '%s', "name" = '%s', "order" = %d, "tagId" = %d, "talkgroupRef" = %d, "type" = '%s', "toneDetectionEnabled" = %t, "toneSets" = '%s', "preferredApiKeyId" = %s, "excludeFromPreferredSite" = %t, "toneDownstreamEnabled" = %t, "toneDownstreamURL" = '%s', "toneDownstreamAPIKey" = '%s', "alertCooldownSeconds" = %d, "linkedVoiceTalkgroupRef" = %d, "linkedVoiceWindowSeconds" = %d, "linkedVoiceMinDurationSeconds" = %d, "alertsEnabled" = %t, "transcriptionPrompt" = '%s' WHERE "talkgroupId" = %d`, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson), preferredApiKeyIdSQL, talkgroup.ExcludeFromPreferredSite, talkgroup.ToneDownstreamEnabled, escapeQuotes(talkgroup.ToneDownstreamURL), escapeQuotes(talkgroup.ToneDownstreamAPIKey), talkgroup.AlertCooldownSeconds, talkgroup.LinkedVoiceTalkgroupRef, talkgroup.LinkedVoiceWindowSeconds, talkgroup.LinkedVoiceMinDurationSeconds, talkgroup.AlertsEnabled, escapeQuotes(talkgroup.TranscriptionPrompt), talkgroup.Id)
+			query = fmt.Sprintf(`UPDATE "talkgroups" SET "delay" = %d, "frequency" = %d, "label" = '%s', "name" = '%s', "order" = %d, "tagId" = %d, "talkgroupRef" = %d, "type" = '%s', "toneDetectionEnabled" = %t, "toneSets" = '%s', "preferredApiKeyId" = %s, "excludeFromPreferredSite" = %t, "toneDownstreamEnabled" = %t, "toneDownstreamURL" = '%s', "toneDownstreamAPIKey" = '%s', "alertCooldownSeconds" = %d, "linkedVoiceTalkgroupRef" = %d, "linkedVoiceWindowSeconds" = %d, "linkedVoiceMinDurationSeconds" = %d, "alertsEnabled" = %t, "transcriptionPrompt" = '%s' WHERE "talkgroupId" = %d`, talkgroup.Delay, talkgroup.Frequency, escapeQuotes(talkgroup.Label), escapeQuotes(talkgroup.Name), talkgroup.Order, validTagId, talkgroup.TalkgroupRef, talkgroup.Kind, talkgroup.ToneDetectionEnabled, escapeQuotes(toneSetsJson), preferredApiKeyIdSQL, false, talkgroup.ToneDownstreamEnabled, escapeQuotes(talkgroup.ToneDownstreamURL), escapeQuotes(talkgroup.ToneDownstreamAPIKey), talkgroup.AlertCooldownSeconds, talkgroup.LinkedVoiceTalkgroupRef, talkgroup.LinkedVoiceWindowSeconds, talkgroup.LinkedVoiceMinDurationSeconds, talkgroup.AlertsEnabled, escapeQuotes(talkgroup.TranscriptionPrompt), talkgroup.Id)
 			if _, err = tx.Exec(query); err != nil {
 				break
 			}

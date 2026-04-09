@@ -88,7 +88,7 @@ const SETTINGS_INDEX: SearchResult[] = [
     { label: 'Relay Server API Key', keywords: 'relay server api key push notifications audio encryption request thinline tlr', breadcrumb: 'Config → Options → Integrations', icon: 'vpn_key', tab: 0, configSection: 'options', optionPanel: 'integrationsExpanded' },
     // ── Audio Settings ────────────────────────────────────────────────────────
     { label: 'Audio Conversion', keywords: 'audio conversion enable convert format', breadcrumb: 'Config → Options → Audio Settings', icon: 'graphic_eq', tab: 0, configSection: 'options', optionPanel: 'securityExpanded' },
-    { label: 'Duplicate Detection', keywords: 'duplicate detection call fingerprint similarity', breadcrumb: 'Config → Options → Audio Settings', icon: 'content_copy', tab: 0, configSection: 'options', optionPanel: 'securityExpanded' },
+    { label: 'Duplicate Detection', keywords: 'duplicate detection call time window', breadcrumb: 'Config → Options → Audio Settings', icon: 'content_copy', tab: 0, configSection: 'options', optionPanel: 'securityExpanded' },
     { label: 'Audio Encryption', keywords: 'audio encryption key aes', breadcrumb: 'Config → Options → Audio Settings', icon: 'enhanced_encryption', tab: 0, configSection: 'options', optionPanel: 'securityExpanded' },
     { label: 'Rate Limiting', keywords: 'rate limit download restrict', breadcrumb: 'Config → Options → Audio Settings', icon: 'speed', tab: 0, configSection: 'options', optionPanel: 'securityExpanded' },
     { label: 'Reconnection Manager', keywords: 'reconnection manager grace period buffer', breadcrumb: 'Config → Options → Audio Settings', icon: 'sync', tab: 0, configSection: 'options', optionPanel: 'securityExpanded' },

@@ -125,18 +125,6 @@
         </div>
 
         <div class="settings-field settings-field--wide">
-            <label class="field-label">Preferred API Key</label>
-            <mat-form-field appearance="outline" class="compact-field">
-                <mat-select formControlName="preferredApiKeyId" placeholder="Any API Key">
-                    <mat-option [value]="null">Any API Key (No Restriction)</mat-option>
-                    <mat-option *ngFor="let apikey of apikeys" [value]="apikey.id">
-                        {{ apikey.ident || 'API Key ' + apikey.id }}
-                    </mat-option>
-                </mat-select>
-            </mat-form-field>
-        </div>
-
-        <div class="settings-field settings-field--wide">
             <label class="field-label">Transcription Prompt</label>
             <mat-form-field appearance="outline" class="compact-field">
                 <textarea matInput formControlName="transcriptionPrompt"

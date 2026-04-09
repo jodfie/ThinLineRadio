@@ -38,7 +38,6 @@ type System struct {
 	SystemRef               uint
 	Talkgroups              *Talkgroups
 	Units                   *Units
-	PreferredApiKeyId       *uint64 // Optional preferred API key for uploads
 	NoAudioAlertsEnabled    bool    // Enable no-audio alerts for this system
 	NoAudioThresholdMinutes uint    // Minutes without audio before alerting
 	AlertsEnabled           bool    // Admin toggle: false suppresses all alerts & transcription for this system
@@ -113,15 +112,6 @@ func (system *System) FromMap(m map[string]any) *System {
 		system.Units.FromMap(v)
 	}
 
-	// Parse preferredApiKeyId (optional/nullable)
-	switch v := m["preferredApiKeyId"].(type) {
-	case float64:
-		id := uint64(v)
-		system.PreferredApiKeyId = &id
-	case nil:
-		system.PreferredApiKeyId = nil
-	}
-
 	// Parse noAudioAlertsEnabled (defaults to true if not specified)
 	switch v := m["noAudioAlertsEnabled"].(type) {
 	case bool:
@@ -188,13 +178,6 @@ func (system *System) MarshalJSON() ([]byte, error) {
 
 	if system.Order > 0 {
 		m["order"] = system.Order
-	}
-
-	// Include preferredApiKeyId if set
-	if system.PreferredApiKeyId != nil {
-		m["preferredApiKeyId"] = *system.PreferredApiKeyId
-	} else {
-		m["preferredApiKeyId"] = nil
 	}
 
 	// Always include noAudioAlertsEnabled
@@ -592,13 +575,9 @@ func (systems *Systems) Read(db *Database) error {
 	systemById := make(map[uint64]*System)
 	for rows.Next() {
 		system := NewSystem()
-		var preferredApiKeyId sql.NullInt64
-		if err = rows.Scan(&system.Id, &system.AutoPopulate, &system.Blacklists, &system.Delay, &system.Label, &system.Order, &system.SystemRef, &system.Kind, &preferredApiKeyId, &system.NoAudioAlertsEnabled, &system.NoAudioThresholdMinutes, &system.AlertsEnabled, &system.AutoPopulateAlertsEnabled, &system.TranscriptionPrompt); err != nil {
+		var preferredApiKeyUnused sql.NullInt64
+		if err = rows.Scan(&system.Id, &system.AutoPopulate, &system.Blacklists, &system.Delay, &system.Label, &system.Order, &system.SystemRef, &system.Kind, &preferredApiKeyUnused, &system.NoAudioAlertsEnabled, &system.NoAudioThresholdMinutes, &system.AlertsEnabled, &system.AutoPopulateAlertsEnabled, &system.TranscriptionPrompt); err != nil {
 			return formatError(err, query)
-		}
-		if preferredApiKeyId.Valid {
-			id := uint64(preferredApiKeyId.Int64)
-			system.PreferredApiKeyId = &id
 		}
 		systems.List = append(systems.List, system)
 		systemById[system.Id] = system
@@ -621,7 +600,8 @@ func (systems *Systems) Read(db *Database) error {
 		site := NewSite()
 		var systemId uint64
 		var frequenciesJSON string
-		if err = siteRows.Scan(&site.Id, &systemId, &site.Label, &site.Order, &site.SiteRef, &site.RFSS, &frequenciesJSON, &site.Preferred); err != nil {
+		var sitePreferredUnused bool
+		if err = siteRows.Scan(&site.Id, &systemId, &site.Label, &site.Order, &site.SiteRef, &site.RFSS, &frequenciesJSON, &sitePreferredUnused); err != nil {
 			return formatError(err, siteQuery)
 		}
 		if len(frequenciesJSON) > 0 {
@@ -664,14 +644,11 @@ func (systems *Systems) Read(db *Database) error {
 		var systemId uint64
 		var toneSetsJson string
 		var groupIds string
-		var preferredApiKeyId sql.NullInt64
+		var preferredApiKeyUnused sql.NullInt64
+		var excludePreferredUnused bool
 
-		if err = tgRows.Scan(&talkgroup.Id, &systemId, &talkgroup.Delay, &talkgroup.Frequency, &talkgroup.Label, &talkgroup.Name, &talkgroup.Order, &talkgroup.TagId, &talkgroup.TalkgroupRef, &talkgroup.Kind, &talkgroup.ToneDetectionEnabled, &toneSetsJson, &preferredApiKeyId, &talkgroup.ExcludeFromPreferredSite, &talkgroup.ToneDownstreamEnabled, &talkgroup.ToneDownstreamURL, &talkgroup.ToneDownstreamAPIKey, &talkgroup.AlertCooldownSeconds, &talkgroup.LinkedVoiceTalkgroupRef, &talkgroup.LinkedVoiceWindowSeconds, &talkgroup.LinkedVoiceMinDurationSeconds, &talkgroup.AlertsEnabled, &talkgroup.TranscriptionPrompt, &groupIds); err != nil {
+		if err = tgRows.Scan(&talkgroup.Id, &systemId, &talkgroup.Delay, &talkgroup.Frequency, &talkgroup.Label, &talkgroup.Name, &talkgroup.Order, &talkgroup.TagId, &talkgroup.TalkgroupRef, &talkgroup.Kind, &talkgroup.ToneDetectionEnabled, &toneSetsJson, &preferredApiKeyUnused, &excludePreferredUnused, &talkgroup.ToneDownstreamEnabled, &talkgroup.ToneDownstreamURL, &talkgroup.ToneDownstreamAPIKey, &talkgroup.AlertCooldownSeconds, &talkgroup.LinkedVoiceTalkgroupRef, &talkgroup.LinkedVoiceWindowSeconds, &talkgroup.LinkedVoiceMinDurationSeconds, &talkgroup.AlertsEnabled, &talkgroup.TranscriptionPrompt, &groupIds); err != nil {
 			return formatError(err, tgQuery)
-		}
-		if preferredApiKeyId.Valid {
-			id := uint64(preferredApiKeyId.Int64)
-			talkgroup.PreferredApiKeyId = &id
 		}
 		if toneSetsJson != "" && toneSetsJson != "[]" {
 			if toneSets, err := ParseToneSets(toneSetsJson); err == nil {
@@ -846,11 +823,7 @@ func (systems *Systems) Write(db *Database) error {
 			}
 		}
 
-		// Format preferredApiKeyId for SQL (NULL or number)
 		preferredApiKeyIdSQL := "NULL"
-		if system.PreferredApiKeyId != nil {
-			preferredApiKeyIdSQL = fmt.Sprintf("%d", *system.PreferredApiKeyId)
-		}
 
 		if count == 0 {
 			if system.Id > 0 {

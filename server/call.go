@@ -104,6 +104,9 @@ type Call struct {
 	// and reused for all subsequent checks (duration check, tone-only check, etc.).
 	// Not persisted to DB or included in JSON output.
 	Duration float64
+
+	IsDuplicate bool   `json:"isDuplicate,omitempty"`
+	AudioHash   string `json:"audioHash,omitempty"`
 }
 
 func NewCall() *Call {
@@ -373,107 +376,113 @@ func NewCalls(controller *Controller) *Calls {
 	}
 }
 
-func (calls *Calls) CheckDuplicate(call *Call, msTimeFrame uint, db *Database) (bool, error) {
-	var count uint64
+// timestampDurationRatioMin is the minimum ratio (shorter/longer) between the
+// incoming call's duration and a candidate's stored duration for the timestamp
+// fallback check. More lenient than the former energy ratio (0.85) because an
+// identical P25 timestamp is already strong evidence of the same grant — the
+// guard exists only to reject wildly different calls (e.g. 0.26s vs 2.6s) that
+// share a wall-clock second due to SDR Trunk not embedding true P25 timestamps.
+const timestampDurationRatioMin = 0.50
 
-	formatError := errorFormatter("calls", "checkduplicate")
+// audioFingerprintWindow is the ±time window used when searching the DB for
+// duplicate candidates via audio fingerprinting (energy profiles and Chromaprint).
+// ±120s covers the worst observed delayed-upload scenario: an uploader whose
+// reported P25 timestamp is up to ~90s behind the actual wall clock. False
+// positives are prevented by the energy similarity (≥80%) and duration ratio
+// (≥85%) guards — a genuinely different call will not score above those
+// thresholds regardless of how close in time it is.
+const audioFingerprintWindow = 120 * time.Second
 
-	d := time.Duration(msTimeFrame) * time.Millisecond
-	from := call.Timestamp.Add(-d)
-	to := call.Timestamp.Add(d)
+// timestampFallbackWindow is the ±time window used by the last-resort timestamp
+// checks (CheckDuplicateByTimestamp / CheckAndMarkTimestamp). These have NO audio
+// verification — any call within the window on the same system+talkgroup is treated
+// as a duplicate — so the window must be tight enough that sequential distinct
+// calls (typically ≥1s apart on a busy P25 talkgroup) cannot fall inside it.
+// ±800ms gives extra headroom over the ±500ms P25 grant boundary while still
+// staying well clear of the ≥1s gap between distinct sequential grants.
+const timestampFallbackWindow = 800 * time.Millisecond
 
-	// Add timeout context to prevent indefinite blocking
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
-	query := fmt.Sprintf(`SELECT COUNT(*) FROM "calls" WHERE ("timestamp" BETWEEN %d and %d) AND "systemId" = %d AND "talkgroupId" = %d`, from.UnixMilli(), to.UnixMilli(), call.System.Id, call.Talkgroup.Id)
-	if err := db.Sql.QueryRowContext(ctx, query).Scan(&count); err != nil {
-		return false, formatError(err, query)
+
+// CheckDuplicateByHash queries the DB for any call on the same system+talkgroup
+// whose PCM content hash matches this call's hash. A hash match means the decoded
+// audio samples are bit-identical — a guaranteed duplicate regardless of how far
+// apart the timestamps are. No time window is needed or applied.
+func (calls *Calls) CheckDuplicateByHash(call *Call, db *Database) (bool, error) {
+	if call.AudioHash == "" || call.System == nil || call.Talkgroup == nil {
+		return false, nil
 	}
 
+	formatError := errorFormatter("calls", "checkduplicatebyhash")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := fmt.Sprintf(
+		`SELECT COUNT(*) FROM "calls" WHERE "audioHash" = $1 AND "systemId" = %d AND "talkgroupId" = %d`,
+		call.System.Id, call.Talkgroup.Id,
+	)
+
+	var count int
+	if err := db.Sql.QueryRowContext(ctx, query, call.AudioHash).Scan(&count); err != nil {
+		return false, formatError(err, query)
+	}
 	return count > 0, nil
 }
 
-// CheckDuplicateBySiteAndFrequency performs advanced duplicate detection using site priority
-// and optional frequency validation. Returns (isDuplicate, reason, error).
-func (calls *Calls) CheckDuplicateBySiteAndFrequency(call *Call, msTimeFrame uint, db *Database) (bool, string, error) {
-	formatError := errorFormatter("calls", "checkduplicatebysiteandfrequency")
-
-	// Validate we have required data
+// CheckDuplicateByTimestamp is the last-resort fallback after audio fingerprinting
+// has already cleared the call. It queries the DB for any call on the same
+// system+talkgroup whose P25 timestamp is within ±timestampFallbackWindow.
+// A duration ratio guard (same as the energy path) is applied: if the candidate's
+// stored duration differs by more than 15% from this call's duration, it is skipped.
+// This prevents false positives when two genuinely different calls land at the same
+// wall-clock second (e.g. SDR Trunk uploaders that don't embed true P25 timestamps).
+func (calls *Calls) CheckDuplicateByTimestamp(call *Call, db *Database) (bool, error) {
 	if call.System == nil || call.Talkgroup == nil {
-		return false, "", formatError(fmt.Errorf("call missing system or talkgroup"), "")
+		return false, nil
 	}
 
-	// Determine if incoming call is from preferred site
-	isPreferredSite := false
-	if call.System.Sites != nil && call.SiteRef != "" {
-		if site, ok := call.System.Sites.GetSiteByRef(call.SiteRef); ok {
-			isPreferredSite = site.Preferred
-		}
-	}
+	formatError := errorFormatter("calls", "checkduplicatebytimestamp")
 
-	// Query for existing calls in the time window
-	d := time.Duration(msTimeFrame) * time.Millisecond
-	from := call.Timestamp.Add(-d)
-	to := call.Timestamp.Add(d)
+	windowMs := timestampFallbackWindow.Milliseconds()
+	from := call.Timestamp.UnixMilli() - windowMs
+	to := call.Timestamp.UnixMilli() + windowMs
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Get existing calls with site information
-	query := fmt.Sprintf(`SELECT "callId", "siteRef" FROM "calls" WHERE ("timestamp" BETWEEN %d and %d) AND "systemId" = %d AND "talkgroupId" = %d`,
-		from.UnixMilli(), to.UnixMilli(), call.System.Id, call.Talkgroup.Id)
+	query := fmt.Sprintf(
+		`SELECT "audioDuration" FROM "calls" WHERE "timestamp" BETWEEN %d AND %d AND "systemId" = %d AND "talkgroupId" = %d`,
+		from, to, call.System.Id, call.Talkgroup.Id,
+	)
 
 	rows, err := db.Sql.QueryContext(ctx, query)
 	if err != nil {
-		return false, "", formatError(err, query)
+		return false, formatError(err, query)
 	}
 	defer rows.Close()
 
-	// Check each existing call
-	hasPreferredSiteCall := false
 	for rows.Next() {
-		var existingCallId uint64
-		var existingSiteRef sql.NullString
-
-		if err := rows.Scan(&existingCallId, &existingSiteRef); err != nil {
+		var candidateDuration float64
+		if err := rows.Scan(&candidateDuration); err != nil {
 			continue
 		}
-
-		// Check if existing call is from preferred site
-		if call.System.Sites != nil && existingSiteRef.Valid {
-			if existingSite, ok := call.System.Sites.GetSiteByRef(existingSiteRef.String); ok {
-				if existingSite.Preferred {
-					hasPreferredSiteCall = true
-					break
-				}
-			}
+		// If either duration is unknown, trust the timestamp match.
+		if call.Duration <= 0 || candidateDuration <= 0 {
+			return true, nil
+		}
+		lo, hi := call.Duration, candidateDuration
+		if hi < lo {
+			lo, hi = hi, lo
+		}
+		if lo/hi >= timestampDurationRatioMin {
+			return true, nil
 		}
 	}
 
-	if err := rows.Err(); err != nil {
-		return false, "", formatError(err, "")
-	}
-
-	// Apply site priority logic
-	if isPreferredSite {
-		// Incoming call is from preferred site
-		if hasPreferredSiteCall {
-			// Another preferred site call already exists - reject as duplicate
-			return true, "preferred site call already exists", nil
-		}
-		// No preferred site call exists yet - accept this one
-		return false, "", nil
-	} else {
-		// Incoming call is from secondary site
-		if hasPreferredSiteCall {
-			// Preferred site call exists - reject secondary site call
-			return true, "preferred site takes priority", nil
-		}
-		// No preferred site call - accept secondary site call
-		return false, "", nil
-	}
+	return false, nil
 }
+
 
 func (calls *Calls) GetCall(id uint64) (*Call, error) {
 	var (
@@ -1138,14 +1147,14 @@ func (calls *Calls) WriteCall(call *Call, db *Database) (uint64, error) {
 	}
 
 	if db.Config.DbType == DbTypePostgresql {
-		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus", "transmissionId", "requestId", "signalJobId", "receivedAt") VALUES ($1, $2, $3, %d, %d, %d, %d, %d, %d, %d, $4, %t, $5, %.2f, $6, $7, $8, $9, NOW()) RETURNING "callId"`, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence)
+		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus", "transmissionId", "requestId", "signalJobId", "receivedAt", "audioDuration", "isDuplicate", "audioHash") VALUES ($1, $2, $3, %d, %d, %d, %d, %d, %d, %d, $4, %t, $5, %.2f, $6, $7, $8, $9, NOW(), %.4f, %t, $10) RETURNING "callId"`, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, call.Duration, call.IsDuplicate)
 
-		err = tx.QueryRow(query, call.Audio, call.AudioFilename, call.AudioMime, toneSequenceJson, call.Transcript, call.TranscriptionStatus, call.TransmissionId, call.RequestId, call.SignalJobId).Scan(&call.Id)
+		err = tx.QueryRow(query, call.Audio, call.AudioFilename, call.AudioMime, toneSequenceJson, call.Transcript, call.TranscriptionStatus, call.TransmissionId, call.RequestId, call.SignalJobId, call.AudioHash).Scan(&call.Id)
 
 	} else {
-		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus", "transmissionId", "requestId", "signalJobId", "receivedAt") VALUES (?, ?, ?, %d, %d, %d, %d, %d, %d, %d, ?, %t, ?, %.2f, ?, ?, ?, ?, CURRENT_TIMESTAMP)`, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence)
+		query = fmt.Sprintf(`INSERT INTO "calls" ("audio", "audioFilename", "audioMime", "siteRef", "systemId", "talkgroupId", "systemRef", "talkgroupRef", "timestamp", "frequency", "toneSequence", "hasTones", "transcript", "transcriptConfidence", "transcriptionStatus", "transmissionId", "requestId", "signalJobId", "receivedAt", "audioDuration", "isDuplicate", "audioHash") VALUES (?, ?, ?, %d, %d, %d, %d, %d, %d, %d, ?, %t, ?, %.2f, ?, ?, ?, ?, CURRENT_TIMESTAMP, %.4f, %t, ?)`, siteRefInt, call.System.Id, call.Talkgroup.Id, call.System.SystemRef, call.Talkgroup.TalkgroupRef, call.Timestamp.UnixMilli(), frequencyValue, call.HasTones, call.TranscriptConfidence, call.Duration, call.IsDuplicate)
 
-		if res, err = tx.Exec(query, call.Audio, call.AudioFilename, call.AudioMime, toneSequenceJson, call.Transcript, call.TranscriptionStatus, call.TransmissionId, call.RequestId, call.SignalJobId); err == nil {
+		if res, err = tx.Exec(query, call.Audio, call.AudioFilename, call.AudioMime, toneSequenceJson, call.Transcript, call.TranscriptionStatus, call.TransmissionId, call.RequestId, call.SignalJobId, call.AudioHash); err == nil {
 			if id, err := res.LastInsertId(); err == nil {
 				call.Id = uint64(id)
 			}

@@ -237,9 +237,7 @@ export interface Options {
 	branding?: string;
 	defaultSystemDelay?: number;
 	disableDuplicateDetection?: boolean;
-	duplicateDetectionMode?: string;
 	duplicateDetectionTimeFrame?: number;
-	advancedDetectionTimeFrame?: number;
 	audioFingerprintEnabled?: boolean;
 	audioFingerprintThreshold?: number;
 	audioFingerprintTimeFrame?: number;
@@ -357,7 +355,6 @@ export interface Site {
     siteRef?: string;        // Site ID as string to preserve leading zeros (e.g., "001", "021")
     rfss?: number;           // Radio Frequency Sub-System ID
     frequencies?: number[];  // MHz frequencies for this site
-    preferred?: boolean;     // Is this the preferred site?
 }
 
 export interface System {
@@ -375,7 +372,6 @@ export interface System {
     talkgroups?: Talkgroup[];
     type?: string;
     units?: Unit[];
-    preferredApiKeyId?: number | null;  // Optional preferred API key for uploads
     noAudioAlertsEnabled?: boolean;     // Enable no-audio alerts for this system
     noAudioThresholdMinutes?: number;   // Minutes without audio before alerting
     alertsEnabled?: boolean;            // Admin toggle: false disables all alerts & transcription for this system
@@ -409,8 +405,6 @@ export interface Talkgroup {
     type?: string;
     toneDetectionEnabled?: boolean;
     toneSets?: any[];
-    preferredApiKeyId?: number | null;  // Optional preferred API key for uploads
-    excludeFromPreferredSite?: boolean; // Exclude from preferred site detection (for interop/patched talkgroups)
     // Per-channel TonesToActive forwarding
     toneDownstreamEnabled?: boolean;
     toneDownstreamURL?: string;
@@ -1241,9 +1235,7 @@ export class RdioScannerAdminService implements OnDestroy {
 		branding: this.ngFormBuilder.control(options?.branding),
 			defaultSystemDelay: this.ngFormBuilder.control(options?.defaultSystemDelay ?? 0, [Validators.required, Validators.min(0)]),
             disableDuplicateDetection: this.ngFormBuilder.control(options?.disableDuplicateDetection ?? false),
-            duplicateDetectionMode: this.ngFormBuilder.control(options?.duplicateDetectionMode || 'legacy'),
             duplicateDetectionTimeFrame: this.ngFormBuilder.control(options?.duplicateDetectionTimeFrame ?? 1000, [Validators.required, Validators.min(0)]),
-            advancedDetectionTimeFrame: this.ngFormBuilder.control(options?.advancedDetectionTimeFrame ?? 10000, [Validators.required, Validators.min(0)]),
             audioFingerprintEnabled: this.ngFormBuilder.control(options?.audioFingerprintEnabled ?? false),
             audioFingerprintThreshold: this.ngFormBuilder.control(options?.audioFingerprintThreshold ?? 0.25, [Validators.required, Validators.min(0), Validators.max(1)]),
             audioFingerprintTimeFrame: this.ngFormBuilder.control(options?.audioFingerprintTimeFrame ?? 5000, [Validators.required, Validators.min(0)]),
@@ -1362,7 +1354,6 @@ export class RdioScannerAdminService implements OnDestroy {
             siteRef: this.ngFormBuilder.control(site?.siteRef, [Validators.required, this.validateSiteRef()]),
             rfss: this.ngFormBuilder.control(site?.rfss, [Validators.min(0)]),
             frequencies: this.ngFormBuilder.array(site?.frequencies?.map(f => this.ngFormBuilder.control(f, [Validators.min(0)])) || []),
-            preferred: this.ngFormBuilder.control(site?.preferred || false),
         });
     }
 
@@ -1381,7 +1372,6 @@ export class RdioScannerAdminService implements OnDestroy {
             talkgroups: skipTalkgroups ? this.ngFormBuilder.array([]) : this.ngFormBuilder.array(system?.talkgroups?.map((talkgroup) => this.newTalkgroupForm(talkgroup)) || []),
             type: this.ngFormBuilder.control(system?.type || ''),
             units: this.ngFormBuilder.array(system?.units?.map((unit) => this.newUnitForm(unit)) || []),
-            preferredApiKeyId: this.ngFormBuilder.control(system?.preferredApiKeyId),
             noAudioAlertsEnabled: this.ngFormBuilder.control(system?.noAudioAlertsEnabled !== false),
             noAudioThresholdMinutes: this.ngFormBuilder.control(system?.noAudioThresholdMinutes || 30),
             alertsEnabled: this.ngFormBuilder.control(system?.alertsEnabled !== false),
@@ -1444,8 +1434,6 @@ export class RdioScannerAdminService implements OnDestroy {
             type: this.ngFormBuilder.control(talkgroup?.type || ''),
             toneDetectionEnabled: this.ngFormBuilder.control(talkgroup?.toneDetectionEnabled || false),
             toneSets: toneSetsArray,
-            preferredApiKeyId: this.ngFormBuilder.control(talkgroup?.preferredApiKeyId),
-            excludeFromPreferredSite: this.ngFormBuilder.control(talkgroup?.excludeFromPreferredSite || false),
             // Per-channel TonesToActive forwarding
             toneDownstreamEnabled: this.ngFormBuilder.control(talkgroup?.toneDownstreamEnabled || false),
             toneDownstreamURL: this.ngFormBuilder.control(talkgroup?.toneDownstreamURL || ''),

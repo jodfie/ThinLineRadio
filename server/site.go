@@ -33,7 +33,6 @@ type Site struct {
 	RFSS        uint      // Radio Frequency Sub-System ID
 	SystemId    uint64
 	Frequencies []float64 // MHz frequencies for this site
-	Preferred   bool      // Is this the preferred site for the system?
 }
 
 func NewSite() *Site {
@@ -88,12 +87,6 @@ func (site *Site) FromMap(m map[string]any) *Site {
 		}
 	}
 
-	// Parse preferred flag
-	switch v := m["preferred"].(type) {
-	case bool:
-		site.Preferred = v
-	}
-
 	return site
 }
 
@@ -115,9 +108,6 @@ func (site *Site) MarshalJSON() ([]byte, error) {
 	if site.Frequencies == nil {
 		m["frequencies"] = []float64{}
 	}
-
-	// Always include preferred flag
-	m["preferred"] = site.Preferred
 
 	return json.Marshal(m)
 }
@@ -245,7 +235,8 @@ func (sites *Sites) ReadTx(tx *sql.Tx, systemId uint64) error {
 		site := NewSite()
 		var frequenciesJSON string
 
-		if err = rows.Scan(&site.Id, &site.Label, &site.Order, &site.SiteRef, &site.RFSS, &frequenciesJSON, &site.Preferred); err != nil {
+		var preferredUnused bool
+		if err = rows.Scan(&site.Id, &site.Label, &site.Order, &site.SiteRef, &site.RFSS, &frequenciesJSON, &preferredUnused); err != nil {
 			break
 		}
 
@@ -345,17 +336,17 @@ func (sites *Sites) WriteTx(tx *sql.Tx, systemId uint64) error {
 		if count == 0 {
 			if site.Id > 0 {
 				// Preserve the explicit ID when inserting
-				query = fmt.Sprintf(`INSERT INTO "sites" ("siteId", "label", "order", "siteRef", "rfss", "systemId", "frequencies", "preferred") VALUES (%d, '%s', %d, '%s', %d, %d, '%s', %t)`, site.Id, escapeQuotes(site.Label), site.Order, escapeQuotes(site.SiteRef), site.RFSS, systemId, frequenciesJSON, site.Preferred)
+				query = fmt.Sprintf(`INSERT INTO "sites" ("siteId", "label", "order", "siteRef", "rfss", "systemId", "frequencies", "preferred") VALUES (%d, '%s', %d, '%s', %d, %d, '%s', %t)`, site.Id, escapeQuotes(site.Label), site.Order, escapeQuotes(site.SiteRef), site.RFSS, systemId, frequenciesJSON, false)
 			} else {
 				// Let database assign auto-increment ID
-				query = fmt.Sprintf(`INSERT INTO "sites" ("label", "order", "siteRef", "rfss", "systemId", "frequencies", "preferred") VALUES ('%s', %d, '%s', %d, %d, '%s', %t)`, escapeQuotes(site.Label), site.Order, escapeQuotes(site.SiteRef), site.RFSS, systemId, frequenciesJSON, site.Preferred)
+				query = fmt.Sprintf(`INSERT INTO "sites" ("label", "order", "siteRef", "rfss", "systemId", "frequencies", "preferred") VALUES ('%s', %d, '%s', %d, %d, '%s', %t)`, escapeQuotes(site.Label), site.Order, escapeQuotes(site.SiteRef), site.RFSS, systemId, frequenciesJSON, false)
 			}
 			if _, err = tx.Exec(query); err != nil {
 				break
 			}
 
 		} else {
-			query = fmt.Sprintf(`UPDATE "sites" SET "label" = '%s', "order" = %d, "siteRef" = '%s', "rfss" = %d, "frequencies" = '%s', "preferred" = %t where "siteId" = %d`, escapeQuotes(site.Label), site.Order, escapeQuotes(site.SiteRef), site.RFSS, frequenciesJSON, site.Preferred, site.Id)
+			query = fmt.Sprintf(`UPDATE "sites" SET "label" = '%s', "order" = %d, "siteRef" = '%s', "rfss" = %d, "frequencies" = '%s', "preferred" = %t where "siteId" = %d`, escapeQuotes(site.Label), site.Order, escapeQuotes(site.SiteRef), site.RFSS, frequenciesJSON, false, site.Id)
 			if _, err = tx.Exec(query); err != nil {
 				break
 			}

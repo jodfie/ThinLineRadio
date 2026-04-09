@@ -241,41 +241,13 @@
 
       <div class="row" *ngIf="!form?.get('disableDuplicateDetection')?.value">
         <p>
-          <span class="mat-body">Duplicate Detection Mode</span><br>
-          <span class="mat-caption">
-            <strong>Legacy:</strong> Checks filename, system, talkgroup, date — good for older uploaders that reuse filenames<br>
-            <strong>Advanced:</strong> Checks audio hash (SHA-256 of first 10 seconds) + system + talkgroup — prevents true duplicates even with different filenames
-          </span>
-        </p>
-        <mat-form-field floatLabel="auto">
-          <mat-select formControlName="duplicateDetectionMode" placeholder="Detection Mode">
-            <mat-option value="legacy">Legacy (Filename-based)</mat-option>
-            <mat-option value="advanced">Advanced (Audio Hash-based)</mat-option>
-          </mat-select>
-        </mat-form-field>
-      </div>
-
-      <div class="row" *ngIf="!form?.get('disableDuplicateDetection')?.value && form?.get('duplicateDetectionMode')?.value === 'legacy'">
-        <p>
-          <span class="mat-body">Legacy Detection Timeframe (milliseconds)</span><br>
-          <span class="mat-caption">Check for duplicate calls within this many milliseconds. Default is 1000ms (1 second). Shorter windows use less memory but may miss duplicates if upload is delayed.</span>
+          <span class="mat-body">Detection Timeframe (milliseconds)</span><br>
+          <span class="mat-caption">Reject a call if another exists for the same system and talkgroup with a timestamp within this window (in-memory cache plus database check).</span>
         </p>
         <mat-form-field>
           <input type="number" min="1" step="100" matInput formControlName="duplicateDetectionTimeFrame" placeholder="Milliseconds" autocomplete="off">
           <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('required')">Timeframe is required</mat-error>
           <mat-error *ngIf="form?.get('duplicateDetectionTimeFrame')?.hasError('min')">Timeframe must be at least 1ms</mat-error>
-        </mat-form-field>
-      </div>
-
-      <div class="row" *ngIf="!form?.get('disableDuplicateDetection')?.value && form?.get('duplicateDetectionMode')?.value === 'advanced'">
-        <p>
-          <span class="mat-body">Advanced Detection Timeframe (milliseconds)</span><br>
-          <span class="mat-caption">Wait this many milliseconds for a preferred site/API key call before accepting a secondary. Default is 1000ms (1 second).</span>
-        </p>
-        <mat-form-field>
-          <input type="number" min="1" step="100" matInput formControlName="advancedDetectionTimeFrame" placeholder="Milliseconds" autocomplete="off">
-          <mat-error *ngIf="form?.get('advancedDetectionTimeFrame')?.hasError('required')">Timeframe is required</mat-error>
-          <mat-error *ngIf="form?.get('advancedDetectionTimeFrame')?.hasError('min')">Timeframe must be at least 1ms</mat-error>
         </mat-form-field>
       </div>
 

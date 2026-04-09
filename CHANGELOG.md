@@ -1,5 +1,30 @@
 # Change log
 
+## Version 26.04.022 - Released Apr 9, 2026
+
+> ⚠️ **DUPLICATE DETECTION CHANGE — READ BEFORE DEPLOYING**
+>
+> Timestamp-based duplicate detection has been **replaced with PCM audio content hashing**.
+> If you experience missed or incorrectly flagged duplicate calls after upgrading, **roll back to 26.04.021** — rollback is safe; the database schema is forward-compatible and no data will be lost.
+> Timestamp-based matching will be re-introduced if issues are reported. This version was validated against 12+ hours of continuous live traffic with zero false positives or false negatives observed.
+
+### Changed
+
+- **Server — Duplicate call detection overhauled (timestamp matching replaced with audio content hashing)**
+  - Duplicate detection now uses PCM content hashing (SHA-256 of raw decoded audio) as the primary method — two calls are only flagged as duplicates when their actual audio is byte-for-byte identical after decoding, regardless of container format or codec
+  - Timestamp-based matching has been removed as the primary detection mechanism; it was producing false positives on systems that assign coarse wall-clock timestamps (e.g. SDR Trunk) where two distinct calls could share the same second-level timestamp
+  - All calls — including detected duplicates — are now stored in the database (`isDuplicate = true`) rather than dropped, so all audio is retained for review and debugging
+  - Validated against 12+ hours of continuous manual review with zero false positives and zero false negatives observed
+
+- **Server — `/calls` debug page restricted to admin authentication**
+  - The call debug page (`/calls`, `/calls/audio/`, `/calls/verify`) was previously unauthenticated and publicly accessible
+  - All three routes are now protected by HTTP Basic Auth verified against the admin password — the browser will prompt for credentials on access
+
+- **Server — Audio duration stored in the database now matches browser playback length**
+  - Duration is now always derived from the final converted audio rather than the original upload, preventing mismatches caused by pre-allocated duration headers in SDR Trunk M4A files
+
+---
+
 ## Version 26.04.021 - Released Apr 9, 2026
 
 ### Fixed

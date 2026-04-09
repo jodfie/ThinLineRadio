@@ -647,12 +647,12 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 	}
 
 	// Collect all device tokens from all users, grouped by platform and sound.
-	// Key: "platform:sound" -> []FCM tokens
-	// Legacy OneSignal tokens are deleted on the spot and the user is emailed once.
-	// VoIP tokens are kept in a separate slice and only populated for users who
-	// have pager-style audio playback enabled for this talkgroup.
+	// Key: "platform:sound" -> []FCM tokens (and voip:-prefixed tokens in the same
+	// ios+pager bucket as normal iOS FCM). This matches sendPushNotification:
+	// one notify per batch so the relay always pairs FCM + VoIP for pager alerts.
+	// A separate voip-only batch caused CallKit without a sibling FCM delivery in
+	// some production timing cases; the admin test path was never split that way.
 	deviceGroups := make(map[string][]string)
-	voipTokens := []string{} // PushKit tokens for users with pager alerts enabled
 	notifiedUsers := make(map[uint64]struct{})
 
 	for _, userId := range userIds {
@@ -730,19 +730,12 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 		userPagerEnabled := call != nil && controller.resolveUserPagerAlert(userId, systemId, talkgroupId, toneSetId)
 
 		// Group devices by platform and sound; delete any legacy OneSignal tokens.
-		// VoIP tokens are collected separately and only for users with pager alerts enabled.
+		// VoIP tokens go into the same ios+pager:{sound} group as this user's iOS
+		// FCM rows so one sendNotificationBatch carries both (relay behavior matches
+		// the working single-user and admin test paths).
 		for _, device := range deviceTokens {
 			if isLegacyOneSignalToken(device) {
 				controller.handleLegacyOneSignalToken(device, notifiedUsers)
-				continue
-			}
-
-			if device.PushType == "voip" {
-				// Only include VoIP (PushKit) tokens for users who have pager-style
-				// audio playback enabled. Any other path must NOT trigger CallKit.
-				if userPagerEnabled {
-					voipTokens = append(voipTokens, device.FCMToken)
-				}
 				continue
 			}
 
@@ -754,6 +747,15 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 			if sound == "" {
 				sound = "startup.wav"
 			}
+
+			if device.PushType == "voip" {
+				if userPagerEnabled {
+					key := fmt.Sprintf("ios+pager:%s", sound)
+					deviceGroups[key] = append(deviceGroups[key], device.FCMToken)
+				}
+				continue
+			}
+
 			// Users with pager-style playback need pager_alert on *FCM* payloads too.
 			// Previously only the separate VoIP batch had pager_alert; iOS FCM had nil extras,
 			// so the Flutter background handler never ran and no audio played — only PushKit
@@ -768,8 +770,8 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 	}
 
 	// Send batched notifications for each platform/sound combination.
-	// Batches keyed with "+pager" include pager_alert so FCM background audio runs.
-	// The VoIP batch below still fires PushKit for killed-app wake on iOS.
+	// Batches keyed with "+pager" include pager_alert; ios+pager lists may mix
+	// voip:-prefixed and normal FCM tokens in one relay request.
 	batchIndex := 0
 	for key, playerIDs := range deviceGroups {
 		if len(playerIDs) == 0 {
@@ -812,21 +814,5 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 			controller.sendNotificationBatch(ids, title, "", message, plat, snd, call, systemLabel, talkgroupLabel, extra)
 		}(playerIDs, platform, finalSound, batchExtra, delay)
 		batchIndex++
-	}
-
-	// Send VoIP (PushKit) push to users who have pager-style audio enabled.
-	// These tokens are prefixed "voip:" so the relay server routes them via APNs,
-	// and pager_alert:"true" tells the relay to actually fire the VoIP push path.
-	if len(voipTokens) > 0 {
-		pagerExtra := map[string]interface{}{
-			"pager_alert": "true",
-		}
-		delay := time.Duration(batchIndex) * 200 * time.Millisecond
-		go func(ids []string, d time.Duration) {
-			if d > 0 {
-				time.Sleep(d)
-			}
-			controller.sendNotificationBatch(ids, title, "", message, "ios", "", call, systemLabel, talkgroupLabel, pagerExtra)
-		}(voipTokens, delay)
 	}
 }

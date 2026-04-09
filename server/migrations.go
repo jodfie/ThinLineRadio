@@ -2183,10 +2183,8 @@ func migrateTagsColor(db *Database) error {
 	return nil
 }
 
-// migrateEnhancedDuplicateDetection adds fields for advanced duplicate detection
-// - Site frequencies and preferred flag
-// - System and talkgroup preferred API keys
-// - Duplicate detection mode option
+// migrateEnhancedDuplicateDetection adds site frequency columns, downstream fields,
+// and related schema used by multi-site configuration.
 func migrateEnhancedDuplicateDetection(db *Database) error {
 	formatError := errorFormatter("migration", "migrateEnhancedDuplicateDetection")
 
@@ -2268,22 +2266,6 @@ func migrateEnhancedDuplicateDetection(db *Database) error {
 		return formatError(err, query)
 	}
 	query = `ALTER TABLE "talkgroups" ADD COLUMN IF NOT EXISTS "toneDownstreamAPIKey" text NOT NULL DEFAULT ''`
-	if _, err := db.Sql.Exec(query); err != nil {
-		return formatError(err, query)
-	}
-
-	// Add duplicate detection mode option (defaults to "legacy" for backward compatibility)
-	query = `INSERT INTO "options" ("key", "value") 
-	         SELECT 'duplicateDetectionMode', '"legacy"'
-	         WHERE NOT EXISTS (SELECT 1 FROM "options" WHERE "key" = 'duplicateDetectionMode')`
-	if _, err := db.Sql.Exec(query); err != nil {
-		return formatError(err, query)
-	}
-
-	// Add advanced detection time frame option (defaults to 1000ms)
-	query = `INSERT INTO "options" ("key", "value") 
-	         SELECT 'advancedDetectionTimeFrame', '1000'
-	         WHERE NOT EXISTS (SELECT 1 FROM "options" WHERE "key" = 'advancedDetectionTimeFrame')`
 	if _, err := db.Sql.Exec(query); err != nil {
 		return formatError(err, query)
 	}
@@ -2601,6 +2583,72 @@ func migrateToneSetPagerAlerts(db *Database) error {
 	q := `ALTER TABLE "userAlertPreferences" ADD COLUMN IF NOT EXISTS "toneSetPagerAlerts" text NOT NULL DEFAULT '{}'`
 	if _, err := db.Sql.Exec(q); err != nil {
 		return fmt.Errorf("migrateToneSetPagerAlerts: %w", err)
+	}
+	return nil
+}
+
+// migrateCallsDuplicateAudioOf adds two columns that support cross-talkgroup
+// duplicate audio suppression. When the same P25 transmission is broadcast on
+// multiple talkgroups simultaneously (a patch), the second call stored gets
+// duplicateAudioOf set to the first call's callId. duplicateAudioOfTgRef holds
+// the original call's talkgroupRef so per-client filtering at emit time needs
+// no extra DB join. Both default to 0 (not a duplicate).
+func migrateCallsDuplicateAudioOf(db *Database) error {
+	queries := []string{
+		`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "duplicateAudioOf" bigint NOT NULL DEFAULT 0`,
+		`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "duplicateAudioOfTgRef" integer NOT NULL DEFAULT 0`,
+	}
+	for _, q := range queries {
+		if _, err := db.Sql.Exec(q); err != nil {
+			return fmt.Errorf("migrateCallsDuplicateAudioOf: %w", err)
+		}
+	}
+	return nil
+}
+
+// migrateCallsAudioDuration adds a persisted audio duration column to the calls
+// table. Duration is computed once at ingestion via ffprobe and stored so that
+// duplicate-detection queries can filter candidates by duration ratio without
+// re-running ffprobe on every candidate audio blob.
+func migrateCallsAudioDuration(db *Database) error {
+	q := `ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "audioDuration" real NOT NULL DEFAULT 0`
+	if _, err := db.Sql.Exec(q); err != nil {
+		return fmt.Errorf("migrateCallsAudioDuration: %w", err)
+	}
+	return nil
+}
+
+func migrateCallsIsDuplicate(db *Database) error {
+	q := `ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "isDuplicate" boolean NOT NULL DEFAULT false`
+	if _, err := db.Sql.Exec(q); err != nil {
+		return fmt.Errorf("migrateCallsIsDuplicate: %w", err)
+	}
+	return nil
+}
+
+// migrateCallsVerifiedDuplicate adds a nullable boolean for human review.
+// NULL = unreviewed, TRUE = confirmed duplicate, FALSE = confirmed not a duplicate.
+func migrateCallsVerifiedDuplicate(db *Database) error {
+	q := `ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "verifiedDuplicate" boolean`
+	if _, err := db.Sql.Exec(q); err != nil {
+		return fmt.Errorf("migrateCallsVerifiedDuplicate: %w", err)
+	}
+	return nil
+}
+
+// migrateCallsAudioHash adds a SHA-256 PCM content hash column to the calls
+// table and an index for fast lookup. The hash is computed by decoding the
+// audio to raw PCM and hashing the samples, making it codec/container-agnostic.
+// Empty string for rows ingested before this migration was added.
+func migrateCallsAudioHash(db *Database) error {
+	qs := []string{
+		`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "audioHash" text NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS "idx_calls_audioHash" ON "calls" ("systemId", "talkgroupId", "audioHash") WHERE "audioHash" != ''`,
+	}
+	for _, q := range qs {
+		if _, err := db.Sql.Exec(q); err != nil {
+			return fmt.Errorf("migrateCallsAudioHash: %w", err)
+		}
 	}
 	return nil
 }

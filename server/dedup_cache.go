@@ -16,29 +16,31 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
 
-// DedupEntry tracks a recently seen call for duplicate detection.
+// DedupEntry caches metadata for a recently seen call to catch simultaneous
+// duplicate arrivals before either has been written to the DB.
 type DedupEntry struct {
-	Timestamp int64 // call timestamp in ms (from the recorder, not server clock)
-	SeenAt    time.Time
+	Duration      float64   // Audio duration in seconds (for ratio guard)
+	CallTimestamp int64     // P25 call timestamp in milliseconds
+	SeenAt        time.Time
 }
 
-// DedupCache is a mutex-protected in-memory cache that catches duplicate calls
-// before they reach the database. This closes the race window where two identical
-// calls arrive simultaneously and both pass the DB check because neither has been
-// written yet.
+// DedupCache is a mutex-protected in-memory cache that closes the race window
+// where two identical calls arrive simultaneously and both pass the DB check
+// before either has been written.
 //
-// Keyed by systemId+talkgroupId, each entry stores the most recent call timestamp.
-// An incoming call is a duplicate if an entry exists for the same key and the call
-// timestamps are within the configured window.
+// Key prefixes:
+//   "ep:systemId:talkgroupId" — energy profile entry
+//   "ah:systemId:talkgroupId:hash" — PCM content hash entry
+//   "ts:systemId:talkgroupId" — timestamp fallback entry
 //
-// A background goroutine evicts stale entries every 30 seconds to prevent unbounded
-// memory growth. Entries expire after 2x the detection timeframe.
+// A background goroutine evicts stale entries every 30 seconds.
 type DedupCache struct {
-	entries map[uint64]*DedupEntry // key: (systemId << 32) | talkgroupId
+	entries map[string]*DedupEntry
 	mutex   sync.Mutex
 	ttl     time.Duration
 	stopCh  chan struct{}
@@ -46,55 +48,76 @@ type DedupCache struct {
 
 func NewDedupCache(timeframeMs uint) *DedupCache {
 	ttl := time.Duration(timeframeMs*2) * time.Millisecond
-	if ttl < 5*time.Second {
-		ttl = 5 * time.Second
+	if ttl < 60*time.Second {
+		ttl = 60 * time.Second
 	}
-
 	dc := &DedupCache{
-		entries: make(map[uint64]*DedupEntry),
+		entries: make(map[string]*DedupEntry),
 		ttl:     ttl,
 		stopCh:  make(chan struct{}),
 	}
-
 	go dc.evictionLoop()
-
 	return dc
 }
 
-func dedupKey(systemId, talkgroupId uint64) uint64 {
-	return (systemId << 32) | talkgroupId
-}
 
-// CheckAndMark atomically checks whether a call is a duplicate and, if not,
-// marks it as seen. Returns true if the call should be rejected as a duplicate.
-func (dc *DedupCache) CheckAndMark(systemId, talkgroupId uint64, callTimestampMs int64, windowMs uint) bool {
+// CheckAndMarkHash checks a PCM content hash against the cache. Returns true if
+// an identical hash was already seen for this system+talkgroup (exact duplicate).
+// No time window is applied — a hash match is definitive regardless of timestamp.
+func (dc *DedupCache) CheckAndMarkHash(systemId, talkgroupId uint64, hash string) bool {
+	if hash == "" {
+		return false
+	}
+	key := fmt.Sprintf("ah:%d:%d:%s", systemId, talkgroupId, hash)
 	dc.mutex.Lock()
 	defer dc.mutex.Unlock()
 
-	key := dedupKey(systemId, talkgroupId)
-	window := int64(windowMs)
+	if _, ok := dc.entries[key]; ok {
+		return true
+	}
+	dc.entries[key] = &DedupEntry{SeenAt: time.Now()}
+	return false
+}
 
-	if entry, exists := dc.entries[key]; exists {
-		delta := callTimestampMs - entry.Timestamp
-		if delta < 0 {
-			delta = -delta
+// CheckAndMarkTimestamp is the last-resort duplicate check for simultaneous
+// arrivals. It records the P25 call timestamp and duration for the given
+// system+talkgroup and returns true if a previously seen call had a timestamp
+// within ±timestampFallbackWindow AND a duration within the energyDurationRatioMin
+// ratio. The duration guard prevents false positives when two genuinely different
+// calls land at the same wall-clock second (e.g. SDR Trunk uploaders).
+func (dc *DedupCache) CheckAndMarkTimestamp(systemId, talkgroupId uint64, timestampMs int64, duration float64) bool {
+	key := fmt.Sprintf("ts:%d:%d", systemId, talkgroupId)
+	dc.mutex.Lock()
+	defer dc.mutex.Unlock()
+
+	if entry, ok := dc.entries[key]; ok && entry.CallTimestamp != 0 {
+		diff := timestampMs - entry.CallTimestamp
+		if diff < 0 {
+			diff = -diff
 		}
-		if delta <= window {
+		if diff <= timestampFallbackWindow.Milliseconds() {
+			// Apply duration ratio guard — skip if durations are known but diverge too much.
+			if duration > 0 && entry.Duration > 0 {
+				lo, hi := duration, entry.Duration
+				if hi < lo {
+					lo, hi = hi, lo
+				}
+				if lo/hi < timestampDurationRatioMin {
+					// Different call lengths at the same timestamp — not a duplicate.
+					dc.entries[key] = &DedupEntry{CallTimestamp: timestampMs, Duration: duration, SeenAt: time.Now()}
+					return false
+				}
+			}
 			return true
 		}
 	}
-
-	dc.entries[key] = &DedupEntry{
-		Timestamp: callTimestampMs,
-		SeenAt:    time.Now(),
-	}
+	dc.entries[key] = &DedupEntry{CallTimestamp: timestampMs, Duration: duration, SeenAt: time.Now()}
 	return false
 }
 
 func (dc *DedupCache) evictionLoop() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ticker.C:
@@ -108,7 +131,6 @@ func (dc *DedupCache) evictionLoop() {
 func (dc *DedupCache) evict() {
 	dc.mutex.Lock()
 	defer dc.mutex.Unlock()
-
 	cutoff := time.Now().Add(-dc.ttl)
 	for key, entry := range dc.entries {
 		if entry.SeenAt.Before(cutoff) {
@@ -122,14 +144,13 @@ func (dc *DedupCache) Stop() {
 	close(dc.stopCh)
 }
 
-// UpdateTTL allows reconfiguring the cache when the timeframe option changes.
+// UpdateTTL reconfigures the cache TTL when the timeframe option changes.
 func (dc *DedupCache) UpdateTTL(timeframeMs uint) {
 	dc.mutex.Lock()
 	defer dc.mutex.Unlock()
-
 	ttl := time.Duration(timeframeMs*2) * time.Millisecond
-	if ttl < 5*time.Second {
-		ttl = 5 * time.Second
+	if ttl < 60*time.Second {
+		ttl = 60 * time.Second
 	}
 	dc.ttl = ttl
 }

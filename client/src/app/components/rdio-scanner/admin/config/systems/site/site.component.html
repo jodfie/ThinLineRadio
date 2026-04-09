@@ -40,17 +40,8 @@
     </div>
     <div class="row">
         <p>
-            <span class="mat-body">Preferred Site</span><br>
-            <span class="mat-caption">Mark as preferred site for advanced duplicate detection. Only one site per system should be preferred.</span>
-        </p>
-        <div>
-            <mat-slide-toggle color="primary" formControlName="preferred"></mat-slide-toggle>
-        </div>
-    </div>
-    <div class="row">
-        <p>
             <span class="mat-body">Frequencies (MHz)</span><br>
-            <span class="mat-caption">Optional frequencies for this site (e.g., 154.12345). Used for frequency validation in advanced mode.</span>
+            <span class="mat-caption">Optional receive frequencies for this site (e.g., 154.12345), used when resolving site from call metadata.</span>
         </p>
         <div style="width: 100%;">
             <div *ngFor="let freq of frequencies.controls; let i = index" style="display: flex; align-items: center; margin-bottom: 8px;">
