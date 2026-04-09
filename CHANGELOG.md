@@ -1,5 +1,17 @@
 # Change log
 
+## Version 26.04.026 - Released Apr 9, 2026
+
+### Fixed
+
+- **Admin — Support email field restored in Options → Branding**
+  - The "Support Email" input was accidentally dropped from the admin UI during the admin page overhaul ([#160](https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio/issues/160))
+  - The underlying `email` option was fully preserved in the database and backend throughout — only the HTML input element was missing
+  - Admins can now set a support contact address under **Options → Branding → Support Email**
+  - When set, the login page displays a "Contact Support" mailto link; when blank, the existing "no email support" message is shown
+
+---
+
 ## Version 26.04.025 - Released Apr 8, 2026
 
 ### Security
