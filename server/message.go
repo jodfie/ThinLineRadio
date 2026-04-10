@@ -26,6 +26,7 @@ const (
 	MessageCommandConfig         = "CFG"
 	MessageCommandError          = "ERR"
 	MessageCommandExpired        = "XPR"
+	MessageCommandFCMToken       = "FCM"
 	MessageCommandIOS            = "IOS"
 	MessageCommandListCall       = "LCL"
 	MessagecommandListenersCount = "LSC"

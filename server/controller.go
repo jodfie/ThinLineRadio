@@ -868,11 +868,11 @@ func (controller *Controller) processCallAfterDuplicateCheck(call *Call) {
 		if !call.IsDuplicate {
 			// IMMEDIATE: Emit call to clients (users can play NOW - zero delay)
 			controller.EmitCall(call)
-		}
 
-		// Note: Tone detection already completed above (before encoding)
-		// Queue transcription with tone-aware decision
-		go controller.queueTranscriptionIfNeeded(call)
+			// Note: Tone detection already completed above (before encoding)
+			// Queue transcription with tone-aware decision
+			go controller.queueTranscriptionIfNeeded(call)
+		}
 
 		// Note: Pending tones are checked and attached AFTER transcription completes
 		// This ensures we only attach pending tones to calls that actually have voice (not tone-only)
@@ -2569,6 +2569,15 @@ func (controller *Controller) ProcessMessage(client *Client, message *Message) e
 	} else if message.Command == MessageCommandPin {
 		if err := controller.ProcessMessageCommandPin(client, message); err != nil {
 			return err
+		}
+
+	} else if message.Command == MessageCommandFCMToken {
+		log.Printf("FCM command received from %s, payload type=%T", client.GetRemoteAddr(), message.Payload)
+		if token, ok := message.Payload.(string); ok && token != "" {
+			client.FCMToken = token
+			log.Printf("client %s linked FCM token ...%s", client.GetRemoteAddr(), token[max(0, len(token)-8):])
+		} else {
+			log.Printf("FCM command: payload not a string or empty")
 		}
 	}
 

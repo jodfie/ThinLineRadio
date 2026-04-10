@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -215,7 +216,9 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 
 	// Check if this user has pager-style audio playback enabled for this talkgroup.
 	// VoIP tokens and the pager_alert data flag are only included when this is true.
-	userPagerEnabled := call != nil && controller.resolveUserPagerAlert(userId, systemId, talkgroupId, "")
+	// Pre-alerts (tone detected, waiting for voice) are excluded — they're just
+	// a heads-up notification, not a full dispatch that should ring the phone.
+	userPagerEnabled := call != nil && alertType != "pre-alert" && controller.resolveUserPagerAlert(userId, systemId, talkgroupId, "")
 
 	// Group devices by platform and sound preference.
 	// Legacy OneSignal tokens are deleted on the spot and the user is emailed once.
@@ -241,11 +244,27 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 		}
 
 		if device.PushType == "voip" {
-			// VoIP (PushKit) tokens are only included when the user has pager-style
-			// audio playback enabled for this talkgroup. Any other condition must NOT
-			// trigger CallKit / wake the device via PushKit.
 			if userPagerEnabled {
-				iosDevices = append(iosDevices, device.FCMToken)
+				// Skip VoIP if this user's iOS device has live feed active.
+				// We can't match VoIP tokens to FCM tokens directly, so check
+				// if any iOS FCM client for this user has active live feed.
+				iosLiveFeedActive := false
+				for _, otherDev := range deviceTokens {
+					if otherDev.Platform == "ios" && otherDev.PushType != "voip" {
+						active := controller.Clients.IsDeviceLiveFeedActive(otherDev.FCMToken)
+						log.Printf("push notification: VoIP check — iOS FCM token ...%s liveFeedActive=%v", otherDev.FCMToken[max(0, len(otherDev.FCMToken)-8):], active)
+						if active {
+							iosLiveFeedActive = true
+							break
+						}
+					}
+				}
+				log.Printf("push notification: VoIP decision for user %d — iosLiveFeedActive=%v, connected clients=%d", userId, iosLiveFeedActive, controller.Clients.Count())
+				if iosLiveFeedActive {
+					controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: skipping VoIP for user %d — iOS live feed active", userId))
+				} else {
+					iosDevices = append(iosDevices, device.FCMToken)
+				}
 			}
 		} else if device.Platform == "ios" {
 			iosDevices = append(iosDevices, device.FCMToken)
@@ -259,21 +278,36 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: grouped devices for user %d - Android: %d, iOS: %d (pager enabled: %v)", userId, len(androidDevices), len(iosDevices), userPagerEnabled))
 
 	// Build per-call extra data. pager_alert is only set when the user has the
-	// feature enabled — this is what tells the relay server to send the VoIP
-	// push and tells the FCM background handler to play audio.
-	var callExtraData map[string]interface{}
-	if call != nil && userPagerEnabled {
-		callExtraData = map[string]interface{}{
-			"pager_alert": "true",
-		}
-	}
+	// feature enabled AND the device doesn't have live feed active.
+	pagerExtra := map[string]interface{}{"pager_alert": "true"}
 
-	// Send to Android devices
+	// Send to Android devices — split into pager and non-pager based on live feed.
 	if len(androidDevices) > 0 {
 		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: sending to %d Android device(s) for user %d with sound: %s", len(androidDevices), userId, androidSound))
-		go func(ids []string, sound string, extra map[string]interface{}) {
-			controller.sendNotificationBatch(ids, title, "", message, "android", sound, call, systemLabel, talkgroupLabel, extra)
-		}(androidDevices, androidSound, callExtraData)
+		if userPagerEnabled {
+			var pagerAndroid, normalAndroid []string
+			for _, token := range androidDevices {
+				if controller.Clients.IsDeviceLiveFeedActive(token) {
+					normalAndroid = append(normalAndroid, token)
+				} else {
+					pagerAndroid = append(pagerAndroid, token)
+				}
+			}
+			if len(pagerAndroid) > 0 {
+				go func(ids []string, sound string) {
+					controller.sendNotificationBatch(ids, title, "", message, "android", sound, call, systemLabel, talkgroupLabel, pagerExtra)
+				}(pagerAndroid, androidSound)
+			}
+			if len(normalAndroid) > 0 {
+				go func(ids []string, sound string) {
+					controller.sendNotificationBatch(ids, title, "", message, "android", sound, call, systemLabel, talkgroupLabel, nil)
+				}(normalAndroid, androidSound)
+			}
+		} else {
+			go func(ids []string, sound string) {
+				controller.sendNotificationBatch(ids, title, "", message, "android", sound, call, systemLabel, talkgroupLabel, nil)
+			}(androidDevices, androidSound)
+		}
 	}
 
 	// Send to iOS devices
@@ -283,10 +317,20 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 		iosSoundStripped := strings.TrimSuffix(iosSound, ".wav")
 		iosSoundStripped = strings.TrimSuffix(iosSoundStripped, ".mp3")
 		iosSoundStripped = strings.TrimSuffix(iosSoundStripped, ".m4a")
-		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: iOS final sound (stripped extension): %s", iosSoundStripped))
+		// When pager-style is enabled, suppress the FCM notification sound —
+		// CallKit handles the ringtone; playing both causes double audio.
+		if userPagerEnabled {
+			iosSoundStripped = ""
+			controller.Logs.LogEvent(LogLevelInfo, "push notification: iOS pager enabled — suppressing FCM notification sound (CallKit rings instead)")
+		}
+		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: iOS final sound: %s", iosSoundStripped))
+		var iosExtra map[string]interface{}
+		if userPagerEnabled {
+			iosExtra = pagerExtra
+		}
 		go func(ids []string, sound string, extra map[string]interface{}) {
 			controller.sendNotificationBatch(ids, title, "", message, "ios", sound, call, systemLabel, talkgroupLabel, extra)
-		}(iosDevices, iosSoundStripped, callExtraData)
+		}(iosDevices, iosSoundStripped, iosExtra)
 	}
 }
 
@@ -532,6 +576,70 @@ func (controller *Controller) sendDisconnectPushNotification(user *User) {
 	}
 }
 
+// sendDisconnectPushNotificationToDevice sends a disconnect notification to a
+// single device identified by its FCM token, rather than all devices on the account.
+func (controller *Controller) sendDisconnectPushNotificationToDevice(user *User, fcmToken string) {
+	if controller.Options.RelayServerAPIKey == "" || fcmToken == "" {
+		return
+	}
+
+	// Look up the device token record to determine platform and sound.
+	deviceTokens := controller.DeviceTokens.GetByUser(user.Id)
+	var targetDevice *DeviceToken
+	for _, dt := range deviceTokens {
+		if dt.FCMToken == fcmToken {
+			targetDevice = dt
+			break
+		}
+	}
+	if targetDevice == nil {
+		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: disconnect skipped — FCM token not found for user %d", user.Id))
+		return
+	}
+
+	serverName := controller.Options.Branding
+	if serverName == "" {
+		serverName = "TLR Server"
+	}
+	title := "DISCONNECTED"
+	message := fmt.Sprintf("You have been disconnected from %s", strings.ToUpper(serverName))
+
+	disconnectSound := ""
+	if user.Settings != "" {
+		var userSettings map[string]interface{}
+		if err := json.Unmarshal([]byte(user.Settings), &userSettings); err == nil {
+			if s, ok := userSettings["disconnectAlertSound"].(string); ok && s != "" {
+				disconnectSound = s
+			}
+		}
+	}
+
+	sound := disconnectSound
+	if sound == "" {
+		sound = targetDevice.Sound
+	}
+	if sound == "" {
+		sound = "startup.wav"
+	}
+
+	disconnectExtra := map[string]interface{}{
+		"type":                 "disconnect",
+		"notification_message": "false",
+	}
+
+	platform := targetDevice.Platform
+	if platform == "ios" {
+		sound = strings.TrimSuffix(sound, ".wav")
+		sound = strings.TrimSuffix(sound, ".mp3")
+		sound = strings.TrimSuffix(sound, ".m4a")
+	}
+
+	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: sending disconnect to single device for user %d (platform=%s)", user.Id, platform))
+	go func() {
+		controller.sendNotificationBatch([]string{fcmToken}, title, "", message, platform, sound, nil, "", "", disconnectExtra)
+	}()
+}
+
 // resolveUserPagerAlert reports whether a user has pager-style audio playback
 // enabled for a specific system+talkgroup (and optionally a specific tone set).
 // Uses the in-memory PreferencesCache — no database round-trip.
@@ -729,7 +837,8 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 			}
 		}
 		channelSound := controller.resolveUserAlertSound(userId, systemId, talkgroupId, toneSetId)
-		userPagerEnabled := call != nil && controller.resolveUserPagerAlert(userId, systemId, talkgroupId, toneSetId)
+		// Pre-alerts are just a heads-up — don't trigger VoIP/CallKit for them.
+		userPagerEnabled := call != nil && alertType != "pre-alert" && controller.resolveUserPagerAlert(userId, systemId, talkgroupId, toneSetId)
 
 		// Group devices by platform and sound; delete any legacy OneSignal tokens.
 		// VoIP tokens go into the same ios+pager:{sound} group as this user's iOS
@@ -752,8 +861,21 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 
 			if device.PushType == "voip" {
 				if userPagerEnabled {
-					key := fmt.Sprintf("ios+pager:%s", sound)
-					deviceGroups[key] = append(deviceGroups[key], device.FCMToken)
+					iosLiveFeedActive := false
+					for _, otherDev := range deviceTokens {
+						if otherDev.Platform == "ios" && otherDev.PushType != "voip" {
+							if controller.Clients.IsDeviceLiveFeedActive(otherDev.FCMToken) {
+								iosLiveFeedActive = true
+								break
+							}
+						}
+					}
+					if iosLiveFeedActive {
+						controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification (batched): skipping VoIP for user %d — iOS live feed active", userId))
+					} else {
+						key := fmt.Sprintf("ios+pager:%s", sound)
+						deviceGroups[key] = append(deviceGroups[key], device.FCMToken)
+					}
 				}
 				continue
 			}
@@ -764,7 +886,13 @@ func (controller *Controller) sendBatchedPushNotificationWithToneSet(userIds []u
 			// (CallKit flash) fired. Tag keys as platform+pager so those batches include extras.
 			platformKey := device.Platform
 			if userPagerEnabled && call != nil && (device.Platform == "ios" || device.Platform == "android") {
-				platformKey = device.Platform + "+pager"
+				// Skip pager flag if this device has live feed active — the app
+				// is already playing audio and the call UI would interrupt it.
+				if controller.Clients.IsDeviceLiveFeedActive(device.FCMToken) {
+					controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification (batched): skipping pager flag for user %d — live feed active on device", userId))
+				} else {
+					platformKey = device.Platform + "+pager"
+				}
 			}
 			key := fmt.Sprintf("%s:%s", platformKey, sound)
 			deviceGroups[key] = append(deviceGroups[key], device.FCMToken)

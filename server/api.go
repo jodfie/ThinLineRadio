@@ -3435,18 +3435,21 @@ func (api *Api) AlertPreferencesHandler(w http.ResponseWriter, r *http.Request) 
 			toneSetPagerAlerts map[string]bool
 		)
 
-			// Accept either systemId or systemRef field names
-			if v, ok := pref["systemId"].(float64); ok {
+			// Accept either systemRef or systemId field names — prefer systemRef
+			// since the resolution logic queries by systemRef column first,
+			// and sending DB PKs as systemId causes wrong-system resolution
+			// when another system's systemRef happens to equal the PK value
+			if v, ok := pref["systemRef"].(float64); ok {
 				requestSystem = uint64(v)
 			}
-			if v, ok := pref["systemRef"].(float64); ok && requestSystem == 0 {
+			if v, ok := pref["systemId"].(float64); ok && requestSystem == 0 {
 				requestSystem = uint64(v)
 			}
-			// Accept either talkgroupId or talkgroupRef field names
-			if v, ok := pref["talkgroupId"].(float64); ok {
+			// Accept either talkgroupRef or talkgroupId — prefer talkgroupRef
+			if v, ok := pref["talkgroupRef"].(float64); ok {
 				requestTg = uint64(v)
 			}
-			if v, ok := pref["talkgroupRef"].(float64); ok && requestTg == 0 {
+			if v, ok := pref["talkgroupId"].(float64); ok && requestTg == 0 {
 				requestTg = uint64(v)
 			}
 			if v, ok := pref["alertEnabled"].(bool); ok {

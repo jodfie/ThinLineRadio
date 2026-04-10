@@ -46,6 +46,7 @@ type Client struct {
 	Livefeed    *Livefeed
 	SystemsMap  SystemsMap
 	request     *http.Request
+	FCMToken    string // Set via the "FCM" WS command; links this session to a push token.
 
 	// DownloadTimestamps tracks when each audio download was requested by this
 	// client, used for sliding-window rate limiting.
@@ -120,22 +121,20 @@ func (client *Client) Init(controller *Controller, request *http.Request, conn *
 				client.Controller.ReconnectionMgr.SaveDisconnectedState(client)
 			}
 
-			// Send a disconnect push notification if the user has opted in and live feed was active.
-			// A 10-second grace period lets transient reconnects suppress the notification.
-			if client.User != nil && client.Controller != nil && !client.Livefeed.IsAllOff() {
+			// Send a disconnect push notification if the user has opted in, live feed
+			// was active, AND this is a mobile client (FCMToken set). Web clients
+			// (FCMToken empty) never trigger disconnect notifications.
+			if client.User != nil && client.Controller != nil && client.FCMToken != "" && !client.Livefeed.IsAllOff() {
 				user := client.User
 				ctrl := client.Controller
+				fcmToken := client.FCMToken
 				var userSettings map[string]interface{}
 				if user.Settings != "" {
 					if err := json.Unmarshal([]byte(user.Settings), &userSettings); err == nil {
 					if enabled, ok := userSettings["disconnectAlertPushEnabled"].(bool); ok && enabled {
 						go func() {
-							// 10-second grace period lets transient reconnects suppress
-							// the notification without needing to check other sessions.
-							// FCM tokens are mobile-only so the push only reaches mobile
-							// devices regardless of any concurrent web sessions.
 							time.Sleep(10 * time.Second)
-							ctrl.sendDisconnectPushNotification(user)
+							ctrl.sendDisconnectPushNotificationToDevice(user, fcmToken)
 						}()
 					}
 					}
@@ -394,6 +393,40 @@ func NewClients() *Clients {
 		Map:   map[*Client]bool{},
 		mutex: sync.Mutex{},
 	}
+}
+
+// IsDeviceLiveFeedActive returns true if any connected client with the given
+// FCM token has an active live feed. Used to skip VoIP pushes for devices
+// that are already receiving audio via WebSocket.
+func (clients *Clients) IsDeviceLiveFeedActive(fcmToken string) bool {
+	if fcmToken == "" {
+		return false
+	}
+	clients.mutex.Lock()
+	defer clients.mutex.Unlock()
+	for c := range clients.Map {
+		if c.FCMToken == fcmToken && c.Livefeed != nil && !c.Livefeed.IsAllOff() {
+			return true
+		}
+	}
+	return false
+}
+
+// IsUserLiveFeedActive returns true if any connected client for the given
+// user ID has an active live feed. Used to skip VoIP pushes when the user
+// is already listening via WebSocket on any device.
+func (clients *Clients) IsUserLiveFeedActive(userId uint64) bool {
+	if userId == 0 {
+		return false
+	}
+	clients.mutex.Lock()
+	defer clients.mutex.Unlock()
+	for c := range clients.Map {
+		if c.User != nil && c.User.Id == userId && c.Livefeed != nil && !c.Livefeed.IsAllOff() {
+			return true
+		}
+	}
+	return false
 }
 
 func (clients *Clients) Add(client *Client) {

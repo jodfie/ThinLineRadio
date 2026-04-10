@@ -6143,3 +6143,61 @@ func (admin *Admin) UpdateApplyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 }
+
+// TestPagerAlertHandler sends a test pager-style push notification for a specific
+// call and user. Dev/testing only — remove before production release.
+//
+// POST /api/admin/test-pager-alert
+// Body: {"callId": 12345, "userId": 414}
+func (api *Api) TestPagerAlertHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		CallId uint64 `json:"callId"`
+		UserId uint64 `json:"userId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON body"})
+		return
+	}
+
+	if req.CallId == 0 || req.UserId == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "callId and userId are required"})
+		return
+	}
+
+	call, err := api.Controller.Calls.GetCall(req.CallId)
+	if err != nil || call == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "call not found"})
+		return
+	}
+
+	systemLabel := ""
+	talkgroupLabel := ""
+	if call.System != nil {
+		systemLabel = call.System.Label
+	}
+	if call.Talkgroup != nil {
+		talkgroupLabel = call.Talkgroup.Label
+	}
+
+	tokens := api.Controller.DeviceTokens.GetByUser(req.UserId)
+
+	api.Controller.sendPushNotification(req.UserId, "keyword", call, systemLabel, talkgroupLabel, "", nil)
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":        "pager alert test sent",
+		"callId":         req.CallId,
+		"systemLabel":    systemLabel,
+		"talkgroupLabel": talkgroupLabel,
+		"tokensSent":     len(tokens),
+	})
+}

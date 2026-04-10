@@ -1,5 +1,64 @@
 # Change log
 
+## Version 26.04.030 - Released Apr 10, 2026
+
+### New Features
+
+- **iOS — Pager-style alerts via CallKit incoming call**
+  - Pager alerts now show as incoming phone calls via CallKit with custom ringtone
+  - User answers to hear dispatch audio, call auto-ends when audio finishes
+  - Custom ringtone picker in App Settings (all bundled alert sounds available)
+  - When app is in foreground, CallKit is skipped — no call UI interruption
+  - Dispatch audio only plays after answering, not while ringing
+
+- **Android — Pager-style alerts via Telecom ConnectionService**
+  - Incoming call UI with full-screen activity (works on lock screen)
+  - ThinLine Radio logo on the incoming call screen
+  - Answer/Decline buttons, custom ringtone plays while ringing
+  - Dispatch audio plays through speaker at full volume (USAGE_ALARM)
+  - Auto-answer setting in App Settings (plays audio immediately without call UI)
+  - Power/volume button silences ringtone
+
+- **Per-device live feed tracking**
+  - Mobile app sends FCM token over WebSocket after authentication (new `FCM` command)
+  - Server links WebSocket sessions to push tokens for per-device state tracking
+  - VoIP pushes (iOS) and pager flag (Android) are skipped when that device has live feed active
+  - Web client sessions do not affect mobile pager alerts
+
+- **Per-device disconnect notifications**
+  - Disconnect push only sent to the specific device that disconnected
+  - Web clients no longer trigger disconnect notifications to mobile devices
+  - Requires the updated mobile app to send the `FCM` WebSocket command
+
+- **Pager alert ringtone picker** (both platforms)
+  - New setting in App Settings under Notification Sounds
+  - Choose from all bundled alert sounds (Alert, Chirp Long, Classic, Smoke Alarm, etc.)
+  - Preview plays when selecting a sound
+  - iOS: updates CallKit ringtone immediately, Android: plays via MediaPlayer
+
+### Fixed
+
+- **Server — Pre-alerts excluded from VoIP/pager**
+  - Tone-detected pre-alerts (waiting for voice) no longer trigger incoming call UI
+  - Only full dispatch calls with audio trigger pager-style alerts
+
+- **Server — FCM notification sound suppressed for iOS pager alerts**
+  - When pager is enabled, FCM notification sound is set to empty so only CallKit ringtone plays
+  - Prevents double audio (notification sound + CallKit ringtone) simultaneously
+
+- **iOS — Live feed audio resumes after pager call ends**
+  - Audio session is reactivated after CallKit deactivates it
+  - Flutter audio service notified to resume playback
+
+### Server Changes (backward compatible)
+
+- New `FCM` WebSocket command (optional — old apps ignore it, server works as before)
+- `IsDeviceLiveFeedActive()` and `IsUserLiveFeedActive()` helpers on Clients
+- `sendDisconnectPushNotificationToDevice()` for per-device disconnect
+- Test pager alert endpoint re-added for development (remove before production release)
+
+---
+
 ## Version 26.04.027 - Released Apr 9, 2026
 
 ### Fixed
