@@ -1,5 +1,26 @@
 # Change log
 
+## Version 26.04.034 - Released Apr 15, 2026
+
+### Changed
+
+- **Server — Duplicate calls are now silently dropped at ingest**
+  - Previously, duplicate calls were written to the database with `isDuplicate = true` and still processed by most of the pipeline
+  - Duplicates are now dropped immediately after detection — no database write, no downstream delivery, no transcription, no tone detection
+  - This prevents circular duplicate call loops that could occur between two downstream servers when duplicates were still being forwarded
+
+- **Server — Background purge of legacy duplicate rows**
+  - On startup, a background goroutine deletes all existing `isDuplicate = true` rows from the database in small batches (100 rows at a time with a 250 ms pause between batches) to avoid long table locks
+  - Progress is logged when complete (e.g. `purgeLegacyDuplicates: removed N legacy duplicate rows`)
+
+---
+
+## Version 26.04.033 - PULLED
+
+> **This release was pulled.** The changes introduced in 26.04.033 caused circular duplicate call loops between two downstream servers. Reverted to 26.04.032 baseline; fixes carried forward into 26.04.034.
+
+---
+
 ## Version 26.04.032 - Released Apr 14, 2026
 
 ### New Features

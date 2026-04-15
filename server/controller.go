@@ -795,6 +795,12 @@ func (controller *Controller) processCallAfterDuplicateCheck(call *Call) {
 		logCall(call, "error", err.Error())
 	}
 
+	// Drop duplicates — no DB write, no downstream, no transcription.
+	if call.IsDuplicate {
+		logCall(call, LogLevelInfo, fmt.Sprintf("duplicate dropped: %s", call.AudioFilename))
+		return
+	}
+
 	if call.System != nil {
 		system = call.System
 	}
@@ -865,20 +871,63 @@ func (controller *Controller) processCallAfterDuplicateCheck(call *Call) {
 		}
 
 
-		if !call.IsDuplicate {
-			// IMMEDIATE: Emit call to clients (users can play NOW - zero delay)
-			controller.EmitCall(call)
+		// IMMEDIATE: Emit call to clients (users can play NOW - zero delay)
+		controller.EmitCall(call)
 
-			// Note: Tone detection already completed above (before encoding)
-			// Queue transcription with tone-aware decision
-			go controller.queueTranscriptionIfNeeded(call)
-		}
+		// Note: Tone detection already completed above (before encoding)
+		// Queue transcription with tone-aware decision
+		go controller.queueTranscriptionIfNeeded(call)
 
 		// Note: Pending tones are checked and attached AFTER transcription completes
 		// This ensures we only attach pending tones to calls that actually have voice (not tone-only)
 		// See transcription_queue.go where checkAndAttachPendingTones is called after transcription confirms voice
 	} else {
 		logError(err)
+	}
+}
+
+// purgeLegacyDuplicates deletes isDuplicate=true rows that were written before
+// duplicates were dropped at ingest. Runs once at startup in a background goroutine,
+// deleting in small batches so it never holds a long table lock.
+func (controller *Controller) purgeLegacyDuplicates() {
+	const batchSize = 100
+	const pause = 250 * time.Millisecond
+
+	var isPostgres bool
+	if controller.Database != nil && controller.Database.Sql != nil {
+		var version string
+		_ = controller.Database.Sql.QueryRow("SELECT version()").Scan(&version)
+		isPostgres = len(version) > 0 && version[:1] == "P" // "PostgreSQL ..."
+	}
+
+	total := 0
+	for {
+		var (
+			res sql.Result
+			err error
+		)
+		if isPostgres {
+			res, err = controller.Database.Sql.Exec(
+				fmt.Sprintf(`DELETE FROM "calls" WHERE "callId" IN (SELECT "callId" FROM "calls" WHERE "isDuplicate" = true LIMIT %d)`, batchSize),
+			)
+		} else {
+			res, err = controller.Database.Sql.Exec(
+				fmt.Sprintf(`DELETE FROM "calls" WHERE "isDuplicate" = 1 LIMIT %d`, batchSize),
+			)
+		}
+		if err != nil {
+			controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("purgeLegacyDuplicates: %v", err))
+			return
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			break
+		}
+		total += int(n)
+		time.Sleep(pause)
+	}
+	if total > 0 {
+		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("purgeLegacyDuplicates: removed %d legacy duplicate rows", total))
 	}
 }
 
@@ -3079,6 +3128,10 @@ func (controller *Controller) Start() error {
 
 	// Start auto-updater (no-op if auto_update = false in ini)
 	controller.Updater.Start()
+
+	// Purge any duplicate rows saved before duplicates were dropped at ingest.
+	// Runs once in the background at startup; deletes in small batches to avoid locking.
+	go controller.purgeLegacyDuplicates()
 
 	if err = controller.Admin.Start(); err != nil {
 		return err
