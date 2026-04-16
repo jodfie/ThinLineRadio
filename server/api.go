@@ -305,7 +305,7 @@ func (api *Api) HandleCall(key string, call *Call, w http.ResponseWriter) {
 			if call != nil {
 				systemInfo = fmt.Sprintf("System: %v (SystemId: %d, Meta.SystemRef: %d)", call.System, call.SystemId, call.Meta.SystemRef)
 				talkgroupInfo = fmt.Sprintf("Talkgroup: %v (TalkgroupId: %d, Meta.TalkgroupRef: %d)", call.Talkgroup, call.TalkgroupId, call.Meta.TalkgroupRef)
-				metaInfo = fmt.Sprintf("SiteRef: %d, Meta.SiteRef: %d", call.SiteRef, call.Meta.SiteRef)
+				metaInfo = fmt.Sprintf("SiteRef: %s, Meta.SiteRef: %s", call.SiteRef, call.Meta.SiteRef)
 			} else {
 				systemInfo = "call is nil"
 			}
@@ -3307,6 +3307,23 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 		)
 
 		if err := rows.Scan(&callId, &sysId, &tgId, &transcriptionStatus, &transcript, &callTimestamp, &alertSummary, &systemLabel, &talkgroupLabel, &talkgroupName); err != nil {
+			continue
+		}
+
+		// Same access rules as audio/call playback (user + group system/talkgroup scope).
+		system, sysOk := api.Controller.Systems.GetSystemById(sysId)
+		if !sysOk {
+			continue
+		}
+		talkgroup, tgOk := system.Talkgroups.GetTalkgroupById(tgId)
+		if !tgOk {
+			continue
+		}
+		minimalCall := &Call{
+			System:    system,
+			Talkgroup: talkgroup,
+		}
+		if !api.Controller.userHasAccess(client.User, minimalCall) {
 			continue
 		}
 
@@ -8092,7 +8109,7 @@ func (api *Api) UserDeviceTokenHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Clean up any remaining legacy tokens for this user now that they've registered via FCM.
-		if err := api.Controller.DeviceTokens.RemoveAllLegacyTokensForUser(client.User.Id, api.Controller.Database); err != nil {
+		if err := api.Controller.DeviceTokens.RemoveAllLegacyTokensForUser(client.User.Id, api.Controller.Database, api.Controller.Clients); err != nil {
 			log.Printf("Error removing legacy tokens for user %d: %v", client.User.Id, err)
 		}
 
@@ -8184,7 +8201,7 @@ func (api *Api) UserDeviceTokenHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := api.Controller.DeviceTokens.Delete(deviceToken.Id, api.Controller.Database); err != nil {
+		if err := api.Controller.DeviceTokens.Delete(deviceToken.Id, api.Controller.Database, api.Controller.Clients); err != nil {
 			api.exitWithError(w, http.StatusInternalServerError, "Failed to delete device token")
 			return
 		}
