@@ -61,6 +61,20 @@ export class RdioScannerAdminOptionsComponent implements OnInit, AfterViewInit, 
     centralConnectionMessage: string = '';
     showExternalAPIKey: boolean = false;
 
+    /** Populated from GET /api/admin/relay-suspension when relay has fully suspended this scanner. */
+    relaySuspensionStatus: {
+        fully_suspended: boolean;
+        suspend_message?: string;
+        relay_owner_unlocked_public?: boolean;
+        public_listener_blocked?: boolean;
+        push_notifications_blocked?: boolean;
+    } | null = null;
+
+    get relaySuspensionBannerVisible(): boolean {
+        const s = this.relaySuspensionStatus;
+        return !!s && s.fully_suspended === true && s.push_notifications_blocked === true;
+    }
+
     constructor(
         private snackBar: MatSnackBar,
         private dialog: MatDialog,
@@ -112,6 +126,7 @@ export class RdioScannerAdminOptionsComponent implements OnInit, AfterViewInit, 
     ngAfterViewInit(): void {
         setTimeout(() => {
             this.panelsReady = true;
+            this.refreshRelaySuspensionStatus();
             this.cdr.detectChanges();
         }, 80);
     }
@@ -925,6 +940,61 @@ export class RdioScannerAdminOptionsComponent implements OnInit, AfterViewInit, 
             console.error('Error generating favicon:', error);
             this.snackBar.open('Failed to generate favicon. Please try uploading manually.', 'Close', { duration: 5000 });
         }
+    }
+
+    refreshRelaySuspensionStatus(): void {
+        const token = sessionStorage.getItem('rdio-scanner-admin-token');
+        if (!token) {
+            return;
+        }
+        const headers = new HttpHeaders({ Authorization: token });
+        this.http
+            .get<{
+                fully_suspended: boolean;
+                suspend_message?: string;
+                relay_owner_unlocked_public?: boolean;
+                public_listener_blocked?: boolean;
+                push_notifications_blocked?: boolean;
+            }>(`${window.location.origin}/api/admin/relay-suspension`, { headers })
+            .subscribe({
+                next: (s) => {
+                    this.relaySuspensionStatus = s;
+                    this.cdr.markForCheck();
+                },
+                error: () => {
+                    this.relaySuspensionStatus = null;
+                    this.cdr.markForCheck();
+                },
+            });
+    }
+
+    unlockPublicWebListener(): void {
+        const token = sessionStorage.getItem('rdio-scanner-admin-token');
+        if (!token) {
+            this.snackBar.open('Not authenticated.', 'Close', { duration: 4000 });
+            return;
+        }
+        const headers = new HttpHeaders({ Authorization: token });
+        this.http
+            .post<{ success: boolean; error?: string }>(
+                `${window.location.origin}/api/admin/relay-unlock-public-client`,
+                {},
+                { headers },
+            )
+            .subscribe({
+                next: (res) => {
+                    if (res?.success) {
+                        this.snackBar.open('Public web listener unlocked.', 'Close', { duration: 5000 });
+                        this.refreshRelaySuspensionStatus();
+                    } else {
+                        this.snackBar.open(res?.error || 'Unlock failed', 'Close', { duration: 6000 });
+                    }
+                },
+                error: (err) => {
+                    const msg = err?.error?.error || err?.message || 'Unlock failed';
+                    this.snackBar.open(msg, 'Close', { duration: 6000 });
+                },
+            });
     }
 
     testCentralConnection(): void {

@@ -335,6 +335,9 @@ func (controller *Controller) sendPushNotification(userId uint64, alertType stri
 }
 
 func (controller *Controller) sendNotificationBatch(playerIDs []string, title, subtitle, message, platform, sound string, call *Call, systemLabel, talkgroupLabel string, extraData map[string]interface{}) {
+	if controller.RelayPushSuspended() {
+		return
+	}
 	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: sendNotificationBatch called with %d player ID(s) for %s platform", len(playerIDs), platform))
 	for i, playerID := range playerIDs {
 		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("push notification: player ID %d: %s", i+1, playerID))

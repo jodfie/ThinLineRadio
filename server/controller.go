@@ -131,6 +131,11 @@ type Controller struct {
 	// they can perform their own ECDH key exchange with the relay server.
 	// Stored in memory only — never persisted to the DB.
 	AudioClientToken string
+
+	// Relay suspension (full) — mirrored from relay /api/keys/details poll and relay webhook.
+	RelaySuspensionMu   sync.RWMutex
+	RelayFullySuspended bool
+	RelaySuspendMessage string
 }
 
 // WaitingShortCall represents a short voice call that is waiting for a longer one to arrive
@@ -3096,6 +3101,11 @@ func (controller *Controller) Start() error {
 				controller.fetchAudioClientToken()
 			}()
 		}
+	}
+
+	// Poll relay for full-suspension state (and receive updates via webhook when relay changes it).
+	if controller.Options.RelayServerURL != "" && controller.Options.RelayServerAPIKey != "" {
+		go controller.startRelaySuspensionPoller()
 	}
 
 	// Initialize transcription queue after options are loaded

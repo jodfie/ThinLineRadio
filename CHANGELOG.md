@@ -1,5 +1,16 @@
 # Change log
 
+## Version 26.04.035 - Released Apr 15, 2026
+
+### New Features
+
+- **Configurable transcript parser with unit and dispatch-channel annotations** — contributed by [Carter (@Carter121)](https://github.com/Carter121) ([#181](https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio/pull/181))
+  - **Server:** `TranscriptConfig` (word lists, aliases, corrections, reject list), fuzzy matching (Levenshtein), `AnnotateTranscript` with corrections and canonical substitutions, Unicode rune offsets for clients; `GET`/`PUT` `/api/admin/transcript-parser`; `transcriptAnnotations` on call, alert, and transcript API payloads
+  - **Admin:** Transcript Parser configuration screen (lists, aliases, inline docs)
+  - **Client:** shared `transcript-utils` / `renderAnnotatedTranscript()`; highlighted spans for units and dispatch channels in now-playing, call detail, alerts, and transcripts views
+
+---
+
 ## Version 26.04.034 - Released Apr 15, 2026
 
 ### Changed

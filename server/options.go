@@ -109,6 +109,9 @@ type Options struct {
 	NoAudioRepeatMinutes              uint   `json:"noAudioRepeatMinutes"`
 	RelayServerURL                    string `json:"relayServerURL"`
 	RelayServerAPIKey                 string `json:"relayServerAPIKey"`
+	// When the relay has fully suspended this server, the operator may unlock the public web UI from admin;
+	// push notifications stay disabled until the relay clears suspension.
+	RelayOwnerUnlockedPublicClient bool `json:"relayOwnerUnlockedPublicClient"`
 	// Audio encryption — requires relay server (RelayServerURL + RelayServerAPIKey) to be configured.
 	// When enabled the TLR server fetches the AES-256-GCM master key from the relay
 	// server on startup (via ECDH; raw key never transmitted) and encrypts all audio
@@ -652,6 +655,13 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		options.RelayServerAPIKey = v
 	default:
 		options.RelayServerAPIKey = ""
+	}
+
+	switch v := m["relayOwnerUnlockedPublicClient"].(type) {
+	case bool:
+		options.RelayOwnerUnlockedPublicClient = v
+	default:
+		options.RelayOwnerUnlockedPublicClient = false
 	}
 
 	switch v := m["audioEncryptionEnabled"].(type) {
@@ -1550,6 +1560,13 @@ func (options *Options) Read(db *Database) error {
 					options.RelayServerAPIKey = v
 				}
 			}
+		case "relayOwnerUnlockedPublicClient":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case bool:
+					options.RelayOwnerUnlockedPublicClient = v
+				}
+			}
 		case "audioEncryptionEnabled":
 			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
 				switch v := f.(type) {
@@ -1789,6 +1806,7 @@ func (options *Options) Write(db *Database) error {
 	set("noAudioRepeatMinutes", options.NoAudioRepeatMinutes)
 	set("relayServerURL", options.RelayServerURL)
 	set("relayServerAPIKey", options.RelayServerAPIKey)
+	set("relayOwnerUnlockedPublicClient", options.RelayOwnerUnlockedPublicClient)
 	set("audioEncryptionEnabled", options.AudioEncryptionEnabled)
 	set("maxDownloadsPerWindow", options.MaxDownloadsPerWindow)
 	set("downloadWindowMinutes", options.DownloadWindowMinutes)

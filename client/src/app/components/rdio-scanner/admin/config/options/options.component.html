@@ -1,4 +1,18 @@
 <ng-container *ngIf="form && panelsReady" [formGroup]="form">
+
+  <div *ngIf="relaySuspensionBannerVisible" style="background:#3e2723;border:1px solid #ff8f00;border-radius:8px;padding:16px;margin-bottom:20px;color:#ffe0b2;">
+    <div style="display:flex;align-items:flex-start;gap:12px;">
+      <mat-icon style="color:#ffb74d;">gavel</mat-icon>
+      <div style="flex:1;">
+        <div style="font-weight:600;font-size:16px;margin-bottom:8px;">Relay administration has fully suspended this server</div>
+        <p *ngIf="relaySuspensionStatus?.suspend_message" style="margin:0 0 10px 0;">{{ relaySuspensionStatus?.suspend_message }}</p>
+        <p *ngIf="relaySuspensionStatus?.public_listener_blocked" style="margin:0 0 10px 0;font-size:14px;">The public web listener is disabled. You can unlock it below so listeners can use the web app again. Mobile push notifications stay off until the relay clears the suspension.</p>
+        <p *ngIf="!relaySuspensionStatus?.public_listener_blocked" style="margin:0 0 10px 0;font-size:14px;">The public web listener has been unlocked from this admin panel. Push notifications remain disabled until the relay clears the suspension.</p>
+        <button *ngIf="relaySuspensionStatus?.public_listener_blocked" mat-stroked-button color="accent" type="button" (click)="unlockPublicWebListener()">Unlock public web listener</button>
+        <p style="margin:12px 0 0 0;font-size:12px;opacity:0.85;">Server operators: email <a href="mailto:support@thinlineds.com" style="color:#90caf9;">support@thinlineds.com</a> (not for listener support).</p>
+      </div>
+    </div>
+  </div>
   
   <!-- ═══════════════════════════════════════════════════════════════════════════ -->
   <!-- ALERT & HEALTH MONITORING SETTINGS -->

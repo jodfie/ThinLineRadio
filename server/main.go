@@ -309,6 +309,8 @@ func main() {
 	http.HandleFunc("/api/admin/transcription-failures", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.TranscriptionFailuresHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/transcription-failure-threshold", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.TranscriptionFailureThresholdHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/transcript-parser", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.TranscriptParserHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/relay-suspension", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.RelaySuspensionStatusHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/relay-unlock-public-client", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.RelayUnlockPublicClientHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/tone-detection-issue-threshold", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.ToneDetectionIssueThresholdHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/alert-retention-days", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.AlertRetentionDaysHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/no-audio-threshold-minutes", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.NoAudioThresholdMinutesHandler)).ServeHTTP)
@@ -537,6 +539,7 @@ func main() {
 	http.HandleFunc("/api/webhook/central-systems-talkgroups-groups", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.CentralWebhookSystemsTalkgroupsGroupsHandler))).ServeHTTP)
 	http.HandleFunc("/api/webhook/central-set-relay-key", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.CentralWebhookSetRelayAPIKeyHandler))).ServeHTTP)
 	http.HandleFunc("/api/webhook/central-set-hydra-config", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.CentralWebhookSetHydraConfigHandler))).ServeHTTP)
+	http.HandleFunc("/api/webhook/relay-suspension", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.RelaySuspensionWebhookHandler))).ServeHTTP)
 
 	// Central Management pairing endpoint — called by the CM backend to push the API key and
 	// enable centralized mode. Not localhost-restricted; protected by admin password (bcrypt).
@@ -837,6 +840,26 @@ func main() {
 			}
 			return false
 		}
+
+		// Relay full suspension: block public listener web UI and root WebSocket; keep /admin and static assets.
+		// Evaluated before central-management redirect so listeners see the lock page instead of being redirected away.
+		if controller.IsPublicWebListenerBlocked() {
+			if !strings.HasPrefix(requestPath, "/admin") && !isStaticAsset(requestPath) {
+				if strings.EqualFold(r.Header.Get("upgrade"), "websocket") {
+					w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+					w.WriteHeader(http.StatusForbidden)
+					_, _ = w.Write([]byte("Forbidden: listener access suspended"))
+					return
+				}
+				if r.Method == http.MethodGet || r.Method == http.MethodHead {
+					writePublicRelaySuspensionPage(w, controller)
+					return
+				}
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+		}
+
 		if controller.Options.CentralManagementEnabled &&
 			strings.TrimSpace(controller.Options.CentralManagementURL) != "" &&
 			!strings.HasPrefix(requestPath, "/admin") &&

@@ -64,9 +64,39 @@ interface SelectedStateData {
           </div>
         </div>
       </div>
+
+      <!-- Contact email verification (after request or after domain owner approval) -->
+      <div *ngIf="requiresEmailVerification && !apiKeyReceived">
+        <div style="text-align: center; padding: 20px;">
+          <mat-icon style="font-size: 48px; width: 48px; height: 48px; color: #2196F3; margin-bottom: 16px;">verified_user</mat-icon>
+          <h3>Verify your email</h3>
+          <p style="margin: 16px 0;">A verification code has been sent to <strong>{{ verificationEmail }}</strong></p>
+          <p style="color: #666; font-size: 14px; margin-bottom: 24px;">
+            Enter the code from your email to complete registration. Your API key will be issued after verification.
+          </p>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Verification Code</mat-label>
+            <input matInput [formControl]="verificationCodeControl" placeholder="Enter 6-digit code" maxlength="6" style="text-align: center; font-size: 24px; letter-spacing: 8px;">
+            <mat-hint>Enter the code sent to {{ verificationEmail }}</mat-hint>
+          </mat-form-field>
+
+          <div *ngIf="verificationError" class="error-message" style="margin-top: 16px;">
+            {{ verificationError }}
+          </div>
+
+          <div style="display: flex; gap: 12px; justify-content: center; margin-top: 24px;">
+            <button mat-button (click)="onCancel()">Cancel</button>
+            <button mat-raised-button color="primary" (click)="onVerifyRegistrationEmail()" [disabled]="!verificationCodeControl.value || verificationCodeControl.value.length !== 6 || verifying">
+              <span *ngIf="!verifying">Verify</span>
+              <span *ngIf="verifying">Verifying...</span>
+            </button>
+          </div>
+        </div>
+      </div>
       
       <!-- API Key Request Form -->
-      <div *ngIf="!requiresDomainVerification && !apiKeyReceived">
+      <div *ngIf="!requiresDomainVerification && !requiresEmailVerification && !apiKeyReceived">
         <form [formGroup]="apiKeyForm">
           <mat-form-field appearance="outline" class="full-width">
             <mat-label>Server Name *</mat-label>
@@ -260,7 +290,7 @@ interface SelectedStateData {
     </mat-dialog-content>
     <mat-dialog-actions>
       <button mat-button (click)="onCancel()">{{ apiKeyReceived ? 'Close' : 'Cancel' }}</button>
-      <button *ngIf="!apiKeyReceived && !requiresDomainVerification" 
+      <button *ngIf="!apiKeyReceived && !requiresDomainVerification && !requiresEmailVerification" 
               mat-raised-button 
               color="primary" 
               [disabled]="apiKeyForm.invalid || loading" 
@@ -400,6 +430,7 @@ export class RequestAPIKeyDialogComponent implements OnInit {
   isUpdateMode = false;
   existingAPIKey: string | null = null;
   requiresDomainVerification = false;
+  requiresEmailVerification = false;
   verificationEmail = '';
   verificationCodeControl = new FormControl('', [Validators.required, Validators.minLength(6), Validators.maxLength(6)]);
   verificationError = '';
@@ -912,6 +943,16 @@ export class RequestAPIKeyDialogComponent implements OnInit {
           this.requiresDomainVerification = true;
           this.verificationEmail = response.email;
           this.pendingRequestData = payload;
+          this.verificationCodeControl.setValue('');
+          this.loading = false;
+          return;
+        }
+
+        if (response && response.requires_email_verification) {
+          this.requiresEmailVerification = true;
+          this.verificationEmail = response.contact_email || formValue.contactEmail;
+          this.pendingRequestData = payload;
+          this.verificationCodeControl.setValue('');
           this.loading = false;
           return;
         }
@@ -982,7 +1023,16 @@ export class RequestAPIKeyDialogComponent implements OnInit {
 
       const response: any = await this.http.post(`${this.data.relayServerURL}/api/keys/verify-domain`, verifyPayload, { headers }).toPromise();
 
-      if (response && response.success) {
+      if (response && response.requires_email_verification) {
+        this.requiresDomainVerification = false;
+        this.requiresEmailVerification = true;
+        this.verificationEmail = response.contact_email || this.pendingRequestData?.contact_email || '';
+        this.verificationCodeControl.setValue('');
+        this.verificationError = '';
+        return;
+      }
+
+      if (response && response.success && response.api_key) {
         // API key created successfully - store it silently without displaying
         this.apiKeyReceived = true;
         this.requiresDomainVerification = false;
@@ -997,6 +1047,59 @@ export class RequestAPIKeyDialogComponent implements OnInit {
     } catch (error: any) {
       console.error('Error verifying domain:', error);
       this.verificationError = error.error?.error || error.message || 'Failed to verify domain code';
+    } finally {
+      this.verifying = false;
+    }
+  }
+
+  async onVerifyRegistrationEmail(): Promise<void> {
+    if (!this.verificationCodeControl.value || this.verificationCodeControl.value.length !== 6) {
+      this.verificationError = 'Please enter a 6-digit verification code';
+      return;
+    }
+
+    this.verifying = true;
+    this.verificationError = '';
+
+    const serverURL =
+      this.pendingRequestData?.server_url ||
+      this.apiKeyForm.get('serverURL')?.value ||
+      '';
+    const contactEmail =
+      this.verificationEmail ||
+      this.pendingRequestData?.contact_email ||
+      this.apiKeyForm.get('contactEmail')?.value ||
+      '';
+
+    try {
+      const headers: { [key: string]: string } = {
+        'Content-Type': 'application/json',
+        'X-Rdio-Auth': this.authKey
+      };
+
+      const verifyPayload = {
+        server_url: serverURL,
+        contact_email: contactEmail,
+        code: this.verificationCodeControl.value
+      };
+
+      const response: any = await this.http
+        .post(`${this.data.relayServerURL}/api/keys/verify-registration`, verifyPayload, { headers })
+        .toPromise();
+
+      if (response && response.success && response.api_key) {
+        this.apiKeyReceived = true;
+        this.requiresEmailVerification = false;
+        const retrievedApiKey = response.api_key;
+        setTimeout(() => {
+          this.dialogRef.close(retrievedApiKey);
+        }, 2000);
+      } else {
+        this.verificationError = 'Verification failed. Please check your code and try again.';
+      }
+    } catch (error: any) {
+      console.error('Error verifying registration email:', error);
+      this.verificationError = error.error?.error || error.message || 'Failed to verify code';
     } finally {
       this.verifying = false;
     }

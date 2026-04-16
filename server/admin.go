@@ -6292,3 +6292,61 @@ func (admin *Admin) TranscriptParserHandler(w http.ResponseWriter, r *http.Reque
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
+
+// RelaySuspensionStatusHandler returns relay suspension state for the admin UI.
+func (admin *Admin) RelaySuspensionStatusHandler(w http.ResponseWriter, r *http.Request) {
+	t := admin.GetAuthorization(r)
+	if !admin.ValidateToken(t) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	snap := admin.Controller.getRelaySuspensionSnapshot()
+	admin.Controller.Options.mutex.Lock()
+	ownerUnlocked := admin.Controller.Options.RelayOwnerUnlockedPublicClient
+	admin.Controller.Options.mutex.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"fully_suspended":             snap.suspended,
+		"suspend_message":             snap.message,
+		"relay_owner_unlocked_public": ownerUnlocked,
+		"public_listener_blocked":     admin.Controller.IsPublicWebListenerBlocked(),
+		"push_notifications_blocked":  admin.Controller.RelayPushSuspended(),
+	})
+}
+
+// RelayUnlockPublicClientHandler allows the server operator to restore the public web listener
+// while relay full suspension remains (push stays disabled until relay clears suspension).
+func (admin *Admin) RelayUnlockPublicClientHandler(w http.ResponseWriter, r *http.Request) {
+	t := admin.GetAuthorization(r)
+	if !admin.ValidateToken(t) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if !admin.Controller.RelayPushSuspended() {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Server is not suspended by the relay",
+		})
+		return
+	}
+	admin.Controller.Options.mutex.Lock()
+	admin.Controller.Options.RelayOwnerUnlockedPublicClient = true
+	admin.Controller.Options.mutex.Unlock()
+	if err := admin.Controller.Options.Write(admin.Controller.Database); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	admin.Controller.Logs.LogEvent(LogLevelInfo, "Operator unlocked public web listener (relay suspension still active; push notifications remain disabled until relay clears suspension)")
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
