@@ -12,6 +12,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>
+//
+// Relay-driven full suspension: blocks public web listener and WebSocket (not /admin).
+// Push notifications remain disabled while suspended even if the operator unlocks the public UI from admin.
 
 package main
 
@@ -54,20 +57,22 @@ func (controller *Controller) applyRelaySuspensionState(fullySuspended bool, mes
 		controller.Options.RelayOwnerUnlockedPublicClient = false
 		controller.Options.mutex.Unlock()
 		if err := controller.Options.Write(controller.Database); err != nil {
-			log.Printf("options write: %v", err)
+			log.Printf("relay suspension: failed to persist cleared owner unlock: %v", err)
 		}
 	}
 	if was != fullySuspended {
-		log.Printf("listener gate: active=%v", fullySuspended)
+		log.Printf("relay suspension: fully_suspended=%v", fullySuspended)
 	}
 }
 
+// RelayPushSuspended is true when the relay has fully suspended this server (push must not be sent).
 func (controller *Controller) RelayPushSuspended() bool {
 	controller.RelaySuspensionMu.RLock()
 	defer controller.RelaySuspensionMu.RUnlock()
 	return controller.RelayFullySuspended
 }
 
+// IsPublicWebListenerBlocked is true when the public web app and non-admin WebSockets must be denied.
 func (controller *Controller) IsPublicWebListenerBlocked() bool {
 	controller.RelaySuspensionMu.RLock()
 	fs := controller.RelayFullySuspended
@@ -97,7 +102,7 @@ func (controller *Controller) disconnectPublicWebClientsForSuspension() {
 		if c.IsAdmin {
 			continue
 		}
-		_ = c.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(4000, "unavailable"))
+		_ = c.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(4000, "server suspended"))
 		c.Conn.Close()
 	}
 }
@@ -152,6 +157,8 @@ func (controller *Controller) startRelaySuspensionPoller() {
 	}
 }
 
+// RelaySuspensionWebhookHandler receives suspension updates from the ThinLine relay server.
+// POST /api/webhook/relay-suspension — authenticated with X-API-Key matching this server's relay API key.
 func (api *Api) RelaySuspensionWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		api.exitWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -182,26 +189,29 @@ func (api *Api) RelaySuspensionWebhookHandler(w http.ResponseWriter, r *http.Req
 func writePublicRelaySuspensionPage(w http.ResponseWriter, controller *Controller) {
 	custom := strings.TrimSpace(controller.PublicSuspensionMessage())
 	if custom != "" {
-		custom = "<p style=\"margin:16px 0;padding:12px;background:#1a1a1a;border-radius:8px;border:1px solid #333;\">" + html.EscapeString(custom) + "</p>"
+		custom = "<p style=\"margin:16px 0;padding:12px;background:#fff8e1;border-radius:8px;border:1px solid #ffe082;\"><strong>Notice from administration:</strong><br>" + html.EscapeString(custom) + "</p>"
 	}
 	page := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Unavailable</title>
+<title>Server suspended</title>
 <style>
 body{font-family:system-ui,-apple-system,sans-serif;background:#121212;color:#e0e0e0;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
-.box{max-width:480px;background:#1e1e1e;border:1px solid #333;border-radius:12px;padding:28px;}
-h1{font-size:20px;margin:0 0 12px;font-weight:600;}
-p{line-height:1.5;color:#aaa;margin:0;}
+.box{max-width:560px;background:#1e1e1e;border:1px solid #333;border-radius:12px;padding:28px;}
+h1{color:#ef5350;font-size:22px;margin:0 0 12px;}
+p{line-height:1.55;color:#ccc;}
+a{color:#64b5f6;}
+.small{font-size:13px;color:#888;margin-top:20px;}
 </style>
 </head>
 <body>
 <div class="box">
-<h1>Service unavailable</h1>
-<p>The listener is temporarily unavailable.</p>
+<h1>This scanner server is suspended</h1>
+<p>The public listener interface has been disabled by <strong>Thinline Radio Administration</strong>.</p>
 %s
+<p class="small"><strong>If you operate this server:</strong> do not contact support on behalf of listeners. Email <a href="mailto:support@thinlineds.com">support@thinlineds.com</a> from your operator email so we can review your case. You may still sign in to the <strong>admin</strong> area on this host to manage settings or use &ldquo;Unlock public web listener&rdquo; there to restore the web app for listeners; <strong>mobile push notifications stay disabled</strong> until administration clears the suspension on the relay.</p>
 </div>
 </body>
 </html>`, custom)
