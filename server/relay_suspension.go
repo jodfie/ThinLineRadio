@@ -1,0 +1,212 @@
+// Copyright (C) 2025 Thinline Dynamic Solutions
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>
+
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"html"
+	"io"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/gorilla/websocket"
+)
+
+type relaySuspensionSnapshot struct {
+	suspended bool
+	message   string
+}
+
+func (controller *Controller) getRelaySuspensionSnapshot() relaySuspensionSnapshot {
+	controller.RelaySuspensionMu.RLock()
+	defer controller.RelaySuspensionMu.RUnlock()
+	return relaySuspensionSnapshot{
+		suspended: controller.RelayFullySuspended,
+		message:   controller.RelaySuspendMessage,
+	}
+}
+
+func (controller *Controller) applyRelaySuspensionState(fullySuspended bool, message string) {
+	controller.RelaySuspensionMu.Lock()
+	was := controller.RelayFullySuspended
+	controller.RelayFullySuspended = fullySuspended
+	controller.RelaySuspendMessage = message
+	controller.RelaySuspensionMu.Unlock()
+
+	if !fullySuspended {
+		controller.Options.mutex.Lock()
+		controller.Options.RelayOwnerUnlockedPublicClient = false
+		controller.Options.mutex.Unlock()
+		if err := controller.Options.Write(controller.Database); err != nil {
+			log.Printf("options write: %v", err)
+		}
+	}
+	if was != fullySuspended {
+		log.Printf("listener gate: active=%v", fullySuspended)
+	}
+}
+
+func (controller *Controller) RelayPushSuspended() bool {
+	controller.RelaySuspensionMu.RLock()
+	defer controller.RelaySuspensionMu.RUnlock()
+	return controller.RelayFullySuspended
+}
+
+func (controller *Controller) IsPublicWebListenerBlocked() bool {
+	controller.RelaySuspensionMu.RLock()
+	fs := controller.RelayFullySuspended
+	controller.RelaySuspensionMu.RUnlock()
+	if !fs {
+		return false
+	}
+	controller.Options.mutex.Lock()
+	unlocked := controller.Options.RelayOwnerUnlockedPublicClient
+	controller.Options.mutex.Unlock()
+	return !unlocked
+}
+
+func (controller *Controller) PublicSuspensionMessage() string {
+	controller.RelaySuspensionMu.RLock()
+	defer controller.RelaySuspensionMu.RUnlock()
+	return controller.RelaySuspendMessage
+}
+
+func (controller *Controller) disconnectPublicWebClientsForSuspension() {
+	controller.Clients.mutex.Lock()
+	defer controller.Clients.mutex.Unlock()
+	for c := range controller.Clients.Map {
+		if c == nil || c.Conn == nil {
+			continue
+		}
+		if c.IsAdmin {
+			continue
+		}
+		_ = c.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(4000, "unavailable"))
+		c.Conn.Close()
+	}
+}
+
+func (controller *Controller) pollRelaySuspensionOnce() {
+	relayURL := strings.TrimRight(strings.TrimSpace(controller.Options.RelayServerURL), "/")
+	apiKey := strings.TrimSpace(controller.Options.RelayServerAPIKey)
+	if relayURL == "" || apiKey == "" {
+		return
+	}
+	u := relayURL + "/api/keys/details"
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("X-Rdio-Auth", getRelayServerAuthKey())
+	req.Header.Set("X-API-Key", apiKey)
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+	var data map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return
+	}
+	suspended := false
+	switch v := data["fully_suspended"].(type) {
+	case bool:
+		suspended = v
+	case float64:
+		suspended = v != 0
+	}
+	msg, _ := data["suspend_message"].(string)
+	prev := controller.getRelaySuspensionSnapshot()
+	controller.applyRelaySuspensionState(suspended, msg)
+	if suspended && !prev.suspended {
+		go controller.disconnectPublicWebClientsForSuspension()
+	}
+}
+
+func (controller *Controller) startRelaySuspensionPoller() {
+	controller.pollRelaySuspensionOnce()
+	ticker := time.NewTicker(3 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		controller.pollRelaySuspensionOnce()
+	}
+}
+
+func (api *Api) RelaySuspensionWebhookHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		api.exitWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	key := r.Header.Get("X-API-Key")
+	if key == "" || key != api.Controller.Options.RelayServerAPIKey {
+		api.exitWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	var body struct {
+		FullySuspended bool   `json:"fully_suspended"`
+		SuspendMessage string `json:"suspend_message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		api.exitWithError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+	prev := api.Controller.getRelaySuspensionSnapshot()
+	api.Controller.applyRelaySuspensionState(body.FullySuspended, body.SuspendMessage)
+	if body.FullySuspended && !prev.suspended {
+		go api.Controller.disconnectPublicWebClientsForSuspension()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func writePublicRelaySuspensionPage(w http.ResponseWriter, controller *Controller) {
+	custom := strings.TrimSpace(controller.PublicSuspensionMessage())
+	if custom != "" {
+		custom = "<p style=\"margin:16px 0;padding:12px;background:#1a1a1a;border-radius:8px;border:1px solid #333;\">" + html.EscapeString(custom) + "</p>"
+	}
+	page := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unavailable</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;background:#121212;color:#e0e0e0;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+.box{max-width:480px;background:#1e1e1e;border:1px solid #333;border-radius:12px;padding:28px;}
+h1{font-size:20px;margin:0 0 12px;font-weight:600;}
+p{line-height:1.5;color:#aaa;margin:0;}
+</style>
+</head>
+<body>
+<div class="box">
+<h1>Service unavailable</h1>
+<p>The listener is temporarily unavailable.</p>
+%s
+</div>
+</body>
+</html>`, custom)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = io.WriteString(w, page)
+}
