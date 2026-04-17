@@ -24,7 +24,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"syscall"
 
 	_ "github.com/lib/pq"
 	"golang.org/x/term"
@@ -43,7 +42,7 @@ func checkPostgreSQLInstalled() bool {
 // readPassword reads a password from stdin without echoing
 func readPassword(prompt string) (string, error) {
 	fmt.Print(prompt)
-	bytePassword, err := term.ReadPassword(int(syscall.Stdin))
+	bytePassword, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Println()
 	if err != nil {
 		return "", err
@@ -96,36 +95,36 @@ func runInteractiveSetup(configFile string) error {
 	var setupMode string
 
 	if !hasLocalPostgres {
-		fmt.Println("⚠️  PostgreSQL client (psql) not detected locally.")
-		fmt.Println("\nYou have two options:")
-		fmt.Println("  1. Install PostgreSQL locally (recommended)")
-		fmt.Println("  2. Use an existing remote PostgreSQL server")
-		fmt.Println("")
-		setupMode = readInput("Choose setup mode (1=local, 2=remote)", "1")
-
-		if setupMode == "1" {
-			fmt.Println("\nPlease install PostgreSQL first:")
-			fmt.Println("\nLinux (Ubuntu/Debian):")
-			fmt.Println("  sudo apt update")
-			fmt.Println("  sudo apt install postgresql postgresql-contrib")
-			fmt.Println("\nLinux (Fedora/CentOS/RHEL):")
-			fmt.Println("  sudo dnf install postgresql postgresql-server")
-			fmt.Println("\nmacOS (Homebrew):")
-			fmt.Println("  brew install postgresql@16")
-			fmt.Println("\nWindows:")
-			fmt.Println("  Download from https://www.postgresql.org/download/windows/")
-			fmt.Println("\nAfter installation, run this setup wizard again.")
-			fmt.Println("")
-			return fmt.Errorf("PostgreSQL not installed")
+		fmt.Println("⚠️  PostgreSQL client (psql) not found on your PATH.")
+		fmt.Println("  The wizard does not require psql — it connects with the built-in driver.")
+		if runtime.GOOS == "windows" {
+			fmt.Println("  On Windows, PostgreSQL is often installed without `bin` on PATH; local setup can still work.")
 		}
-
-		// Remote mode
-		fmt.Println("\n✓ Remote database mode selected")
-		fmt.Println("\nNote: Make sure you have:")
-		fmt.Println("  - Remote PostgreSQL server accessible from this machine")
-		fmt.Println("  - Database and user already created on the remote server")
-		fmt.Println("  - Network access allowed (check pg_hba.conf on remote server)")
+		fmt.Println("\nChoose how to configure the database:")
+		fmt.Println("  1. Local setup — connect as a superuser (e.g. postgres) and create DB + app user")
+		fmt.Println("  2. Remote server — use an existing database you already created")
 		fmt.Println("")
+		setupMode = readInput("Enter choice (1=local wizard, 2=remote)", "1")
+
+		if setupMode == "2" {
+			fmt.Println("\n✓ Remote database mode selected")
+			fmt.Println("\nNote: Make sure you have:")
+			fmt.Println("  - Remote PostgreSQL server accessible from this machine")
+			fmt.Println("  - Database and user already created on the remote server")
+			fmt.Println("  - Network access allowed (check pg_hba.conf on remote server)")
+			fmt.Println("")
+		} else {
+			// Treat anything other than "2" as local wizard (including empty / default "1").
+			setupMode = "1"
+			if runtime.GOOS == "windows" {
+				fmt.Println("\n✓ Local setup — ensure PostgreSQL is installed and reachable (e.g. localhost:5432).")
+				fmt.Println("  If connection fails, install from https://www.postgresql.org/download/windows/")
+				fmt.Println("  and add PostgreSQL’s `bin` directory to your PATH for easier troubleshooting.")
+			} else {
+				fmt.Println("\n✓ Local setup — ensure PostgreSQL is installed and running before continuing.")
+			}
+			fmt.Println("")
+		}
 	} else {
 		fmt.Println("✓ PostgreSQL detected")
 		setupMode = "1" // Local mode

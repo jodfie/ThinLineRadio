@@ -25,6 +25,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom, timer, timeout, Observable, race } from 'rxjs';
 import { AppUpdateService } from '../../../shared/update/update.service';
 import { RdioScannerToneSet } from '../rdio-scanner';
+import type { TranscriptConfig } from './config/transcript-parser/transcript-parser.types';
 
 /** Align duplicate-detection ms values with admin form validators (min 100 / 1000). */
 function normalizedDuplicateTimestampWindowMs(value: unknown): number {
@@ -368,6 +369,8 @@ export interface Options {
     centralManagementAPIKey?: string;
     centralManagementServerName?: string;
     centralManagementServerID?: string;
+    /** Word lists for transcript unit/channel parsing (full admin config includes this). */
+    transcriptParserConfig?: TranscriptConfig;
 }
 
 export interface ToneImportResponse {

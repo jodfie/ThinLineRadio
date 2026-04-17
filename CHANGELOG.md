@@ -1,5 +1,21 @@
 # Change log
 
+## Version 26.04.036 - Released Apr 17, 2026
+
+### Changed
+
+- **Admin — Transcript Parser configuration loads with the main config**
+  - Hydrates from `options.transcriptParserConfig` already returned on the initial admin load instead of a separate `GET /api/admin/transcript-parser`, so the panel opens immediately like other configuration sections
+
+### Fixed
+
+- **Server — Interactive setup wizard on Windows (and when `psql` is not on PATH)**
+  - Choosing local database setup (`1`) no longer exits the process with `Setup failed: PostgreSQL not installed` when only the `psql` CLI is missing; the wizard uses the Go driver and does not require `psql`
+  - Clearer choice text between local wizard (create DB/user) vs remote credentials; Windows-specific PATH guidance
+  - Password prompts use `os.Stdin` for `term.ReadPassword` (correct console handle)
+
+---
+
 ## Version 26.04.035 - Released Apr 15, 2026
 
 ### New Features

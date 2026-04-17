@@ -17,35 +17,19 @@
  * ****************************************************************************
  */
 
-import { Component, OnInit } from '@angular/core';
+import { Component, Input, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 import { RdioScannerAdminService } from '../../admin.service';
+import {
+    ChannelShorthand,
+    FuzzyListKey,
+    FuzzyWord,
+    TranscriptConfig,
+} from './transcript-parser.types';
 
-export interface FuzzyWord {
-    word: string;
-    maxDistance: number;
-    aliases?: string[];
-    reject?: string[];
-}
-
-export interface ChannelShorthand {
-    label: string;
-    dispatch: string;
-    separator?: string;
-}
-
-export interface TranscriptConfig {
-    unitTypes: FuzzyWord[];
-    unitPrefixes: FuzzyWord[];
-    dispatchNames: FuzzyWord[];
-    channelSeparators: FuzzyWord[];
-    channelShorthands: ChannelShorthand[];
-    corrections: FuzzyWord[];
-}
-
-type FuzzyListKey = 'unitTypes' | 'unitPrefixes' | 'dispatchNames' | 'channelSeparators' | 'corrections';
+export type { ChannelShorthand, FuzzyListKey, FuzzyWord, TranscriptConfig } from './transcript-parser.types';
 
 const emptyConfig = (): TranscriptConfig => ({
     unitTypes: [],
@@ -62,6 +46,14 @@ const emptyConfig = (): TranscriptConfig => ({
     styleUrls: ['./transcript-parser.component.scss'],
 })
 export class RdioScannerAdminTranscriptParserComponent implements OnInit {
+    /**
+     * When set (from full admin config `options.transcriptParserConfig`), the panel
+     * hydrates immediately with no extra HTTP round-trip — same data as GET
+     * `/api/admin/transcript-parser`, which playback-style sections already paid for
+     * in the initial config load.
+     */
+    @Input() initialConfig: TranscriptConfig | null | undefined;
+
     config: TranscriptConfig = emptyConfig();
     loading = false;
     saving = false;
@@ -84,7 +76,41 @@ export class RdioScannerAdminTranscriptParserComponent implements OnInit {
     ) {}
 
     ngOnInit(): void {
-        this.load();
+        if (this.tryHydrateFromInitialConfig()) {
+            return;
+        }
+        void this.load();
+    }
+
+    /**
+     * Returns true when config was applied from `initialConfig` (no network).
+     */
+    private tryHydrateFromInitialConfig(): boolean {
+        const raw = this.initialConfig;
+        if (raw == null || typeof raw !== 'object') {
+            return false;
+        }
+        // Deep clone so edits never mutate `originalConfig.options` in the parent.
+        let clone: TranscriptConfig;
+        try {
+            clone = JSON.parse(JSON.stringify(raw)) as TranscriptConfig;
+        } catch {
+            return false;
+        }
+        this.config = this.normalizeTranscriptConfig(clone);
+        this.loading = false;
+        return true;
+    }
+
+    private normalizeTranscriptConfig(res: TranscriptConfig): TranscriptConfig {
+        return {
+            unitTypes: res.unitTypes || [],
+            unitPrefixes: res.unitPrefixes || [],
+            dispatchNames: res.dispatchNames || [],
+            channelSeparators: res.channelSeparators || [],
+            channelShorthands: res.channelShorthands || [],
+            corrections: res.corrections || [],
+        };
     }
 
     async load(): Promise<void> {
@@ -96,14 +122,7 @@ export class RdioScannerAdminTranscriptParserComponent implements OnInit {
                     { headers: this.adminService.getAuthHeaders() },
                 ),
             );
-            this.config = {
-                unitTypes: res.unitTypes || [],
-                unitPrefixes: res.unitPrefixes || [],
-                dispatchNames: res.dispatchNames || [],
-                channelSeparators: res.channelSeparators || [],
-                channelShorthands: res.channelShorthands || [],
-                corrections: res.corrections || [],
-            };
+            this.config = this.normalizeTranscriptConfig(res);
         } catch {
             this.snackBar.open('Failed to load transcript parser config', 'Dismiss', { duration: 4000 });
         } finally {

@@ -276,7 +276,9 @@
                     <mat-icon>record_voice_over</mat-icon>
                     <h3>Transcript Parser</h3>
                 </div>
-                <rdio-scanner-admin-transcript-parser></rdio-scanner-admin-transcript-parser>
+                <rdio-scanner-admin-transcript-parser
+                    [initialConfig]="originalConfig.options?.transcriptParserConfig">
+                </rdio-scanner-admin-transcript-parser>
             </ng-container>
 
         </ng-container>
