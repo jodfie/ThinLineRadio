@@ -366,6 +366,11 @@ func (db *Database) migrate() error {
 		return formatError(err, "")
 	}
 
+	// Add autoPopulateUnits on systems (default false)
+	if err := migrateAutoPopulateUnits(db); err != nil {
+		return formatError(err, "")
+	}
+
 	// Add pagerAlert to userAlertPreferences for server-side persistence of the
 	// pager-style alert playback toggle
 	if err := migratePagerAlert(db); err != nil {

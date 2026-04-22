@@ -2827,6 +2827,9 @@ func (api *Api) AlertsHandler(w http.ResponseWriter, r *http.Request) {
 				"transcriptSnippet": snippet,
 				"createdAt":         createdAt,
 			}
+			if callTimestamp.Valid {
+				alertMap["callTimestamp"] = callTimestamp.Int64
+			}
 
 			if systemLabel.Valid {
 				alertMap["systemLabel"] = systemLabel.String

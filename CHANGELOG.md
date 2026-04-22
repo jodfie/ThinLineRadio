@@ -1,5 +1,19 @@
 # Change log
 
+## Version 26.04.038 - Released Apr 22, 2026
+
+### New Features
+
+- **Server — Per-system “Auto-populate units”**
+  - New `systems.autoPopulateUnits` column (migration default `false`): when enabled, unit ID and non-empty label from incoming call metadata are merged into that system’s unit list
+  - Operates independently of talkgroup/system auto-populate; default off so unit lists are not modified unless an admin opts in
+  - `call.Units` is still derived from `Meta.UnitRefs` when empty for normal call handling and client emit
+
+- **Admin — System settings toggle**
+  - “Auto-populate units” slide toggle on each system’s settings panel with a short hint describing behaviour
+
+---
+
 ## Version 26.04.037 - Released Apr 15, 2026
 
 ### Changed

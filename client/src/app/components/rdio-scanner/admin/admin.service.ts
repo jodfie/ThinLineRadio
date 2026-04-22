@@ -409,6 +409,8 @@ export interface System {
     alertsEnabled?: boolean;            // Admin toggle: false disables all alerts & transcription for this system
     /** When true (default), auto-populated talkgroups are created with alerts enabled */
     autoPopulateAlertsEnabled?: boolean;
+    /** When true, merge heard unit ID + label from calls into this system's unit list (default off; independent of autoPopulate) */
+    autoPopulateUnits?: boolean;
     transcriptionPrompt?: string;       // Custom Whisper/AssemblyAI prompt; overrides global when non-empty
 }
 
@@ -1415,6 +1417,7 @@ export class RdioScannerAdminService implements OnDestroy {
             noAudioThresholdMinutes: this.ngFormBuilder.control(system?.noAudioThresholdMinutes || 30),
             alertsEnabled: this.ngFormBuilder.control(system?.alertsEnabled !== false),
             autoPopulateAlertsEnabled: this.ngFormBuilder.control(system?.autoPopulateAlertsEnabled !== false),
+            autoPopulateUnits: this.ngFormBuilder.control(system?.autoPopulateUnits === true),
             transcriptionPrompt: this.ngFormBuilder.control(system?.transcriptionPrompt || ''),
         });
     }

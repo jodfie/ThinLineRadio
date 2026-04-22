@@ -43,7 +43,9 @@ type System struct {
 	AlertsEnabled           bool    // Admin toggle: false suppresses all alerts & transcription for this system
 	// When true (default), talkgroups created by auto-populate get alertsEnabled true; when false, they are created with alerts off.
 	AutoPopulateAlertsEnabled bool `json:"autoPopulateAlertsEnabled"`
-	TranscriptionPrompt       string // Custom Whisper/AssemblyAI prompt; overrides the global prompt when non-empty
+	// When true, heard unit refs + labels from calls are merged into this system's unit list (independent of AutoPopulate).
+	AutoPopulateUnits bool `json:"autoPopulateUnits"`
+	TranscriptionPrompt string // Custom Whisper/AssemblyAI prompt; overrides the global prompt when non-empty
 }
 
 func NewSystem() *System {
@@ -144,6 +146,14 @@ func (system *System) FromMap(m map[string]any) *System {
 		system.AutoPopulateAlertsEnabled = true
 	}
 
+	// Parse autoPopulateUnits (defaults false — persist heard units only when explicitly enabled)
+	switch v := m["autoPopulateUnits"].(type) {
+	case bool:
+		system.AutoPopulateUnits = v
+	default:
+		system.AutoPopulateUnits = false
+	}
+
 	// Parse transcriptionPrompt (empty string = use global prompt)
 	switch v := m["transcriptionPrompt"].(type) {
 	case string:
@@ -191,6 +201,9 @@ func (system *System) MarshalJSON() ([]byte, error) {
 
 	// Always include autoPopulateAlertsEnabled
 	m["autoPopulateAlertsEnabled"] = system.AutoPopulateAlertsEnabled
+
+	// Always include autoPopulateUnits (default off — merge heard units into system config when true)
+	m["autoPopulateUnits"] = system.AutoPopulateUnits
 
 	// Always include transcriptionPrompt (empty string is valid — means "use global")
 	m["transcriptionPrompt"] = system.TranscriptionPrompt
@@ -565,7 +578,7 @@ func (systems *Systems) Read(db *Database) error {
 	formatError := errorFormatter("systems", "read")
 
 	// --- Query 1: systems ---
-	query := `SELECT "systemId", "autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes", "alertsEnabled", "autoPopulateAlertsEnabled", "transcriptionPrompt" FROM "systems"`
+	query := `SELECT "systemId", "autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes", "alertsEnabled", "autoPopulateAlertsEnabled", "autoPopulateUnits", "transcriptionPrompt" FROM "systems"`
 	rows, err := db.Sql.Query(query)
 	if err != nil {
 		return formatError(err, query)
@@ -576,7 +589,7 @@ func (systems *Systems) Read(db *Database) error {
 	for rows.Next() {
 		system := NewSystem()
 		var preferredApiKeyUnused sql.NullInt64
-		if err = rows.Scan(&system.Id, &system.AutoPopulate, &system.Blacklists, &system.Delay, &system.Label, &system.Order, &system.SystemRef, &system.Kind, &preferredApiKeyUnused, &system.NoAudioAlertsEnabled, &system.NoAudioThresholdMinutes, &system.AlertsEnabled, &system.AutoPopulateAlertsEnabled, &system.TranscriptionPrompt); err != nil {
+		if err = rows.Scan(&system.Id, &system.AutoPopulate, &system.Blacklists, &system.Delay, &system.Label, &system.Order, &system.SystemRef, &system.Kind, &preferredApiKeyUnused, &system.NoAudioAlertsEnabled, &system.NoAudioThresholdMinutes, &system.AlertsEnabled, &system.AutoPopulateAlertsEnabled, &system.AutoPopulateUnits, &system.TranscriptionPrompt); err != nil {
 			return formatError(err, query)
 		}
 		systems.List = append(systems.List, system)
@@ -828,10 +841,10 @@ func (systems *Systems) Write(db *Database) error {
 		if count == 0 {
 			if system.Id > 0 {
 				// Preserve the explicit ID when inserting
-				query = fmt.Sprintf(`INSERT INTO "systems" ("systemId", "autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes", "alertsEnabled", "autoPopulateAlertsEnabled", "transcriptionPrompt") VALUES (%d, %t, '%s', %d, '%s', %d, %d, '%s', %s, %t, %d, %t, %t, '%s')`, system.Id, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind, preferredApiKeyIdSQL, system.NoAudioAlertsEnabled, system.NoAudioThresholdMinutes, system.AlertsEnabled, system.AutoPopulateAlertsEnabled, escapeQuotes(system.TranscriptionPrompt))
+				query = fmt.Sprintf(`INSERT INTO "systems" ("systemId", "autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes", "alertsEnabled", "autoPopulateAlertsEnabled", "autoPopulateUnits", "transcriptionPrompt") VALUES (%d, %t, '%s', %d, '%s', %d, %d, '%s', %s, %t, %d, %t, %t, %t, '%s')`, system.Id, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind, preferredApiKeyIdSQL, system.NoAudioAlertsEnabled, system.NoAudioThresholdMinutes, system.AlertsEnabled, system.AutoPopulateAlertsEnabled, system.AutoPopulateUnits, escapeQuotes(system.TranscriptionPrompt))
 			} else {
 				// Let database assign auto-increment ID
-				query = fmt.Sprintf(`INSERT INTO "systems" ("autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes", "alertsEnabled", "autoPopulateAlertsEnabled", "transcriptionPrompt") VALUES (%t, '%s', %d, '%s', %d, %d, '%s', %s, %t, %d, %t, %t, '%s')`, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind, preferredApiKeyIdSQL, system.NoAudioAlertsEnabled, system.NoAudioThresholdMinutes, system.AlertsEnabled, system.AutoPopulateAlertsEnabled, escapeQuotes(system.TranscriptionPrompt))
+				query = fmt.Sprintf(`INSERT INTO "systems" ("autoPopulate", "blacklists", "delay", "label", "order", "systemRef", "type", "preferredApiKeyId", "noAudioAlertsEnabled", "noAudioThresholdMinutes", "alertsEnabled", "autoPopulateAlertsEnabled", "autoPopulateUnits", "transcriptionPrompt") VALUES (%t, '%s', %d, '%s', %d, %d, '%s', %s, %t, %d, %t, %t, %t, '%s')`, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind, preferredApiKeyIdSQL, system.NoAudioAlertsEnabled, system.NoAudioThresholdMinutes, system.AlertsEnabled, system.AutoPopulateAlertsEnabled, system.AutoPopulateUnits, escapeQuotes(system.TranscriptionPrompt))
 			}
 
 			if db.Config.DbType == DbTypePostgresql {
@@ -863,7 +876,7 @@ func (systems *Systems) Write(db *Database) error {
 			}
 
 		} else {
-			query = fmt.Sprintf(`UPDATE "systems" SET "autoPopulate" = %t, "blacklists" = '%s', "delay" = %d, "label" = '%s', "order" = %d, "systemRef" = %d, "type" = '%s', "preferredApiKeyId" = %s, "noAudioAlertsEnabled" = %t, "noAudioThresholdMinutes" = %d, "alertsEnabled" = %t, "autoPopulateAlertsEnabled" = %t, "transcriptionPrompt" = '%s' WHERE "systemId" = %d`, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind, preferredApiKeyIdSQL, system.NoAudioAlertsEnabled, system.NoAudioThresholdMinutes, system.AlertsEnabled, system.AutoPopulateAlertsEnabled, escapeQuotes(system.TranscriptionPrompt), system.Id)
+			query = fmt.Sprintf(`UPDATE "systems" SET "autoPopulate" = %t, "blacklists" = '%s', "delay" = %d, "label" = '%s', "order" = %d, "systemRef" = %d, "type" = '%s', "preferredApiKeyId" = %s, "noAudioAlertsEnabled" = %t, "noAudioThresholdMinutes" = %d, "alertsEnabled" = %t, "autoPopulateAlertsEnabled" = %t, "autoPopulateUnits" = %t, "transcriptionPrompt" = '%s' WHERE "systemId" = %d`, system.AutoPopulate, system.Blacklists, system.Delay, escapeQuotes(system.Label), system.Order, system.SystemRef, system.Kind, preferredApiKeyIdSQL, system.NoAudioAlertsEnabled, system.NoAudioThresholdMinutes, system.AlertsEnabled, system.AutoPopulateAlertsEnabled, system.AutoPopulateUnits, escapeQuotes(system.TranscriptionPrompt), system.Id)
 			if _, err = tx.Exec(query); err != nil {
 				break
 			}

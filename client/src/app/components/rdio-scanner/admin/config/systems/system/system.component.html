@@ -102,6 +102,12 @@
         </div>
 
         <div class="settings-field settings-field--toggle">
+            <label class="field-label">Auto-populate units</label>
+            <mat-slide-toggle color="primary" formControlName="autoPopulateUnits"></mat-slide-toggle>
+            <span class="mat-caption toggle-hint">Add unit ID and label from heard traffic to this system's unit list. Independent of talkgroup auto-populate.</span>
+        </div>
+
+        <div class="settings-field settings-field--toggle">
             <label class="field-label">Alerts Enabled</label>
             <mat-slide-toggle color="primary" formControlName="alertsEnabled"></mat-slide-toggle>
             <span class="mat-caption toggle-hint">Allow alerts &amp; transcription for this system</span>

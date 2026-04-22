@@ -2567,6 +2567,16 @@ func migrateAutoPopulateAlertsEnabled(db *Database) error {
 	return nil
 }
 
+// migrateAutoPopulateUnits adds per-system control for merging heard unit refs/labels into the unit list.
+// Default false: unit list is not modified unless the admin enables it.
+func migrateAutoPopulateUnits(db *Database) error {
+	q := `ALTER TABLE "systems" ADD COLUMN IF NOT EXISTS "autoPopulateUnits" boolean NOT NULL DEFAULT false`
+	if _, err := db.Sql.Exec(q); err != nil {
+		return fmt.Errorf("migrateAutoPopulateUnits: %w", err)
+	}
+	return nil
+}
+
 // migratePagerAlert adds the pagerAlert column to userAlertPreferences so the
 // pager-style alert playback toggle is persisted server-side.
 func migratePagerAlert(db *Database) error {
