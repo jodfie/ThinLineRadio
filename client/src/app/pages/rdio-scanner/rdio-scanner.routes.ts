@@ -22,6 +22,8 @@ import { RdioScannerMainPageComponent } from './rdio-scanner-main.component';
 import { RdioScannerPageComponent } from './rdio-scanner.component';
 import { RdioScannerUserRegistrationComponent } from '../../components/rdio-scanner/user-registration/user-registration.component';
 import { RdioScannerEmailVerificationComponent } from '../../components/rdio-scanner/email-verification/email-verification.component';
+import { RdioScannerPostVerifyPlanComponent } from '../../components/rdio-scanner/post-verify-plan/post-verify-plan.component';
+import { RdioScannerPostVerifyWelcomeComponent } from '../../components/rdio-scanner/post-verify-welcome/post-verify-welcome.component';
 
 export const routes: Routes = [
     {
@@ -55,6 +57,14 @@ export const routes: Routes = [
             {
                 path: 'verify',
                 component: RdioScannerEmailVerificationComponent,
+            },
+            {
+                path: 'setup/plan',
+                component: RdioScannerPostVerifyPlanComponent,
+            },
+            {
+                path: 'setup/welcome',
+                component: RdioScannerPostVerifyWelcomeComponent,
             },
         ],
     },

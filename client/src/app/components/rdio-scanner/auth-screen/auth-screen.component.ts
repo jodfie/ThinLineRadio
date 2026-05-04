@@ -775,15 +775,24 @@ export class RdioScannerAuthScreenComponent implements OnInit, OnDestroy, AfterV
       this.http.post('/api/user/register', formData).subscribe({
         next: async (response: any) => {
           this.loading = false;
+          const pin = response?.pin;
+          if (typeof pin === 'string' && pin.length > 0) {
+            this.rdioScannerService.savePin(pin);
+          }
+          const alreadyVerified =
+            response?.verified === true || response?.message === 'User registered successfully.';
+          if (alreadyVerified) {
+            this.success = false;
+            const email = (this.registerForm.get('email')?.value || '').toLowerCase();
+            await this.router.navigate(['/setup/plan'], { queryParams: { email } });
+            this.cdr.markForCheck();
+            return;
+          }
           this.registeredWithCode = hasAccessCode;
           this.success = true;
           this.successMessage = hasAccessCode
             ? 'Registration successful! You can now sign in.'
             : 'Registration successful! Please check your email to verify your account.';
-          const pin = response?.pin;
-          if (typeof pin === 'string' && pin.length > 0) {
-            this.rdioScannerService.savePin(pin);
-          }
         },
         error: (error) => {
           this.loading = false;

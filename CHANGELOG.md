@@ -1,5 +1,37 @@
 # Change log
 
+## Version 26.05.001 - Released May 4, 2026
+
+### New Features
+
+- **Mobile app — Add scanners with listener account email**
+  - Scanner Management: “Add scanners with account email” opens a two-step flow: enter listener email to see which servers have that account, then enter password to fetch PINs and add scanners (no email magic link required)
+  - Uses the relay `POST /api/mobile-app/listener-scanners` endpoint: **email-only** body returns server names/URLs; **email + password** returns PINs as before
+
+- **Relay server — Listener directory on the same path as PIN lookup**
+  - `POST /api/mobile-app/listener-scanners` with JSON `{"email"}` only (omit password) returns the same server list the dedicated directory handler would, so reverse proxies that only allow this path still support the new mobile flow
+  - `POST /api/mobile-app/listener-scanner-directory` remains available for direct use
+
+- **Scanner server — Relay listener email directory for mobile sign-in**
+  - On first successful startup after upgrade, POSTs the full set of listener account emails to the relay (`/api/scanner-listener-emails`); subsequent add/remove/email-change sends deltas (`/api/scanner-listener-emails/delta`)
+  - Relay exposes `POST /api/webhook/relay-listener-pin` so the app can obtain PINs when signing in with email + password (per scanner)
+
+### Changed
+
+- **Relay server — Windows build output**
+  - `make windows`, `build-windows.sh`, `build-windows.bat`, and `package-windows.sh` now place the Windows executable at **`dist/relay-server.exe`** (Linux/macOS artifacts stay under `build/`); `BUILD.md` updated accordingly
+
+- **Mobile app — Relay errors**
+  - Clearer messages for non-2xx responses, timeouts, and connection failures when talking to the account service host
+
+### Fixed
+
+- **Scanner server — Relay listener email initial sync**
+  - One-time database migration **`20260504000000-relay-listener-emails-resync`** clears `relayListenerEmailsInitialSyncDone` so the scanner performs a full listener-email replace on the next startup (covers upgrades where the flag was set before emails were present on the relay or the first POST failed)
+  - Startup logs when relay URL/API key is missing, when the full list POST runs (with email count), when the POST fails (retry next restart), and when the initial sync completes
+
+---
+
 ## Version 26.04.038 - Released Apr 22, 2026
 
 ### New Features

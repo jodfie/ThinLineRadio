@@ -1162,6 +1162,61 @@ func (es *EmailService) SendSignupVerificationEmail(email, verificationCode stri
 	return nil
 }
 
+// SendMobileSetupEmail sends the one-time link to open the mobile app and add this scanner.
+func (es *EmailService) SendMobileSetupEmail(user *User, plaintextToken string) error {
+	if !es.Controller.Options.EmailServiceEnabled {
+		return fmt.Errorf("email service is disabled")
+	}
+	if es.Controller.Options.EmailProvider == "" {
+		return fmt.Errorf("email provider not configured")
+	}
+	provider := strings.ToLower(es.Controller.Options.EmailProvider)
+	if provider == "sendgrid" && es.Controller.Options.EmailSendGridAPIKey == "" {
+		return fmt.Errorf("SendGrid API key not configured")
+	}
+	if provider == "mailgun" && (es.Controller.Options.EmailMailgunAPIKey == "" || es.Controller.Options.EmailMailgunDomain == "") {
+		return fmt.Errorf("Mailgun not properly configured")
+	}
+	if provider == "smtp" && es.Controller.Options.EmailSmtpHost == "" {
+		return fmt.Errorf("SMTP host not configured")
+	}
+	if es.Controller.Options.EmailSmtpFromEmail == "" {
+		return fmt.Errorf("from email address not configured")
+	}
+
+	baseURL := normalizePublicBaseURL(es.Controller.Options.BaseUrl)
+	setupURL := baseURL + "/api/mobile-setup-landing?token=" + url.QueryEscape(plaintextToken)
+
+	branding := es.Controller.Options.Branding
+	if branding == "" {
+		branding = "ThinLine Radio"
+	}
+	fromName := es.Controller.Options.EmailSmtpFromName
+	if fromName == "" {
+		fromName = branding
+	}
+	fromEmail := es.Controller.Options.EmailSmtpFromEmail
+	subject := fmt.Sprintf("Sign in to %s on your phone", branding)
+	subject = removeEmojis(subject)
+
+	htmlBody := fmt.Sprintf(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:24px">
+<h1 style="font-size:20px">Open ThinLine Radio on your device</h1>
+<p>You asked to use <strong>%s</strong> on the mobile app.</p>
+<p><a href="%s" style="display:inline-block;background:#424242;color:#fff;padding:12px 20px;text-decoration:none;border-radius:6px">Add this scanner in the app</a></p>
+<p style="font-size:14px;color:#666">If the button does not work, copy this link into your browser on the device where the app is installed:<br><span style="word-break:break-all">%s</span></p>
+<p style="font-size:14px;color:#666">This link can only be used once after you enter your account password in the app.</p>
+</body></html>`, html.EscapeString(branding), setupURL, html.EscapeString(setupURL))
+	htmlBody = removeEmojisFromHTML(htmlBody)
+
+	if err := es.sendEmail(fromName, fromEmail, user.Email, subject, htmlBody); err != nil {
+		return err
+	}
+	log.Printf("Mobile setup email sent to %s", user.Email)
+	return nil
+}
+
 // getSignupVerificationEmailHTML generates the HTML content for signup verification code emails
 func getSignupVerificationEmailHTML(email, verificationCode, branding, logoURL, borderRadius string) string {
 	if branding == "" {

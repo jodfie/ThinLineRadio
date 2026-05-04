@@ -1830,6 +1830,35 @@ func migrateUserAccountExpiresAt(db *Database) error {
 	return nil
 }
 
+// migrateUserMobileSetupToken adds one-time mobile app sign-in link columns
+func migrateUserMobileSetupToken(db *Database) error {
+	queries := []string{
+		`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "mobileSetupTokenHash" TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "mobileSetupTokenExpires" BIGINT NOT NULL DEFAULT 0`,
+	}
+	for _, q := range queries {
+		if _, err := db.Sql.Exec(q); err != nil {
+			errStr := strings.ToLower(err.Error())
+			if !strings.Contains(errStr, "duplicate") && !strings.Contains(errStr, "exists") {
+				return fmt.Errorf("migrateUserMobileSetupToken: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+// migrateUserMobileWelcomeEmailSent records whether the one-time mobile welcome email was already sent.
+func migrateUserMobileWelcomeEmailSent(db *Database) error {
+	query := `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "mobileWelcomeEmailSent" boolean NOT NULL DEFAULT false`
+	if _, err := db.Sql.Exec(query); err != nil {
+		errStr := strings.ToLower(err.Error())
+		if !strings.Contains(errStr, "duplicate") && !strings.Contains(errStr, "exists") {
+			return fmt.Errorf("migrateUserMobileWelcomeEmailSent: %w", err)
+		}
+	}
+	return nil
+}
+
 // migrateUserForcePasswordReset adds forcePasswordReset column to users table
 func migrateUserForcePasswordReset(db *Database) error {
 	query := `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "forcePasswordReset" boolean NOT NULL DEFAULT false`
@@ -2093,6 +2122,37 @@ func migrateFixUserTimestamps(db *Database) error {
 	}
 
 	log.Printf("Fixed user timestamps - set createdAt to current time for %d users", currentTime)
+	return nil
+}
+
+// migrateRelayListenerEmailsResync clears relayListenerEmailsInitialSyncDone so the scanner
+// performs a full POST to /api/scanner-listener-emails on the next startup. One-time fix for
+// upgrades where the flag was saved before emails reached the relay, or relay was unreachable.
+func migrateRelayListenerEmailsResync(db *Database) error {
+	const migrationName = "20260504000000-relay-listener-emails-resync"
+	formatError := errorFormatter("migration", "migrateRelayListenerEmailsResync")
+
+	var count int
+	if err := db.Sql.QueryRow(`SELECT COUNT(*) FROM "rdioScannerMeta" WHERE "name" = '` + migrationName + `'`).Scan(&count); err != nil {
+		return formatError(err, "checking migration status")
+	}
+	if count > 0 {
+		return nil
+	}
+
+	log.Printf("running database migration %s", migrationName)
+
+	res, err := db.Sql.Exec(`UPDATE "options" SET "value" = 'false' WHERE "key" = 'relayListenerEmailsInitialSyncDone'`)
+	if err != nil {
+		return formatError(err, "clear relayListenerEmailsInitialSyncDone")
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("relay listener emails: reset initial-sync flag for one-time full resync to relay (%d row(s))", n)
+	}
+
+	if _, err := db.Sql.Exec(`INSERT INTO "rdioScannerMeta" ("name") VALUES ('` + migrationName + `')`); err != nil {
+		return formatError(err, "recording migration")
+	}
 	return nil
 }
 

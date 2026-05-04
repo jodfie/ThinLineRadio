@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"golang.org/x/crypto/bcrypt"
@@ -84,6 +85,9 @@ type Options struct {
 	StripeGracePeriodDays         uint                `json:"stripeGracePeriodDays"`
 	StripePriceId                 string              `json:"stripePriceId"`
 	BaseUrl                       string              `json:"baseUrl"`
+	// Optional overrides for mobile app store links (shown on post-verify welcome, emails, etc.)
+	IOSAppStoreURL     string `json:"iosAppStoreUrl"`
+	AndroidPlayStoreURL string `json:"androidPlayStoreUrl"`
 	TranscriptionConfig           TranscriptionConfig `json:"transcriptionConfig"`
 	TranscriptionEnhancement      bool                `json:"transcriptionEnhancement"`
 	TranscriptionFailureThreshold uint                `json:"transcriptionFailureThreshold"`
@@ -109,6 +113,8 @@ type Options struct {
 	NoAudioRepeatMinutes              uint   `json:"noAudioRepeatMinutes"`
 	RelayServerURL                    string `json:"relayServerURL"`
 	RelayServerAPIKey                 string `json:"relayServerAPIKey"`
+	// After a successful one-time POST of all listener emails to the relay, this stays true (persisted).
+	RelayListenerEmailsInitialSyncDone bool `json:"relayListenerEmailsInitialSyncDone"`
 	// When the relay has fully suspended this server, the operator may unlock the public web UI from admin;
 	// push notifications stay disabled until the relay clears suspension.
 	RelayOwnerUnlockedPublicClient bool `json:"relayOwnerUnlockedPublicClient"`
@@ -575,6 +581,15 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		options.BaseUrl = defaults.options.baseUrl
 	}
 
+	switch v := m["iosAppStoreUrl"].(type) {
+	case string:
+		options.IOSAppStoreURL = v
+	}
+	switch v := m["androidPlayStoreUrl"].(type) {
+	case string:
+		options.AndroidPlayStoreURL = v
+	}
+
 	switch v := m["centralManagementEnabled"].(type) {
 	case bool:
 		options.CentralManagementEnabled = v
@@ -655,6 +670,13 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		options.RelayServerAPIKey = v
 	default:
 		options.RelayServerAPIKey = ""
+	}
+
+	switch v := m["relayListenerEmailsInitialSyncDone"].(type) {
+	case bool:
+		options.RelayListenerEmailsInitialSyncDone = v
+	default:
+		options.RelayListenerEmailsInitialSyncDone = false
 	}
 
 	switch v := m["relayOwnerUnlockedPublicClient"].(type) {
@@ -1417,6 +1439,20 @@ func (options *Options) Read(db *Database) error {
 					options.BaseUrl = v
 				}
 			}
+		case "iosAppStoreUrl":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case string:
+					options.IOSAppStoreURL = v
+				}
+			}
+		case "androidPlayStoreUrl":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case string:
+					options.AndroidPlayStoreURL = v
+				}
+			}
 		case "transcriptionConfig":
 			var cfg TranscriptionConfig
 			if err := json.Unmarshal([]byte(value.String), &cfg); err == nil {
@@ -1558,6 +1594,13 @@ func (options *Options) Read(db *Database) error {
 				switch v := f.(type) {
 				case string:
 					options.RelayServerAPIKey = v
+				}
+			}
+		case "relayListenerEmailsInitialSyncDone":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case bool:
+					options.RelayListenerEmailsInitialSyncDone = v
 				}
 			}
 		case "relayOwnerUnlockedPublicClient":
@@ -1788,6 +1831,8 @@ func (options *Options) Write(db *Database) error {
 	set("stripeGracePeriodDays", options.StripeGracePeriodDays)
 	set("stripePriceId", options.StripePriceId)
 	set("baseUrl", options.BaseUrl)
+	set("iosAppStoreUrl", options.IOSAppStoreURL)
+	set("androidPlayStoreUrl", options.AndroidPlayStoreURL)
 	set("alertRetentionDays", options.AlertRetentionDays)
 	set("transcriptionFailureThreshold", options.TranscriptionFailureThreshold)
 	set("toneDetectionIssueThreshold", options.ToneDetectionIssueThreshold)
@@ -1806,6 +1851,7 @@ func (options *Options) Write(db *Database) error {
 	set("noAudioRepeatMinutes", options.NoAudioRepeatMinutes)
 	set("relayServerURL", options.RelayServerURL)
 	set("relayServerAPIKey", options.RelayServerAPIKey)
+	set("relayListenerEmailsInitialSyncDone", options.RelayListenerEmailsInitialSyncDone)
 	set("relayOwnerUnlockedPublicClient", options.RelayOwnerUnlockedPublicClient)
 	set("audioEncryptionEnabled", options.AudioEncryptionEnabled)
 	set("maxDownloadsPerWindow", options.MaxDownloadsPerWindow)
@@ -1867,4 +1913,27 @@ func (options *Options) WriteKey(db *Database, key string, val any, setInMemory 
 	setInMemory()
 	options.mutex.Unlock()
 	return nil
+}
+
+const (
+	defaultIOSAppStoreURL     = "https://apps.apple.com/us/app/ohiorsn/id6740734031"
+	defaultAndroidPlayStoreURL = "https://play.google.com/store/apps/details?id=com.thinlinedynamicsolutions.ohiorsn"
+)
+
+func (o *Options) EffectiveIOSAppStoreURL() string {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	if s := strings.TrimSpace(o.IOSAppStoreURL); s != "" {
+		return s
+	}
+	return defaultIOSAppStoreURL
+}
+
+func (o *Options) EffectiveAndroidPlayStoreURL() string {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+	if s := strings.TrimSpace(o.AndroidPlayStoreURL); s != "" {
+		return s
+	}
+	return defaultAndroidPlayStoreURL
 }

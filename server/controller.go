@@ -3054,6 +3054,13 @@ func (controller *Controller) Start() error {
 	}
 	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("startup: database load completed in %s", time.Since(dbReadStart).Round(time.Millisecond)))
 
+	controller.Users.SetRelayListenerEmailSyncCallbacks(
+		controller.relayListenerEmailAdded,
+		controller.relayListenerEmailRemoved,
+		controller.relayListenerEmailChanged,
+	)
+	go controller.maybeBootstrapRelayListenerEmails()
+
 	// Fetch Radio Reference API key from relay server if not already stored.
 	// Run in background — the server does not need this key to start accepting calls.
 	if controller.Options.RadioReferenceAPIKey == "" {

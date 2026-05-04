@@ -63,6 +63,9 @@ type User struct {
 	PasswordChangeCode        string
 	PasswordChangeCodeExpires uint64
 	AccountExpiresAt          uint64 // Unix timestamp, 0 = no expiration
+	MobileSetupTokenHash     string // SHA256 hex of one-time mobile setup token; empty = none
+	MobileSetupTokenExpires  uint64 // legacy time-box field; validity is hash match until consume clears it
+	MobileWelcomeEmailSent   bool   // one-time mobile app welcome / setup link email already sent
 	systemsData               any
 	systemDelaysMap           map[uint64]uint
 	talkgroupDelaysMap        map[string]uint
@@ -76,6 +79,11 @@ type Users struct {
 	// Maintained alongside users so push notification billing never has to scan
 	// the full user list just to find the admin's subscription status.
 	groupAdmins map[uint64]*User
+
+	relayListenerMu                sync.Mutex
+	onRelayListenerEmailAdded     func(email string)
+	onRelayListenerEmailRemoved   func(email string)
+	onRelayListenerEmailChanged   func(oldEmail, newEmail string)
 }
 
 func NewUsers() *Users {
@@ -83,6 +91,55 @@ func NewUsers() *Users {
 		users:       make(map[uint64]*User),
 		pins:        make(map[string]*User),
 		groupAdmins: make(map[uint64]*User),
+	}
+}
+
+// SetRelayListenerEmailSyncCallbacks notifies the relay when listener emails are added, removed, or changed.
+func (users *Users) SetRelayListenerEmailSyncCallbacks(added func(string), removed func(string), changed func(oldEmail, newEmail string)) {
+	users.relayListenerMu.Lock()
+	users.onRelayListenerEmailAdded = added
+	users.onRelayListenerEmailRemoved = removed
+	users.onRelayListenerEmailChanged = changed
+	users.relayListenerMu.Unlock()
+}
+
+func (users *Users) notifyRelayListenerEmailAdded(email string) {
+	e := NormalizeEmail(email)
+	if e == "" || ValidateEmail(e) != nil {
+		return
+	}
+	users.relayListenerMu.Lock()
+	fn := users.onRelayListenerEmailAdded
+	users.relayListenerMu.Unlock()
+	if fn != nil {
+		go fn(e)
+	}
+}
+
+func (users *Users) notifyRelayListenerEmailRemoved(email string) {
+	e := NormalizeEmail(email)
+	if e == "" || ValidateEmail(e) != nil {
+		return
+	}
+	users.relayListenerMu.Lock()
+	fn := users.onRelayListenerEmailRemoved
+	users.relayListenerMu.Unlock()
+	if fn != nil {
+		go fn(e)
+	}
+}
+
+func (users *Users) notifyRelayListenerEmailChanged(oldEmail, newEmail string) {
+	oldN := NormalizeEmail(oldEmail)
+	newN := NormalizeEmail(newEmail)
+	if oldN == newN {
+		return
+	}
+	users.relayListenerMu.Lock()
+	fn := users.onRelayListenerEmailChanged
+	users.relayListenerMu.Unlock()
+	if fn != nil {
+		go fn(oldN, newN)
 	}
 }
 
@@ -563,13 +620,19 @@ func (users *Users) Add(user *User) error {
 
 func (users *Users) Update(user *User) error {
 	users.mutex.Lock()
-	defer users.mutex.Unlock()
 
 	user.ensurePinsLoaded()
 	user.loadSystemScopes()
 	user.loadDelayMaps()
 
+	var oldEmailForRelay, newEmailForRelay string
+	var emailChanged bool
 	if existing, ok := users.users[user.Id]; ok {
+		if NormalizeEmail(existing.Email) != NormalizeEmail(user.Email) {
+			emailChanged = true
+			oldEmailForRelay = existing.Email
+			newEmailForRelay = user.Email
+		}
 		if existing.Pin != "" && existing.Pin != user.Pin {
 			delete(users.pins, existing.Pin)
 		}
@@ -592,14 +655,21 @@ func (users *Users) Update(user *User) error {
 			delete(users.groupAdmins, user.UserGroupId)
 		}
 	}
+	users.mutex.Unlock()
+
+	if emailChanged {
+		users.notifyRelayListenerEmailChanged(oldEmailForRelay, newEmailForRelay)
+	}
 	return nil
 }
 
 func (users *Users) Remove(id uint64) error {
 	users.mutex.Lock()
-	defer users.mutex.Unlock()
-
+	removed := false
+	var removedEmail string
 	if user, ok := users.users[id]; ok {
+		removed = true
+		removedEmail = user.Email
 		if user.Pin != "" {
 			delete(users.pins, user.Pin)
 		}
@@ -609,6 +679,11 @@ func (users *Users) Remove(id uint64) error {
 			}
 		}
 		delete(users.users, id)
+	}
+	users.mutex.Unlock()
+
+	if removed {
+		users.notifyRelayListenerEmailRemoved(removedEmail)
 	}
 	return nil
 }
@@ -623,7 +698,7 @@ func (users *Users) Read(db *Database) error {
 	users.pins = make(map[string]*User)
 	users.groupAdmins = make(map[uint64]*User)
 
-	rows, err := db.Sql.Query(`SELECT "userId", "email", "password", "pin", "pinExpiresAt", "connectionLimit", "verified", "verificationToken", "createdAt", "lastLogin", "firstName", "lastName", "zipCode", "systems", "talkgroups", "delay", "systemDelays", "talkgroupDelays", "settings", "stripeCustomerId", "stripeSubscriptionId", "subscriptionStatus", "userGroupId", "isGroupAdmin", COALESCE("systemAdmin", false), COALESCE("forcePasswordReset", false), "resetCode", "resetCodeExpires", "accountExpiresAt" FROM "users"`)
+	rows, err := db.Sql.Query(`SELECT "userId", "email", "password", "pin", "pinExpiresAt", "connectionLimit", "verified", "verificationToken", "createdAt", "lastLogin", "firstName", "lastName", "zipCode", "systems", "talkgroups", "delay", "systemDelays", "talkgroupDelays", "settings", "stripeCustomerId", "stripeSubscriptionId", "subscriptionStatus", "userGroupId", "isGroupAdmin", COALESCE("systemAdmin", false), COALESCE("forcePasswordReset", false), "resetCode", "resetCodeExpires", "accountExpiresAt", COALESCE("mobileSetupTokenHash", ''), COALESCE("mobileSetupTokenExpires", 0), COALESCE("mobileWelcomeEmailSent", false) FROM "users"`)
 	if err != nil {
 		return formatError(err, "")
 	}
@@ -644,8 +719,11 @@ func (users *Users) Read(db *Database) error {
 		var resetCode sql.NullString
 		var resetCodeExpires sql.NullInt64
 		var accountExpiresAt sql.NullInt64
+		var mobileSetupTokenHash sql.NullString
+		var mobileSetupTokenExpires sql.NullInt64
+		var mobileWelcomeEmailSent sql.NullBool
 
-		err := rows.Scan(&user.Id, &user.Email, &user.Password, &pin, &pinExpiresAt, &connectionLimit, &user.Verified, &user.VerificationToken, &user.CreatedAt, &user.LastLogin, &user.FirstName, &user.LastName, &user.ZipCode, &systems, &talkgroups, &user.Delay, &systemDelays, &talkgroupDelays, &settings, &stripeCustomerId, &stripeSubscriptionId, &subscriptionStatus, &userGroupId, &isGroupAdmin, &systemAdmin, &forcePasswordReset, &resetCode, &resetCodeExpires, &accountExpiresAt)
+		err := rows.Scan(&user.Id, &user.Email, &user.Password, &pin, &pinExpiresAt, &connectionLimit, &user.Verified, &user.VerificationToken, &user.CreatedAt, &user.LastLogin, &user.FirstName, &user.LastName, &user.ZipCode, &systems, &talkgroups, &user.Delay, &systemDelays, &talkgroupDelays, &settings, &stripeCustomerId, &stripeSubscriptionId, &subscriptionStatus, &userGroupId, &isGroupAdmin, &systemAdmin, &forcePasswordReset, &resetCode, &resetCodeExpires, &accountExpiresAt, &mobileSetupTokenHash, &mobileSetupTokenExpires, &mobileWelcomeEmailSent)
 		if err != nil {
 			return formatError(err, "")
 		}
@@ -704,6 +782,15 @@ func (users *Users) Read(db *Database) error {
 		}
 		if accountExpiresAt.Valid {
 			user.AccountExpiresAt = uint64(accountExpiresAt.Int64)
+		}
+		if mobileSetupTokenHash.Valid {
+			user.MobileSetupTokenHash = mobileSetupTokenHash.String
+		}
+		if mobileSetupTokenExpires.Valid {
+			user.MobileSetupTokenExpires = uint64(mobileSetupTokenExpires.Int64)
+		}
+		if mobileWelcomeEmailSent.Valid {
+			user.MobileWelcomeEmailSent = mobileWelcomeEmailSent.Bool
 		}
 
 		if settings.Valid {
@@ -804,8 +891,8 @@ func (users *Users) Write(db *Database) error {
 				accountExpiresAtVal = int64(0)
 			}
 
-			result, err := db.Sql.Exec(`INSERT INTO "users" ("email", "password", "pin", "pinExpiresAt", "connectionLimit", "verified", "verificationToken", "createdAt", "lastLogin", "firstName", "lastName", "zipCode", "systems", "talkgroups", "delay", "systemDelays", "talkgroupDelays", "settings", "stripeCustomerId", "stripeSubscriptionId", "subscriptionStatus", "userGroupId", "isGroupAdmin", "systemAdmin", "forcePasswordReset", "resetCode", "resetCodeExpires", "accountExpiresAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`,
-				user.Email, user.Password, pin, pinExpiresAt, connectionLimit, user.Verified, user.VerificationToken, createdAtStr, lastLoginStr, user.FirstName, user.LastName, user.ZipCode, systems, talkgroups, user.Delay, systemDelays, talkgroupDelays, settings, stripeCustomerId, stripeSubscriptionId, subscriptionStatus, user.UserGroupId, user.IsGroupAdmin, user.SystemAdmin, user.ForcePasswordReset, resetCodeVal, resetCodeExpiresVal, accountExpiresAtVal)
+			result, err := db.Sql.Exec(`INSERT INTO "users" ("email", "password", "pin", "pinExpiresAt", "connectionLimit", "verified", "verificationToken", "createdAt", "lastLogin", "firstName", "lastName", "zipCode", "systems", "talkgroups", "delay", "systemDelays", "talkgroupDelays", "settings", "stripeCustomerId", "stripeSubscriptionId", "subscriptionStatus", "userGroupId", "isGroupAdmin", "systemAdmin", "forcePasswordReset", "resetCode", "resetCodeExpires", "accountExpiresAt", "mobileSetupTokenHash", "mobileSetupTokenExpires", "mobileWelcomeEmailSent") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)`,
+				user.Email, user.Password, pin, pinExpiresAt, connectionLimit, user.Verified, user.VerificationToken, createdAtStr, lastLoginStr, user.FirstName, user.LastName, user.ZipCode, systems, talkgroups, user.Delay, systemDelays, talkgroupDelays, settings, stripeCustomerId, stripeSubscriptionId, subscriptionStatus, user.UserGroupId, user.IsGroupAdmin, user.SystemAdmin, user.ForcePasswordReset, resetCodeVal, resetCodeExpiresVal, accountExpiresAtVal, user.MobileSetupTokenHash, int64(user.MobileSetupTokenExpires), user.MobileWelcomeEmailSent)
 			if err != nil {
 				return formatError(err, "")
 			}
@@ -864,8 +951,8 @@ func (users *Users) Write(db *Database) error {
 				accountExpiresAtVal = int64(0)
 			}
 
-			_, err = db.Sql.Exec(`UPDATE "users" SET "email"=$1, "password"=$2, "pin"=$3, "pinExpiresAt"=$4, "connectionLimit"=$5, "verified"=$6, "verificationToken"=$7, "createdAt"=$8, "lastLogin"=$9, "firstName"=$10, "lastName"=$11, "zipCode"=$12, "systems"=$13, "talkgroups"=$14, "delay"=$15, "systemDelays"=$16, "talkgroupDelays"=$17, "settings"=$18, "stripeCustomerId"=$19, "stripeSubscriptionId"=$20, "subscriptionStatus"=$21, "userGroupId"=$22, "isGroupAdmin"=$23, "systemAdmin"=$24, "forcePasswordReset"=$25, "resetCode"=$26, "resetCodeExpires"=$27, "accountExpiresAt"=$28 WHERE "userId"=$29`,
-				user.Email, user.Password, pin, pinExpiresAt, connectionLimit, user.Verified, user.VerificationToken, createdAtStr, lastLoginStr, user.FirstName, user.LastName, user.ZipCode, systems, talkgroups, user.Delay, systemDelays, talkgroupDelays, settings, stripeCustomerId, stripeSubscriptionId, subscriptionStatus, user.UserGroupId, user.IsGroupAdmin, user.SystemAdmin, user.ForcePasswordReset, resetCodeVal, resetCodeExpiresVal, accountExpiresAtVal, user.Id)
+			_, err = db.Sql.Exec(`UPDATE "users" SET "email"=$1, "password"=$2, "pin"=$3, "pinExpiresAt"=$4, "connectionLimit"=$5, "verified"=$6, "verificationToken"=$7, "createdAt"=$8, "lastLogin"=$9, "firstName"=$10, "lastName"=$11, "zipCode"=$12, "systems"=$13, "talkgroups"=$14, "delay"=$15, "systemDelays"=$16, "talkgroupDelays"=$17, "settings"=$18, "stripeCustomerId"=$19, "stripeSubscriptionId"=$20, "subscriptionStatus"=$21, "userGroupId"=$22, "isGroupAdmin"=$23, "systemAdmin"=$24, "forcePasswordReset"=$25, "resetCode"=$26, "resetCodeExpires"=$27, "accountExpiresAt"=$28, "mobileSetupTokenHash"=$29, "mobileSetupTokenExpires"=$30, "mobileWelcomeEmailSent"=$31 WHERE "userId"=$32`,
+				user.Email, user.Password, pin, pinExpiresAt, connectionLimit, user.Verified, user.VerificationToken, createdAtStr, lastLoginStr, user.FirstName, user.LastName, user.ZipCode, systems, talkgroups, user.Delay, systemDelays, talkgroupDelays, settings, stripeCustomerId, stripeSubscriptionId, subscriptionStatus, user.UserGroupId, user.IsGroupAdmin, user.SystemAdmin, user.ForcePasswordReset, resetCodeVal, resetCodeExpiresVal, accountExpiresAtVal, user.MobileSetupTokenHash, int64(user.MobileSetupTokenExpires), user.MobileWelcomeEmailSent, user.Id)
 			if err != nil {
 				return formatError(err, "")
 			}
@@ -1002,8 +1089,8 @@ func (users *Users) SaveNewUser(user *User, db *Database) error {
 	}
 
 	// Insert user with all fields including systems, delays, settings, and Stripe data
-	err := db.Sql.QueryRow(`INSERT INTO "users" ("email", "password", "pin", "pinExpiresAt", "connectionLimit", "verified", "verificationToken", "createdAt", "lastLogin", "firstName", "lastName", "zipCode", "systems", "talkgroups", "delay", "systemDelays", "talkgroupDelays", "settings", "stripeCustomerId", "stripeSubscriptionId", "subscriptionStatus", "accountExpiresAt", "userGroupId", "isGroupAdmin", "systemAdmin", "forcePasswordReset") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26) RETURNING "userId"`,
-		user.Email, user.Password, user.Pin, user.PinExpiresAt, user.ConnectionLimit, user.Verified, user.VerificationToken, createdAtStr, lastLoginStr, user.FirstName, user.LastName, user.ZipCode, systems, user.Talkgroups, user.Delay, systemDelays, talkgroupDelays, settings, stripeCustomerId, stripeSubscriptionId, subscriptionStatus, user.AccountExpiresAt, user.UserGroupId, user.IsGroupAdmin, user.SystemAdmin, user.ForcePasswordReset).Scan(&userId)
+	err := db.Sql.QueryRow(`INSERT INTO "users" ("email", "password", "pin", "pinExpiresAt", "connectionLimit", "verified", "verificationToken", "createdAt", "lastLogin", "firstName", "lastName", "zipCode", "systems", "talkgroups", "delay", "systemDelays", "talkgroupDelays", "settings", "stripeCustomerId", "stripeSubscriptionId", "subscriptionStatus", "accountExpiresAt", "userGroupId", "isGroupAdmin", "systemAdmin", "forcePasswordReset", "mobileSetupTokenHash", "mobileSetupTokenExpires", "mobileWelcomeEmailSent") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) RETURNING "userId"`,
+		user.Email, user.Password, user.Pin, user.PinExpiresAt, user.ConnectionLimit, user.Verified, user.VerificationToken, createdAtStr, lastLoginStr, user.FirstName, user.LastName, user.ZipCode, systems, user.Talkgroups, user.Delay, systemDelays, talkgroupDelays, settings, stripeCustomerId, stripeSubscriptionId, subscriptionStatus, user.AccountExpiresAt, user.UserGroupId, user.IsGroupAdmin, user.SystemAdmin, user.ForcePasswordReset, user.MobileSetupTokenHash, int64(user.MobileSetupTokenExpires), user.MobileWelcomeEmailSent).Scan(&userId)
 	if err != nil {
 		return formatError(err, "")
 	}
@@ -1023,6 +1110,7 @@ func (users *Users) SaveNewUser(user *User, db *Database) error {
 	}
 	users.mutex.Unlock()
 
+	users.notifyRelayListenerEmailAdded(user.Email)
 	return nil
 }
 

@@ -447,9 +447,8 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
       }
       
       this.http.post('/api/user/register', formData).subscribe({
-        next: (response: any) => {
+        next: async (response: any) => {
           this.loading = false;
-          this.success = true;
           const pin = response?.pin;
           if (typeof pin === 'string' && pin.length > 0) {
             this.generatedPin = pin;
@@ -457,6 +456,15 @@ export class RdioScannerUserRegistrationComponent implements OnInit {
           } else {
             this.generatedPin = null;
           }
+          const alreadyVerified =
+            response?.verified === true || response?.message === 'User registered successfully.';
+          if (alreadyVerified) {
+            this.success = false;
+            const email = (this.registrationForm.value.email || '').toLowerCase();
+            await this.router.navigate(['/setup/plan'], { queryParams: { email } });
+            return;
+          }
+          this.success = true;
         },
         error: (error) => {
           this.loading = false;

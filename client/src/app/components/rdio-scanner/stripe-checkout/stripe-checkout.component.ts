@@ -30,6 +30,10 @@ declare var Stripe: any;
 export class RdioScannerStripeCheckoutComponent implements OnInit, OnDestroy {
   @Input() config!: RdioScannerConfig;
   @Input() email!: string;
+  /** When set, used as Stripe success_url (e.g. post-verify flow). Otherwise defaults to /?checkout=success */
+  @Input() customSuccessUrl: string | null = null;
+  /** When set, used as Stripe cancel_url. Otherwise defaults to /?checkout=cancel */
+  @Input() customCancelUrl: string | null = null;
   @Input() isChangingPlan: boolean = false;
   @Input() currentPriceId: string | null = null;
   @Output() checkoutSuccess = new EventEmitter<any>();
@@ -98,8 +102,12 @@ export class RdioScannerStripeCheckoutComponent implements OnInit, OnDestroy {
     try {
       // Create checkout session on the backend
       const baseUrl = window.location.origin;
-      const successUrl = `${baseUrl}/?checkout=success`;
-      const cancelUrl = `${baseUrl}/?checkout=cancel`;
+      const successUrl = this.customSuccessUrl && this.customSuccessUrl.length > 0
+        ? this.customSuccessUrl
+        : `${baseUrl}/?checkout=success`;
+      const cancelUrl = this.customCancelUrl && this.customCancelUrl.length > 0
+        ? this.customCancelUrl
+        : `${baseUrl}/?checkout=cancel`;
       
       const response = await fetch('/api/stripe/create-checkout-session', {
         method: 'POST',

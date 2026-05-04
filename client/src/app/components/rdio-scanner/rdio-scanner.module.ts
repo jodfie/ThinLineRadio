@@ -32,6 +32,8 @@ import { SystemsVisibilityDialogComponent } from './select/systems-visibility-di
 import { RdioScannerUserLoginComponent } from './user-login/user-login.component';
 import { RdioScannerUserRegistrationComponent } from './user-registration/user-registration.component';
 import { RdioScannerEmailVerificationComponent } from './email-verification/email-verification.component';
+import { RdioScannerPostVerifyPlanComponent } from './post-verify-plan/post-verify-plan.component';
+import { RdioScannerPostVerifyWelcomeComponent } from './post-verify-welcome/post-verify-welcome.component';
 import { RdioScannerAuthScreenComponent } from './auth-screen/auth-screen.component';
 import { RdioScannerStripeCheckoutComponent } from './stripe-checkout/stripe-checkout.component';
 import { RdioScannerSettingsComponent } from './settings/settings.component';
@@ -59,6 +61,8 @@ import { RdioScannerMobileWebHubComponent } from './mobile-web-hub/mobile-web-hu
         RdioScannerUserLoginComponent,
         RdioScannerUserRegistrationComponent,
         RdioScannerEmailVerificationComponent,
+        RdioScannerPostVerifyPlanComponent,
+        RdioScannerPostVerifyWelcomeComponent,
         RdioScannerAuthScreenComponent,
         RdioScannerStripeCheckoutComponent,
         RdioScannerSettingsComponent,

@@ -109,13 +109,15 @@ window.initialConfig = {
 		"stripePublishableKey": %q,
 		"stripePriceId": %q,
 		"baseUrl": %q,
+		"iosAppStoreUrl": %q,
+		"androidPlayStoreUrl": %q,
 		"emailLogoFilename": %q,
 		"emailLogoBorderRadius": %q,
 		"turnstileEnabled": %t,
 		"turnstileSiteKey": %q
 	}
 };
-</script>`, branding, email, controller.Options.UserRegistrationEnabled, controller.Options.StripePaywallEnabled, controller.Options.StripePublishableKey, controller.Options.StripePriceId, controller.Options.BaseUrl, controller.Options.EmailLogoFilename, controller.Options.EmailLogoBorderRadius, controller.Options.TurnstileEnabled, controller.Options.TurnstileSiteKey)
+</script>`, branding, email, controller.Options.UserRegistrationEnabled, controller.Options.StripePaywallEnabled, controller.Options.StripePublishableKey, controller.Options.StripePriceId, controller.Options.BaseUrl, controller.Options.EffectiveIOSAppStoreURL(), controller.Options.EffectiveAndroidPlayStoreURL(), controller.Options.EmailLogoFilename, controller.Options.EmailLogoBorderRadius, controller.Options.TurnstileEnabled, controller.Options.TurnstileSiteKey)
 
 	injected := false
 	if strings.Contains(html, "</head>") {
@@ -442,6 +444,10 @@ func main() {
 	http.HandleFunc("/api/registration-settings", wrapHandler(http.HandlerFunc(controller.Api.RegistrationSettingsHandler)).ServeHTTP)
 	http.HandleFunc("/api/user/validate-access-code", wrapHandler(http.HandlerFunc(controller.Api.ValidateAccessCodeHandler)).ServeHTTP)
 	http.HandleFunc("/api/user/verify", wrapHandler(http.HandlerFunc(controller.Api.UserVerifyHandler)).ServeHTTP)
+	http.HandleFunc("/api/user/post-verify-plan-context", wrapHandler(http.HandlerFunc(controller.Api.PostVerifyPlanContextHandler)).ServeHTTP)
+	http.HandleFunc("/api/mobile-setup-landing", wrapHandler(http.HandlerFunc(controller.Api.MobileSetupLandingHandler)).ServeHTTP)
+	http.HandleFunc("/api/user/mobile-setup/consume", wrapHandler(http.HandlerFunc(controller.Api.UserMobileSetupConsumeHandler)).ServeHTTP)
+	http.HandleFunc("/api/public-app-links", wrapHandler(http.HandlerFunc(controller.Api.PublicAppLinksHandler)).ServeHTTP)
 	http.HandleFunc("/api/user/resend-verification", wrapHandler(http.HandlerFunc(controller.Api.UserResendVerificationHandler)).ServeHTTP)
 	http.HandleFunc("/api/user/transfer-to-public", wrapHandler(http.HandlerFunc(controller.Api.UserTransferToPublicHandler)).ServeHTTP)
 	http.HandleFunc("/api/user/forgot-password", wrapHandler(http.HandlerFunc(controller.Api.RequestPasswordResetHandler)).ServeHTTP)
@@ -540,6 +546,7 @@ func main() {
 	http.HandleFunc("/api/webhook/central-set-relay-key", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.CentralWebhookSetRelayAPIKeyHandler))).ServeHTTP)
 	http.HandleFunc("/api/webhook/central-set-hydra-config", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.CentralWebhookSetHydraConfigHandler))).ServeHTTP)
 	http.HandleFunc("/api/webhook/relay-suspension", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.RelaySuspensionWebhookHandler))).ServeHTTP)
+	http.HandleFunc("/api/webhook/relay-listener-pin", securityHeadersWrapper(recoveryMiddleware(http.HandlerFunc(controller.Api.RelayListenerPinWebhookHandler))).ServeHTTP)
 
 	// Central Management pairing endpoint — called by the CM backend to push the API key and
 	// enable centralized mode. Not localhost-restricted; protected by admin password (bcrypt).

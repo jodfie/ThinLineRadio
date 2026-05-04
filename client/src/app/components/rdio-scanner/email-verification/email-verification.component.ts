@@ -101,19 +101,27 @@ export class RdioScannerEmailVerificationComponent implements OnInit, OnDestroy 
     try {
       const response = await this.http.post('/api/user/verify', {
         token: this.token
-      }).toPromise();
+      }).toPromise() as any;
 
       this.loading = false;
-      this.verified = true;
-      this.message = 'Email verified successfully! You can now log in to your account.';
 
-      // Show success message
       this.matSnackBar.open('Email verified successfully!', 'Close', {
-        duration: 5000,
+        duration: 4000,
         panelClass: ['success-snackbar']
       });
 
-      // Redirect to login after 3 seconds
+      const email = (response?.email || '').trim().toLowerCase();
+      if (response?.requiresPlanSelection === true && email) {
+        await this.router.navigate(['/setup/plan'], { queryParams: { email } });
+        return;
+      }
+      if (email) {
+        await this.router.navigate(['/setup/welcome'], { queryParams: { email } });
+        return;
+      }
+
+      this.verified = true;
+      this.message = 'Email verified successfully! You can now log in to your account.';
       setTimeout(() => {
         this.router.navigate(['/']);
       }, 3000);

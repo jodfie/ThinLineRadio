@@ -919,6 +919,8 @@ func (api *Api) UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	verifiedBySignupCode := api.Controller.Options.EmailVerificationRequired && request.AccessCode == ""
+
 	// If user registered via an access/invitation code, mark them as already verified
 	if request.AccessCode != "" {
 		user.Verified = true
@@ -926,17 +928,31 @@ func (api *Api) UserRegisterHandler(w http.ResponseWriter, r *http.Request) {
 		api.Controller.Users.Write(api.Controller.Database)
 		api.Controller.SyncConfigToFile()
 		log.Printf("Auto-verified user %s - registered via access/invitation code", user.Email)
+	} else if verifiedBySignupCode {
+		// Email ownership was already proven with the signup verification code
+		user.Verified = true
+		user.VerificationToken = ""
+		api.Controller.Users.Update(user)
+		api.Controller.Users.Write(api.Controller.Database)
+		api.Controller.SyncConfigToFile()
+		log.Printf("Auto-verified user %s - email confirmed with signup verification code", user.Email)
 	} else if api.Controller.Options.EmailServiceEnabled {
-		// Only send verification email for non-code registrations
+		// Only send link verification email when not using invitation/access code or signup code flow
 		if err := api.Controller.EmailService.SendVerificationEmail(user); err != nil {
 			api.Controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("Failed to send verification email: %v", err))
 		}
 	}
 
+	registerMsg := "User registered successfully. Please check your email for verification."
+	if user.Verified {
+		registerMsg = "User registered successfully."
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message":           "User registered successfully. Please check your email for verification.",
+		"message":           registerMsg,
+		"verified":          user.Verified,
 		"verificationToken": user.VerificationToken,
 		"pin":               user.Pin,
 	})
@@ -1324,6 +1340,76 @@ func (api *Api) UserForcePasswordResetHandler(w http.ResponseWriter, r *http.Req
 	})
 }
 
+// postVerifyRequiresPlanSelection reports whether a verified user must pick a plan and
+// complete Stripe checkout before using the service (matches account billing rules).
+func (api *Api) postVerifyRequiresPlanSelection(user *User) (requires bool, pricingOptions []PricingOption) {
+	if user == nil || user.UserGroupId == 0 {
+		return false, nil
+	}
+	if !api.Controller.Options.StripePaywallEnabled || api.Controller.Options.StripeSecretKey == "" || api.Controller.Options.StripePublishableKey == "" {
+		return false, nil
+	}
+	group := api.Controller.UserGroups.Get(user.UserGroupId)
+	if group == nil || !group.BillingEnabled {
+		return false, nil
+	}
+	pricingOptions = group.GetPricingOptions()
+	if len(pricingOptions) == 0 {
+		return false, nil
+	}
+	var billingRequired bool
+	if group.BillingMode == "group_admin" {
+		billingRequired = user.IsGroupAdmin
+	} else {
+		billingRequired = true
+	}
+	if !billingRequired {
+		return false, nil
+	}
+	if user.SubscriptionStatus == "active" || user.SubscriptionStatus == "trialing" {
+		return false, nil
+	}
+	return true, pricingOptions
+}
+
+// PostVerifyPlanContextHandler returns whether the verified user must complete plan selection,
+// plus public Stripe/pricing data for the post-verify checkout page (no auth).
+func (api *Api) PostVerifyPlanContextHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		api.exitWithError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	email := NormalizeEmail(strings.TrimSpace(r.URL.Query().Get("email")))
+	if email == "" {
+		api.exitWithError(w, http.StatusBadRequest, "Email is required")
+		return
+	}
+	if err := ValidateEmail(email); err != nil {
+		api.exitWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	user := api.Controller.Users.GetUserByEmail(email)
+	if user == nil || !user.Verified {
+		api.exitWithError(w, http.StatusNotFound, "Account not found or email not verified")
+		return
+	}
+	requires, options := api.postVerifyRequiresPlanSelection(user)
+	branding := api.Controller.Options.Branding
+	if branding == "" {
+		branding = "ThinLine Radio"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"requiresPlanSelection":   requires,
+		"pricingOptions":          options,
+		"stripePublishableKey":    api.Controller.Options.StripePublishableKey,
+		"branding":                branding,
+		"email":                   user.Email,
+		"iosAppStoreUrl":          api.Controller.Options.EffectiveIOSAppStoreURL(),
+		"androidPlayStoreUrl":     api.Controller.Options.EffectiveAndroidPlayStoreURL(),
+	})
+}
+
 // User verification handler
 func (api *Api) UserVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodGet {
@@ -1638,14 +1724,29 @@ func (api *Api) UserVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	// Sync config to file if enabled
 	api.Controller.SyncConfigToFile()
 
+	requiresPlan, pricingOptions := api.postVerifyRequiresPlanSelection(user)
+	resp := map[string]interface{}{
+		"message":                 "Email verified successfully",
+		"verified":                true,
+		"email":                   user.Email,
+		"requiresPlanSelection":   requiresPlan,
+		"stripePublishableKey":    api.Controller.Options.StripePublishableKey,
+		"pricingOptions":          pricingOptions,
+		"iosAppStoreUrl":          api.Controller.Options.EffectiveIOSAppStoreURL(),
+		"androidPlayStoreUrl":     api.Controller.Options.EffectiveAndroidPlayStoreURL(),
+	}
+	if !requiresPlan {
+		resp["pricingOptions"] = []PricingOption{}
+	}
+
+	if !requiresPlan {
+		api.sendMobileWelcomeEmailOnce(user)
+	}
+
 	// Return JSON response for API calls
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message":  "Email verified successfully",
-		"verified": true,
-		"email":    user.Email,
-	})
+	json.NewEncoder(w).Encode(resp)
 }
 
 // Resend verification email handler
@@ -2246,6 +2347,79 @@ func (api *Api) handleInvoicePaymentFailed(rawData []byte) {
 	log.Printf("Updated user %s subscription status to past_due after failed payment", user.Email)
 }
 
+func checkoutSessionCustomerID(session *stripe.CheckoutSession) string {
+	if session == nil || session.Customer == nil {
+		return ""
+	}
+	return session.Customer.ID
+}
+
+func checkoutSessionSubscriptionID(session *stripe.CheckoutSession) string {
+	if session == nil || session.Subscription == nil {
+		return ""
+	}
+	return session.Subscription.ID
+}
+
+// resolveUserFromCheckoutSession finds the local user when CustomerEmail is empty (e.g. checkout with an existing Stripe customer).
+func (api *Api) resolveUserFromCheckoutSession(session *stripe.CheckoutSession) *User {
+	if session == nil {
+		return nil
+	}
+	if ref := strings.TrimSpace(session.ClientReferenceID); ref != "" {
+		if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
+			if u := api.Controller.Users.GetUserById(id); u != nil {
+				return u
+			}
+		}
+	}
+	email := strings.TrimSpace(session.CustomerEmail)
+	if email != "" {
+		if u := api.Controller.Users.GetUserByEmail(NormalizeEmail(email)); u != nil {
+			return u
+		}
+	}
+	if session.CustomerDetails != nil {
+		if em := strings.TrimSpace(session.CustomerDetails.Email); em != "" {
+			if u := api.Controller.Users.GetUserByEmail(NormalizeEmail(em)); u != nil {
+				return u
+			}
+		}
+	}
+	customerID := checkoutSessionCustomerID(session)
+	if customerID != "" {
+		if u := api.Controller.Users.GetUserByStripeCustomerId(customerID); u != nil {
+			return u
+		}
+	}
+	if session.Metadata != nil {
+		if uidStr := strings.TrimSpace(session.Metadata["rdio_user_id"]); uidStr != "" {
+			if id, err := strconv.ParseUint(uidStr, 10, 64); err == nil {
+				if u := api.Controller.Users.GetUserById(id); u != nil {
+					return u
+				}
+			}
+		}
+		if em := strings.TrimSpace(session.Metadata["rdio_user_email"]); em != "" {
+			if u := api.Controller.Users.GetUserByEmail(NormalizeEmail(em)); u != nil {
+				return u
+			}
+		}
+	}
+	if customerID != "" && api.Controller.Options.StripeSecretKey != "" {
+		stripe.Key = api.Controller.Options.StripeSecretKey
+		c, err := customer.Get(customerID, nil)
+		if err != nil {
+			log.Printf("resolveUserFromCheckoutSession: Stripe customer.Get %s: %v", customerID, err)
+			return nil
+		}
+		if em := strings.TrimSpace(c.Email); em != "" {
+			return api.Controller.Users.GetUserByEmail(NormalizeEmail(em))
+		}
+	}
+	return nil
+}
+
 // Handle checkout session completed
 func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 	var session stripe.CheckoutSession
@@ -2258,16 +2432,18 @@ func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 	log.Printf("=== DEBUG: Checkout session completed ===")
 	log.Printf("DEBUG: Email: %s", session.CustomerEmail)
 	log.Printf("DEBUG: Session ID: %s", session.ID)
-	log.Printf("DEBUG: Customer ID: %s", session.Customer.ID)
-	log.Printf("DEBUG: Subscription ID: %s", session.Subscription.ID)
+	customerID := checkoutSessionCustomerID(&session)
+	subscriptionID := checkoutSessionSubscriptionID(&session)
+	log.Printf("DEBUG: Customer ID: %s", customerID)
+	log.Printf("DEBUG: Subscription ID: %s", subscriptionID)
+	log.Printf("DEBUG: ClientReferenceID: %s", session.ClientReferenceID)
 	log.Printf("DEBUG: Payment Status: %s", session.PaymentStatus)
 	log.Printf("DEBUG: Session Status: %s", session.Status)
 	log.Printf("DEBUG: Session Mode: %s", session.Mode)
 
-	// Find user by email
-	user := api.Controller.Users.GetUserByEmail(session.CustomerEmail)
+	user := api.resolveUserFromCheckoutSession(&session)
 	if user == nil {
-		log.Printf("DEBUG: ✗ User not found for email: %s", session.CustomerEmail)
+		log.Printf("DEBUG: ✗ User not found for checkout session (email=%q customer=%q ref=%q)", session.CustomerEmail, customerID, session.ClientReferenceID)
 		return
 	}
 
@@ -2288,8 +2464,8 @@ func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 	if session.PaymentStatus != "paid" && session.PaymentStatus != "no_payment_required" && session.PaymentStatus != "unpaid" {
 		log.Printf("DEBUG: ✗ Payment not successful (PaymentStatus: %s). User account will NOT be activated.", session.PaymentStatus)
 		// Update Stripe customer ID if available, but do not activate account
-		if session.Customer.ID != "" {
-			user.StripeCustomerId = session.Customer.ID
+		if customerID != "" {
+			user.StripeCustomerId = customerID
 		}
 		user.SubscriptionStatus = "incomplete"
 		// Expire PIN immediately if payment failed
@@ -2304,17 +2480,17 @@ func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 	}
 
 	// Verify subscription status - this is the critical check
-	if session.Subscription.ID != "" {
+	if subscriptionID != "" {
 		// Set Stripe API key
 		stripe.Key = api.Controller.Options.StripeSecretKey
 		if stripe.Key != "" {
-			fetchedSub, err := subscription.Get(session.Subscription.ID, nil)
+			fetchedSub, err := subscription.Get(subscriptionID, nil)
 			if err != nil {
-				log.Printf("DEBUG: ✗ Failed to fetch subscription %s: %v", session.Subscription.ID, err)
+				log.Printf("DEBUG: ✗ Failed to fetch subscription %s: %v", subscriptionID, err)
 				log.Printf("DEBUG: Cannot verify subscription status. User account will NOT be activated.")
 				// Update Stripe customer ID if available, but do not activate account
-				if session.Customer.ID != "" {
-					user.StripeCustomerId = session.Customer.ID
+				if customerID != "" {
+					user.StripeCustomerId = customerID
 				}
 				user.SubscriptionStatus = "incomplete"
 				user.PinExpiresAt = uint64(time.Now().Unix() - 86400) // Set to 1 day ago to ensure it's expired
@@ -2339,8 +2515,8 @@ func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 			if sub.Status != "active" && sub.Status != "trialing" {
 				log.Printf("DEBUG: ✗ Subscription %s status is %s (not active or trialing). Payment status: %s. User account will NOT be activated.", sub.ID, sub.Status, session.PaymentStatus)
 				// Update Stripe customer ID and subscription ID, but do not activate account
-				user.StripeCustomerId = session.Customer.ID
-				user.StripeSubscriptionId = session.Subscription.ID
+				user.StripeCustomerId = customerID
+				user.StripeSubscriptionId = subscriptionID
 				user.SubscriptionStatus = string(sub.Status)
 				user.PinExpiresAt = uint64(time.Now().Unix() - 86400) // Set to 1 day ago to ensure it's expired
 				api.Controller.Users.Update(user)
@@ -2359,8 +2535,8 @@ func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 			log.Printf("DEBUG: ✓ Subscription status check passed - account will be activated")
 		} else {
 			log.Printf("Stripe API key not configured. Cannot verify subscription status. User account will not be activated.")
-			if session.Customer.ID != "" {
-				user.StripeCustomerId = session.Customer.ID
+			if customerID != "" {
+				user.StripeCustomerId = customerID
 			}
 			user.SubscriptionStatus = "incomplete"
 			user.PinExpiresAt = uint64(time.Now().Unix() - 86400)
@@ -2373,8 +2549,8 @@ func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 	} else {
 		// No subscription ID means this shouldn't happen for subscription checkouts
 		log.Printf("No subscription ID in checkout session %s. User account will not be activated.", session.ID)
-		if session.Customer.ID != "" {
-			user.StripeCustomerId = session.Customer.ID
+		if customerID != "" {
+			user.StripeCustomerId = customerID
 		}
 		user.SubscriptionStatus = "incomplete"
 		user.PinExpiresAt = uint64(time.Now().Unix() - 86400)
@@ -2387,8 +2563,8 @@ func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 
 	// If user already has a subscription, cancel it before setting the new one
 	oldSubscriptionId := user.StripeSubscriptionId
-	if oldSubscriptionId != "" && oldSubscriptionId != session.Subscription.ID {
-		log.Printf("User has existing subscription %s, canceling it before setting new subscription %s", oldSubscriptionId, session.Subscription.ID)
+	if oldSubscriptionId != "" && oldSubscriptionId != subscriptionID {
+		log.Printf("User has existing subscription %s, canceling it before setting new subscription %s", oldSubscriptionId, subscriptionID)
 		stripe.Key = api.Controller.Options.StripeSecretKey
 		if stripe.Key != "" {
 			// Cancel the old subscription immediately (they're switching plans)
@@ -2404,8 +2580,8 @@ func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 
 	// Payment was successful and subscription is active/trialing - activate account
 	log.Printf("DEBUG: ✓ Payment and subscription verification passed - activating account")
-	user.StripeCustomerId = session.Customer.ID
-	user.StripeSubscriptionId = session.Subscription.ID
+	user.StripeCustomerId = customerID
+	user.StripeSubscriptionId = subscriptionID
 	user.SubscriptionStatus = "active"
 	log.Printf("DEBUG: Updated user Stripe customer ID: %s", user.StripeCustomerId)
 	log.Printf("DEBUG: Updated user Stripe subscription ID: %s", user.StripeSubscriptionId)
@@ -2417,7 +2593,7 @@ func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 		if user.PinExpiresAt > 0 {
 			log.Printf("DEBUG: ✓ Set PIN expiration to %d (Unix timestamp: %s) from checkout", user.PinExpiresAt, time.Unix(int64(user.PinExpiresAt), 0).Format(time.RFC3339))
 		} else {
-			log.Printf("DEBUG: ⚠ Warning: Subscription %s has no CurrentPeriodEnd set", session.Subscription.ID)
+			log.Printf("DEBUG: ⚠ Warning: Subscription %s has no CurrentPeriodEnd set", subscriptionID)
 		}
 	} else {
 		log.Printf("DEBUG: ⚠ No subscription object available for PIN expiration calculation")
@@ -2434,6 +2610,9 @@ func (api *Api) handleCheckoutSessionCompleted(event stripe.Event) {
 
 	// Sync config to file if enabled
 	api.Controller.SyncConfigToFile()
+
+	// One-time mobile app welcome email (skipped if already sent or email disabled)
+	api.sendMobileWelcomeEmailOnce(user)
 
 	// If this is an admin in an admin-managed billing group, sync subscription status to all group users
 	if user.IsGroupAdmin {
@@ -2546,6 +2725,11 @@ func (api *Api) CreateCheckoutSessionHandler(w http.ResponseWriter, r *http.Requ
 		AutomaticTax: &stripe.CheckoutSessionAutomaticTaxParams{
 			Enabled: stripe.Bool(taxMode == "automatic"),
 		},
+	}
+	params.ClientReferenceID = stripe.String(fmt.Sprintf("%d", user.Id))
+	params.Metadata = map[string]string{
+		"rdio_user_id":    fmt.Sprintf("%d", user.Id),
+		"rdio_user_email": user.Email,
 	}
 
 	// Automatic tax requires a billing address from the customer

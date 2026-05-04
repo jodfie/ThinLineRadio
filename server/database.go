@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
@@ -46,22 +45,17 @@ func NewDatabase(config *Config) *Database {
 		os.Exit(1)
 	}
 
-	// Optimize connection pool for multi-core processing
-	// Increased to prevent connection pool exhaustion under load
-	maxConns := runtime.NumCPU() * 10 // 10 connections per CPU core (increased from 4)
-	if maxConns < 50 {
-		maxConns = 50 // Minimum of 50 connections (increased from 25)
-	}
-	if maxConns > 200 {
-		maxConns = 200 // Cap at 200 connections (increased from 100)
-	}
+	// Fixed conservative pool: works for typical all-in-one installs and avoids
+	// each process reserving dozens of PostgreSQL backends (important on shared DBs).
+	const maxOpenConns = 25
+	const maxIdleConns = 8
 
 	database.Sql.SetConnMaxLifetime(30 * time.Minute)
 	database.Sql.SetConnMaxIdleTime(5 * time.Minute)
-	database.Sql.SetMaxIdleConns(maxConns / 2)
-	database.Sql.SetMaxOpenConns(maxConns)
+	database.Sql.SetMaxIdleConns(maxIdleConns)
+	database.Sql.SetMaxOpenConns(maxOpenConns)
 
-	log.Printf("Database connection pool configured: %d max connections for %d CPU cores", maxConns, runtime.NumCPU())
+	log.Printf("Database connection pool configured: max_open=%d max_idle=%d", maxOpenConns, maxIdleConns)
 
 	if err = database.migrate(); err != nil {
 		log.Printf("FATAL: Database migration failed: %v", err)
@@ -246,6 +240,16 @@ func (db *Database) migrate() error {
 		return formatError(err, "")
 	}
 
+	// Migrate users mobile setup token (one-time app sign-in link)
+	if err := migrateUserMobileSetupToken(db); err != nil {
+		return formatError(err, "")
+	}
+
+	// Migrate users mobile welcome email sent flag
+	if err := migrateUserMobileWelcomeEmailSent(db); err != nil {
+		return formatError(err, "")
+	}
+
 	// Migrate transferRequests approval token columns
 	if err := migrateTransferRequestsApprovalTokens(db); err != nil {
 		return formatError(err, "")
@@ -273,6 +277,11 @@ func (db *Database) migrate() error {
 
 	// Fix invalid user timestamps (empty strings or 0 values)
 	if err := migrateFixUserTimestamps(db); err != nil {
+		return formatError(err, "")
+	}
+
+	// One-time: allow full relay listener-email sync again after upgrade
+	if err := migrateRelayListenerEmailsResync(db); err != nil {
 		return formatError(err, "")
 	}
 
