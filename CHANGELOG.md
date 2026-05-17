@@ -1,5 +1,24 @@
 # Change log
 
+## Version 26.05.006 - Released May 17, 2026
+
+### Added
+
+- **Server — Read-only Health API endpoints (admin-password auth)**
+  - New `GET /api/health` — full JSON payload with service identity, uptime, listener/call activity, transcription queue depth, Go runtime stats (goroutines, heap, OS-allocated memory, CPU%), DB pool stats + ping, free-disk on the data dir, and integration status booleans (Central Management paired, relay configured, Hydra enabled).
+  - New `GET /api/health/live` — minimal `{"status":"ok"}` for uptime probes.
+  - New `GET /api/health/ready` — returns `200 ok` or `503 degraded` with a `reasons[]` list (e.g. `db: ping failed`, `disk: <5% free on data directory`) so orchestrators can pull the scanner from a load-balancer pool when it's unhealthy.
+  - All three endpoints are gated by **HTTP Basic Auth using the admin password** (same scheme as `/calls`). No new keys to manage, no admin-UI surface added.
+  - Response cached in memory for ~3 seconds so a hostile scraper can't force a `runtime.ReadMemStats` / `db.Ping` per request.
+  - No secrets are exposed in any payload — relay/CM URLs and external API keys are reduced to booleans (`relay_configured`, `hydra_api_key_present`, etc.).
+
+### Internal
+
+- Captured `processStartTime` at the top of `main()` for accurate `uptime_seconds`.
+- New `HealthService` (`server/health.go`) wired onto `Controller.Health`; reuses the same `gopsutil` process sampler approach used by the Central Management heartbeat so health calls don't reset the heartbeat's CPU window.
+
+---
+
 ## Version 26.05.005 - Released May 17, 2026
 
 ### Fixed

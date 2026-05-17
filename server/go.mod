@@ -12,6 +12,7 @@ require (
 	github.com/jackc/pgx/v5 v5.0.4
 	github.com/kardianos/service v1.2.2
 	github.com/lib/pq v1.10.9
+	github.com/shirou/gopsutil/v4 v4.26.4
 	github.com/stripe/stripe-go/v74 v74.30.0
 	github.com/stripe/stripe-go/v76 v76.25.0
 	golang.org/x/crypto v0.31.0
@@ -29,7 +30,6 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.4 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect

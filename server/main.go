@@ -151,6 +151,10 @@ window.initialConfig = {
 }
 
 func main() {
+	// Record process start time as early as possible so /api/health can report
+	// accurate uptime regardless of how long initialization takes.
+	processStartTime = time.Now()
+
 	// Enable multi-core processing
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	log.Printf("Starting ThinLine Radio with %d CPU cores", runtime.NumCPU())
@@ -655,6 +659,13 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"pending":%d}`, depth)
 	}))
+
+	// Read-only Health API, gated by HTTP Basic Auth using the admin password
+	// (same scheme as /calls). Cached internally for ~3s to avoid amplification
+	// by aggressive scrapers.
+	http.HandleFunc("/api/health", wrapHandler(controller.Admin.requireAdminBasicAuth(controller.Health.FullHandler)).ServeHTTP)
+	http.HandleFunc("/api/health/live", wrapHandler(controller.Admin.requireAdminBasicAuth(controller.Health.LiveHandler)).ServeHTTP)
+	http.HandleFunc("/api/health/ready", wrapHandler(controller.Admin.requireAdminBasicAuth(controller.Health.ReadyHandler)).ServeHTTP)
 
 	// Login blocked countdown page
 	http.HandleFunc("/login-blocked", wrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
