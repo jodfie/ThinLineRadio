@@ -1736,13 +1736,35 @@ func (controller *Controller) checkOrphanedTones(key string, callId uint64, time
 		}
 	}
 
-	// Don't remove from pending yet - let the normal timeout (5 minutes) handle that
-	// This allows a late voice call to still attach if it comes in
+	// Orphan alert is final for this stack — expire pending so late voice cannot attach stale tone sets.
+	controller.clearPendingToneStack(key, pending)
 
 	// Trigger tone alerts for this orphaned call
 	if controller.AlertEngine != nil && call.System != nil && call.System.AlertsEnabled && call.Talkgroup != nil && call.Talkgroup.AlertsEnabled {
 		go controller.AlertEngine.TriggerToneAlerts(call)
 	}
+}
+
+// clearPendingToneStack removes pending tone entries for a talkgroup after orphan (or other terminal events).
+func (controller *Controller) clearPendingToneStack(key string, pending *PendingToneSequence) {
+	controller.cancelWaitingShortCall(key)
+
+	controller.pendingTonesMutex.Lock()
+	delete(controller.pendingTones, key)
+	delete(controller.pendingTones, key+":next")
+	if pending != nil && pending.CrossTalkgroupSourceKey != "" {
+		delete(controller.pendingTones, pending.CrossTalkgroupSourceKey)
+		delete(controller.pendingTones, pending.CrossTalkgroupSourceKey+":next")
+	}
+	for k, p := range controller.pendingTones {
+		if p != nil && p.CrossTalkgroupSourceKey == key {
+			delete(controller.pendingTones, k)
+			delete(controller.pendingTones, k+":next")
+		}
+	}
+	controller.pendingTonesMutex.Unlock()
+
+	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("cleared pending tones for %s after orphan alert", key))
 }
 
 // checkAndAttachPendingTones checks if there are pending tones for this call's talkgroup and attaches them if this is a voice call

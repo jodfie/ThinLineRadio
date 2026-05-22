@@ -1,5 +1,14 @@
 # Change log
 
+## Version 26.05.007 - Released May 21, 2026
+
+### Fixed
+
+- **Server — expire pending tones after orphan alert**
+  - When stacked tones sit without voice for 60 seconds, the orphan path fires tone alerts and now **clears** the pending stack (`:next` slot, cross-talkgroup watch entries, and waiting short-call timers). Late voice on the same talkgroup can no longer attach tone sets that already alerted as “no voice,” which previously caused false multi-department merges (e.g. Weathersfield orphan + Girard voice).
+
+---
+
 ## Version 26.05.006 - Released May 17, 2026
 
 ### Added
