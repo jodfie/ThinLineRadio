@@ -536,6 +536,10 @@ export class RdioScannerSettingsComponent implements OnDestroy, OnInit {
         this.applyFont(this.appFont);
         this.saveSettings();
     }
+
+    getFontDisplayName(fontName: string): string {
+        return this.availableFonts.find(f => f.name === fontName)?.displayName ?? fontName;
+    }
     
     applyFont(fontName: string): void {
         const font = this.availableFonts.find(f => f.name === fontName);

@@ -68,13 +68,22 @@
                  [class.keyword]="alert.alertType === 'keyword'"
                  [class.tone-keyword]="alert.alertType === 'tone+keyword'">
                 <div class="alert-header">
-                    <div class="alert-type">
+                    <div class="alert-header-left">
                         <span class="alert-type-badge">{{ getAlertTypeLabel(alert) }}</span>
                         <span *ngIf="alert.toneDetected" class="tone-indicator">🔔</span>
                     </div>
-                    <div class="alert-timestamp">{{ formatTimestamp(alert.createdAt) }}</div>
+                    <div class="alert-header-right">
+                        <span class="alert-timestamp alert-timestamp--stacked">
+                            <span class="alert-timestamp-date">{{ formatAlertDate(alert.createdAt) }}</span>
+                            <span class="alert-timestamp-time">{{ formatAlertTime(alert.createdAt) }}</span>
+                        </span>
+                        <button type="button" class="btn-play btn-play--compact" (click)="playCall(alert.callId)">Play</button>
+                    </div>
                 </div>
                 <div class="alert-body">
+                    <div *ngIf="getKeywordsMatched(alert).length > 0" class="embed-keywords">
+                        <span *ngFor="let keyword of getKeywordsMatched(alert)" class="embed-keyword">{{ keyword }}</span>
+                    </div>
                     <div class="alert-channel embed-channel">
                         <span *ngIf="alert.systemLabel">{{ alert.systemLabel }}</span>
                         <span *ngIf="!alert.systemLabel">System {{ alert.systemId }}</span>
@@ -83,11 +92,6 @@
                         <span *ngIf="!alert.talkgroupLabel && alert.talkgroupName">{{ alert.talkgroupName }}</span>
                         <span *ngIf="!alert.talkgroupLabel && !alert.talkgroupName">TG {{ alert.talkgroupId }}</span>
                     </div>
-                    <div *ngIf="getKeywordsMatched(alert).length > 0" class="alert-keywords">
-                        <span class="keyword-tags">
-                            <span *ngFor="let keyword of getKeywordsMatched(alert)" class="keyword-tag">{{ keyword }}</span>
-                        </span>
-                    </div>
                     <div *ngIf="alert.alertSummary" class="alert-summary">
                         <p class="summary-text">{{ alert.alertSummary }}</p>
                     </div>
@@ -95,9 +99,6 @@
                         <p class="transcript-text"
                            [innerHTML]="renderTranscript(alert.transcript || alert.transcriptSnippet || '', alert.transcriptAnnotations)"></p>
                     </div>
-                </div>
-                <div class="alert-actions">
-                    <button type="button" class="btn-play" (click)="playCall(alert.callId)">Play</button>
                 </div>
             </div>
         </div>
@@ -137,17 +138,23 @@
                          [class.tone-keyword]="alert.alertType === 'tone+keyword'">
                         
                         <div class="alert-header">
-                            <div class="alert-type">
+                            <div class="alert-header-left">
                                 <span class="alert-type-badge">{{ getAlertTypeLabel(alert) }}</span>
                                 <span *ngIf="alert.toneDetected" class="tone-indicator">🔔</span>
+                                <span *ngIf="getKeywordsMatched(alert).length > 0" class="keyword-tags keyword-tags--inline">
+                                    <span *ngFor="let keyword of getKeywordsMatched(alert)" class="keyword-tag">{{ keyword }}</span>
+                                </span>
                             </div>
-                            <div class="alert-timestamp">{{ formatTimestamp(alert.createdAt) }}</div>
+                            <div class="alert-header-right">
+                                <span class="alert-timestamp">{{ formatTimestamp(alert.createdAt) }}</span>
+                                <button type="button" class="btn-play btn-play--compact" (click)="playCall(alert.callId)">Play</button>
+                            </div>
                         </div>
                         
                         <div class="alert-body">
                             <div class="alert-info">
-                                <div class="alert-channel">
-                                    <strong>Channel:</strong> 
+                                <div *ngIf="group.groupType !== 'channel'" class="alert-channel">
+                                    <strong>Channel:</strong>
                                     <span>
                                         <span *ngIf="alert.systemLabel">{{ alert.systemLabel }}</span>
                                         <span *ngIf="!alert.systemLabel">System {{ alert.systemId }}</span>
@@ -159,7 +166,7 @@
                                 </div>
                                 
                                 <div *ngIf="alert.toneDetected && (alert.matchedToneSetNames?.length || alert.matchedToneSetName)" class="alert-tone-set">
-                                    <strong>Tone Set{{ (alert.matchedToneSetNames?.length || 0) > 1 ? 's' : '' }}:</strong>
+                                    <strong>Tone{{ (alert.matchedToneSetNames?.length || 0) > 1 ? 's' : '' }}:</strong>
                                     <span *ngIf="alert.matchedToneSetNames && alert.matchedToneSetNames.length > 0" class="tone-set-names">
                                         <span *ngFor="let name of alert.matchedToneSetNames; let last = last" class="tone-set-name">
                                             {{ name }}<span *ngIf="!last">, </span>
@@ -170,31 +177,14 @@
                                     </span>
                                 </div>
                                 
-                                <div *ngIf="getKeywordsMatched(alert).length > 0" class="alert-keywords">
-                                    <strong>Keywords:</strong>
-                                    <span class="keyword-tags">
-                                        <span *ngFor="let keyword of getKeywordsMatched(alert)" class="keyword-tag">
-                                            {{ keyword }}
-                                        </span>
-                                    </span>
-                                </div>
-                                
                                 <div *ngIf="alert.alertSummary" class="alert-summary">
-                                    <strong>Summary:</strong>
                                     <p class="summary-text">{{ alert.alertSummary }}</p>
                                 </div>
                                 <div *ngIf="alert.transcript || alert.transcriptSnippet" class="alert-transcript">
-                                    <strong>Transcript:</strong>
                                     <p class="transcript-text"
                                        [innerHTML]="renderTranscript(alert.transcript || alert.transcriptSnippet || '', alert.transcriptAnnotations)"></p>
                                 </div>
                             </div>
-                        </div>
-                        
-                        <div class="alert-actions">
-                            <button class="btn-play" (click)="playCall(alert.callId)">
-                                Play Call
-                            </button>
                         </div>
                     </div>
                 </div>

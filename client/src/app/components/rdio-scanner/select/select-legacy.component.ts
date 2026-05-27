@@ -73,6 +73,20 @@ export class RdioScannerSelectLegacyComponent implements OnDestroy, OnInit {
     ) {
         this.eventSubscription = this.rdioScannerService.event.subscribe((event: RdioScannerEvent) => this.eventHandler(event));
 
+        // Late-mount safety: when this component is re-mounted (e.g. via view
+        // toggle or sidenav first open), the singleton service has already fired
+        // the config event. Seed only the data fields synchronously here —
+        // calling the full eventHandler in the constructor can trigger CD before
+        // the view is wired up. The first incoming real event will refresh the
+        // rest naturally.
+        //
+        // Service.config is always non-null (initialised with empty arrays) so
+        // only seed when the server has actually populated systems.
+        const cached = this.rdioScannerService.getConfig();
+        if (cached?.systems && cached.systems.length > 0) {
+            this.systems = cached.systems;
+        }
+
         this.favoritesSubscription = this.favoritesService.getFavorites().subscribe(() => {
             this.favoriteItems = this.favoritesService.getFavoriteItems();
             this.cdRef.markForCheck();

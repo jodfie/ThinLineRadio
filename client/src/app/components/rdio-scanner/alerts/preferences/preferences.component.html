@@ -33,37 +33,40 @@
       <p>No talkgroups are available for alert preferences</p>
     </div>
 
-    <div *ngIf="!loading && systems && systems.length > 0" class="prefs-split">
-      <aside class="prefs-sidebar">
-        <div class="sidebar-head">Systems</div>
-        <div class="sidebar-list">
-          <button
-            *ngFor="let system of getSystemsForSidebar()"
-            type="button"
-            class="sidebar-system-row"
-            [class.active]="detailSystemId === system.id"
-            (click)="selectDetailSystem(system.id)">
-            <span class="sidebar-row-icon">
-              <mat-icon>radio</mat-icon>
+    <div *ngIf="!loading && systems && systems.length > 0" class="prefs-board-layout">
+      <nav class="prefs-systems-bar">
+        <div
+          *ngFor="let system of getSystemsForSidebar()"
+          class="system-chip"
+          role="button"
+          tabindex="0"
+          [class.active]="detailSystemId === system.id"
+          [title]="system.label"
+          (click)="selectDetailSystem(system.id)"
+          (keydown.enter)="selectDetailSystem(system.id)"
+          (keydown.space)="$event.preventDefault(); selectDetailSystem(system.id)">
+          <span class="system-chip-icon">
+            <mat-icon>radio</mat-icon>
+          </span>
+          <span class="system-chip-body">
+            <span class="system-chip-label">{{ system.label }}</span>
+            <span class="system-chip-meta">
+              <span class="enabled-count">{{ getEnabledCountInSystem(system) }}</span>
+              <span class="total-count">/ {{ getFilteredTalkgroups(system).length }}</span>
             </span>
-            <span class="sidebar-row-text">
-              <span class="sidebar-row-label">{{ system.label }}</span>
-              <span class="sidebar-row-meta">
-                <span class="enabled-count">{{ getEnabledCountInSystem(system) }}</span>
-                <span class="total-count">/ {{ getFilteredTalkgroups(system).length }}</span>
-              </span>
-            </span>
-            <span class="sidebar-row-badge">
-              <span class="toggle-badge mini"
+          </span>
+          <span class="system-chip-badge">
+            <button type="button"
+                    class="toggle-badge mini"
                     [class.all]="isAllEnabledInSystem(system)"
                     [class.some]="isSomeEnabledInSystem(system)"
+                    [title]="isAllEnabledInSystem(system) ? 'All enabled — click to disable' : isSomeEnabledInSystem(system) ? 'Some enabled — click to toggle' : 'None enabled — click to enable all'"
                     (click)="toggleSystemAlerts(system, $event)">
-                {{ isAllEnabledInSystem(system) ? 'All' : isSomeEnabledInSystem(system) ? 'Some' : 'None' }}
-              </span>
-            </span>
-          </button>
+              {{ isAllEnabledInSystem(system) ? 'All' : isSomeEnabledInSystem(system) ? 'Some' : 'None' }}
+            </button>
+          </span>
         </div>
-      </aside>
+      </nav>
 
       <main class="prefs-detail">
         <ng-container *ngIf="getDetailSystem() as ds">
@@ -79,12 +82,18 @@
               </div>
             </div>
             <div class="system-toggle">
-              <span class="toggle-badge"
-                    [class.all]="isAllEnabledInSystem(ds)"
-                    [class.some]="isSomeEnabledInSystem(ds)"
-                    (click)="toggleSystemAlerts(ds, $event)">
+              <button type="button"
+                      class="toggle-badge"
+                      [class.all]="isAllEnabledInSystem(ds)"
+                      [class.some]="isSomeEnabledInSystem(ds)"
+                      [title]="isAllEnabledInSystem(ds) ? 'All enabled — click to disable' : isSomeEnabledInSystem(ds) ? 'Some enabled — click to toggle' : 'None enabled — click to enable all'"
+                      (click)="toggleSystemAlerts(ds, $event)">
                 {{ isAllEnabledInSystem(ds) ? 'All' : isSomeEnabledInSystem(ds) ? 'Some' : 'None' }}
-              </span>
+              </button>
+            </div>
+            <div class="system-actions">
+              <button type="button" class="mini-button" (click)="setSystemAlertsStatus(ds, true, $event)">Enable</button>
+              <button type="button" class="mini-button" (click)="setSystemAlertsStatus(ds, false, $event)">Disable</button>
             </div>
           </div>
 
@@ -115,20 +124,22 @@
 
               <div *ngIf="isTagExpanded(ds.id, tagGroup.tag)" class="tag-content">
                 <div *ngIf="keywordLists.length > 0" class="tag-keyword-lists">
-                  <strong>Apply Keyword Lists to All Talkgroups in {{ tagGroup.tag }}:</strong>
-                  <div class="keyword-list-options">
-                    <label *ngFor="let list of keywordLists" class="option-checkbox">
-                      <input type="checkbox"
-                             [checked]="isKeywordListSelectedForTag(ds.id, tagGroup.tag, list.id)"
-                             (change)="toggleKeywordListForTag(ds.id, tagGroup.tag, tagGroup.talkgroups, list.id, $event)">
-                      <span>{{ list.label }}</span>
+                  <div class="keyword-list-toolbar-label">Keyword lists (all talkgroups in {{ tagGroup.tag }})</div>
+                  <div class="keyword-list-toggles">
+                    <div *ngFor="let list of keywordLists" class="keyword-list-toggle">
                       <button type="button"
-                              class="info-button"
-                              (click)="showKeywordListInfo(list, $event)"
-                              title="View keywords in this list">
-                        ℹ️
+                              class="keyword-list-toggle-btn"
+                              [class.active]="isKeywordListSelectedForTag(ds.id, tagGroup.tag, list.id)"
+                              (click)="toggleKeywordListForTag(ds.id, tagGroup.tag, tagGroup.talkgroups, list.id, $event)">
+                        {{ list.label }}
                       </button>
-                    </label>
+                      <button type="button"
+                              class="keyword-list-info-btn"
+                              [attr.aria-label]="'View keywords in ' + list.label"
+                              (click)="openKeywordListInfo(list, $event)">
+                        <mat-icon>info_outline</mat-icon>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -186,20 +197,22 @@
 
                           <div *ngIf="preference.keywordAlerts" class="keywords-section">
                             <div *ngIf="keywordLists.length > 0" class="keyword-lists">
-                              <strong>Keyword Lists:</strong>
-                              <div class="keyword-list-options">
-                                <label *ngFor="let list of keywordLists" class="option-checkbox">
-                                  <input type="checkbox"
-                                         [checked]="isKeywordListSelected(preference, list.id)"
-                                         (change)="toggleKeywordListSelection(preference, list.id, $event)">
-                                  <span>{{ list.label }}</span>
+                              <div class="keyword-list-toolbar-label">Keyword lists</div>
+                              <div class="keyword-list-toggles keyword-list-toggles--stacked">
+                                <div *ngFor="let list of keywordLists" class="keyword-list-toggle">
                                   <button type="button"
-                                          class="info-button"
-                                          (click)="showKeywordListInfo(list, $event)"
-                                          title="View keywords in this list">
-                                    ℹ️
+                                          class="keyword-list-toggle-btn"
+                                          [class.active]="isKeywordListSelected(preference, list.id)"
+                                          (click)="toggleKeywordListSelection(preference, list.id, $event)">
+                                    {{ list.label }}
                                   </button>
-                                </label>
+                                  <button type="button"
+                                          class="keyword-list-info-btn"
+                                          [attr.aria-label]="'View keywords in ' + list.label"
+                                          (click)="openKeywordListInfo(list, $event)">
+                                    <mat-icon>info_outline</mat-icon>
+                                  </button>
+                                </div>
                               </div>
                             </div>
                             <p *ngIf="keywordLists.length === 0" class="no-keyword-lists">

@@ -48,7 +48,11 @@ export class AppUpdateService {
   }
 
   prompt(): void {
-    this.matDialog.open(AppUpdateComponent).afterClosed().subscribe((doUpdate) => {
+    this.matDialog.open(AppUpdateComponent, {
+      panelClass: 'tlr-lcd-dialog',
+      backdropClass: 'tlr-lcd-dialog-backdrop',
+      autoFocus: 'dialog',
+    }).afterClosed().subscribe((doUpdate) => {
       if (doUpdate) {
         if (this.ngSwUpdate.isEnabled) {
           this.ngSwUpdate.activateUpdate().then(() => document.location.reload());

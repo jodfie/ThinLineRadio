@@ -5,31 +5,71 @@
             <span class="filters-panel-hint">Set sort, date, and scopes — results load in the table below.</span>
         </div>
         <form autocomplete="off" [formGroup]="form">
-            <div class="filter-row">
-                <button type="button" class="compact-button" (click)="toggleSort()">
+            <div class="filter-row filter-row--single">
+                <button type="button" class="compact-button" (click)="toggleSort()"
+                        [matTooltip]="form.value.sort === -1 ? 'Newest first' : 'Oldest first'">
                     <mat-icon>{{ form.value.sort === -1 ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
-                    <span>{{ form.value.sort === -1 ? 'Newest First' : 'Oldest First' }}</span>
+                    <span>{{ form.value.sort === -1 ? 'Newest' : 'Oldest' }}</span>
                 </button>
 
                 <div class="date-button-wrapper">
-                    <button type="button" class="compact-button" (click)="openDatePicker()">
+                    <button type="button" class="compact-button" (click)="openDatePicker()"
+                            [matTooltip]="selectedDate ? ((selectedDate | date:'fullDate') || '') : 'Pick a date'">
                         <mat-icon>calendar_today</mat-icon>
-                        <span>{{ selectedDate ? (selectedDate | date:'MM/dd/yyyy') : 'Select Date' }}</span>
+                        <span>{{ selectedDate ? (selectedDate | date:'MM/dd/yy') : 'Date' }}</span>
                     </button>
                     <button *ngIf="selectedDate" type="button" class="clear-date-btn" (click)="clearDate(); $event.stopPropagation()" mat-icon-button>
                         <mat-icon>close</mat-icon>
                     </button>
                     <input matInput [matDatepicker]="datePicker" [value]="selectedDate" (dateChange)="onDateSelected($event)" style="position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0;">
-                    <mat-datepicker #datePicker></mat-datepicker>
+                    <mat-datepicker #datePicker panelClass="tlr-lcd-datepicker"></mat-datepicker>
                 </div>
-            </div>
 
-            <div class="filter-row">
-                <button type="button" class="compact-button" [matMenuTriggerFor]="systemMenu">
+                <button type="button" class="compact-button" [matMenuTriggerFor]="timeMenu"
+                        [disabled]="!selectedDate"
+                        [matTooltip]="selectedDate ? 'Filter to a time of day on the selected date' : 'Pick a date first'">
+                    <mat-icon>schedule</mat-icon>
+                    <span>{{ selectedTime ? selectedTime : 'Time' }}</span>
+                </button>
+                <mat-menu #timeMenu="matMenu" class="tlr-lcd-menu tlr-time-menu">
+                    <div class="tlr-time-picker" (click)="$event.stopPropagation()">
+                        <div class="tlr-time-display">{{ getTimeDisplay() }}</div>
+                        <div class="tlr-time-cols">
+                            <div class="tlr-time-col">
+                                <button type="button" class="tlr-time-step" (click)="bumpHour(1); $event.stopPropagation()" aria-label="Hour up">
+                                    <mat-icon>keyboard_arrow_up</mat-icon>
+                                </button>
+                                <div class="tlr-time-value">{{ pad2(getHour()) }}</div>
+                                <button type="button" class="tlr-time-step" (click)="bumpHour(-1); $event.stopPropagation()" aria-label="Hour down">
+                                    <mat-icon>keyboard_arrow_down</mat-icon>
+                                </button>
+                                <div class="tlr-time-label">HR</div>
+                            </div>
+                            <div class="tlr-time-sep">:</div>
+                            <div class="tlr-time-col">
+                                <button type="button" class="tlr-time-step" (click)="bumpMinute(1); $event.stopPropagation()" aria-label="Minute up">
+                                    <mat-icon>keyboard_arrow_up</mat-icon>
+                                </button>
+                                <div class="tlr-time-value">{{ pad2(getMinute()) }}</div>
+                                <button type="button" class="tlr-time-step" (click)="bumpMinute(-1); $event.stopPropagation()" aria-label="Minute down">
+                                    <mat-icon>keyboard_arrow_down</mat-icon>
+                                </button>
+                                <div class="tlr-time-label">MIN</div>
+                            </div>
+                        </div>
+                        <div class="tlr-time-actions">
+                            <button type="button" class="tlr-time-action" (click)="clearTime(); $event.stopPropagation()">Clear</button>
+                            <button type="button" class="tlr-time-action tlr-time-action--primary" (click)="setTimeNow(); $event.stopPropagation()">Now</button>
+                        </div>
+                    </div>
+                </mat-menu>
+
+                <button type="button" class="compact-button" [matMenuTriggerFor]="systemMenu"
+                        [matTooltip]="getSelectedSystemLabel()">
                     <mat-icon>router</mat-icon>
                     <span>{{ getSelectedSystemLabel() }}</span>
                 </button>
-                <mat-menu #systemMenu="matMenu">
+                <mat-menu #systemMenu="matMenu" class="tlr-lcd-menu">
                     <button mat-menu-item (click)="setSystem(-1)">
                         <span>All Systems</span>
                     </button>
@@ -38,11 +78,12 @@
                     </button>
                 </mat-menu>
 
-                <button type="button" class="compact-button" [matMenuTriggerFor]="talkgroupMenu" [disabled]="form.value.system < 0">
+                <button type="button" class="compact-button" [matMenuTriggerFor]="talkgroupMenu" [disabled]="form.value.system < 0"
+                        [matTooltip]="getSelectedTalkgroupLabel()">
                     <mat-icon>group</mat-icon>
                     <span>{{ getSelectedTalkgroupLabel() }}</span>
                 </button>
-                <mat-menu #talkgroupMenu="matMenu">
+                <mat-menu #talkgroupMenu="matMenu" class="tlr-lcd-menu">
                     <button mat-menu-item (click)="setTalkgroup(-1)">
                         <span>All Talkgroups</span>
                     </button>
@@ -50,14 +91,13 @@
                         <span>{{ talkgroup }}</span>
                     </button>
                 </mat-menu>
-            </div>
 
-            <div class="filter-row">
-                <button type="button" class="compact-button" [matMenuTriggerFor]="groupMenu">
+                <button type="button" class="compact-button" [matMenuTriggerFor]="groupMenu"
+                        [matTooltip]="getSelectedGroupLabel()">
                     <mat-icon>category</mat-icon>
                     <span>{{ getSelectedGroupLabel() }}</span>
                 </button>
-                <mat-menu #groupMenu="matMenu">
+                <mat-menu #groupMenu="matMenu" class="tlr-lcd-menu">
                     <button mat-menu-item (click)="setGroup(-1)">
                         <span>All Groups</span>
                     </button>
@@ -66,11 +106,12 @@
                     </button>
                 </mat-menu>
 
-                <button type="button" class="compact-button" [matMenuTriggerFor]="tagMenu">
+                <button type="button" class="compact-button" [matMenuTriggerFor]="tagMenu"
+                        [matTooltip]="getSelectedTagLabel()">
                     <mat-icon>local_offer</mat-icon>
                     <span>{{ getSelectedTagLabel() }}</span>
                 </button>
-                <mat-menu #tagMenu="matMenu">
+                <mat-menu #tagMenu="matMenu" class="tlr-lcd-menu">
                     <button mat-menu-item (click)="setTag(-1)">
                         <span>All Tags</span>
                     </button>
@@ -78,14 +119,13 @@
                         <span>{{ tag }}</span>
                     </button>
                 </mat-menu>
-            </div>
 
-            <div class="filter-row">
-                <button type="button" class="compact-button" [matMenuTriggerFor]="favoriteMenu">
+                <button type="button" class="compact-button" [matMenuTriggerFor]="favoriteMenu"
+                        [matTooltip]="getSelectedFavoriteLabel()">
                     <mat-icon>star</mat-icon>
                     <span>{{ getSelectedFavoriteLabel() }}</span>
                 </button>
-                <mat-menu #favoriteMenu="matMenu">
+                <mat-menu #favoriteMenu="matMenu" class="tlr-lcd-menu">
                     <button mat-menu-item (click)="setFavorite(-1)">
                         <span>All Calls</span>
                     </button>
@@ -97,7 +137,8 @@
                     </div>
                 </mat-menu>
 
-                <button type="button" class="compact-button reset-button" [disabled]="resultsPending" (click)="resetForm()">
+                <button type="button" class="compact-button reset-button" [disabled]="resultsPending" (click)="resetForm()"
+                        matTooltip="Clear all filters">
                     <mat-icon>refresh</mat-icon>
                     <span>Reset</span>
                 </button>

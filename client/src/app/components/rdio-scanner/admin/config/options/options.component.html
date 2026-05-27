@@ -1355,6 +1355,12 @@
     </mat-expansion-panel-header>
 
     <div class="panel-content">
+      <rdio-scanner-admin-user-registration
+        *ngIf="isCentrallyManaged"
+        [form]="form">
+      </rdio-scanner-admin-user-registration>
+
+      <ng-container *ngIf="!isCentrallyManaged">
       <!-- User Registration & Access -->
       <div class="row">
         <p>
@@ -1431,6 +1437,7 @@
         </mat-form-field>
       </div>
 
+      </ng-container>
     </div>
   </mat-expansion-panel>
 

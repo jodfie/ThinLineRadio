@@ -18,10 +18,12 @@
  */
 
 import { ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
 import { RdioScannerAlertPreference, RdioScannerConfig, RdioScannerKeywordList, RdioScannerService, RdioScannerSystem, RdioScannerTalkgroup, RdioScannerToneSet } from '../../rdio-scanner';
 import { AlertsService } from '../alerts.service';
 import { Subscription } from 'rxjs';
 import { TagColorService } from '../../tag-color.service';
+import { KeywordListInfoDialogComponent } from './keyword-list-info-dialog.component';
 
 type StoredPreference = RdioScannerAlertPreference & {
     systemRef?: number;
@@ -62,6 +64,7 @@ export class RdioScannerAlertPreferencesComponent implements OnDestroy, OnInit {
         private alertsService: AlertsService,
         private tagColorService: TagColorService,
         private cdRef: ChangeDetectorRef,
+        private dialog: MatDialog,
     ) {
         this.config = this.rdioScannerService.getConfig();
         if (this.config?.systems?.length) {
@@ -411,16 +414,18 @@ export class RdioScannerAlertPreferencesComponent implements OnDestroy, OnInit {
         }
     }
 
-    showKeywordListInfo(list: RdioScannerKeywordList, event: Event): void {
+    openKeywordListInfo(list: RdioScannerKeywordList, event: Event): void {
         event.stopPropagation();
-        const keywords = list.keywords || [];
-        if (keywords.length === 0) {
-            alert(`${list.label}\n\nNo keywords in this list.`);
-        } else {
-            const keywordsText = keywords.join(', ');
-            const message = `${list.label}\n\nKeywords (${keywords.length}):\n${keywordsText}`;
-            alert(message);
-        }
+        event.preventDefault();
+        this.dialog.open(KeywordListInfoDialogComponent, {
+            data: { list },
+            panelClass: 'tlr-lcd-dialog',
+            backdropClass: 'tlr-lcd-dialog-backdrop',
+            width: '420px',
+            maxWidth: '92vw',
+            maxHeight: '85vh',
+            autoFocus: false,
+        });
     }
 
     isKeywordListSelected(pref: RdioScannerAlertPreference, listId: number): boolean {
@@ -589,6 +594,19 @@ export class RdioScannerAlertPreferencesComponent implements OnDestroy, OnInit {
                 // Keyword alerts remain independent - don't disable them
             }
             // Store the updated preference back in the map to trigger change detection
+            const key = this.buildPreferenceKey(system.id, tg.id);
+            this.preferences.set(key, pref);
+        });
+    }
+
+    setSystemAlertsStatus(system: RdioScannerSystem, status: boolean, event: Event): void {
+        event.stopPropagation();
+        this.getFilteredTalkgroups(system).forEach(tg => {
+            const pref = this.getPreference(system.id, tg.id);
+            pref.alertEnabled = status;
+            if (!status) {
+                pref.toneAlerts = false;
+            }
             const key = this.buildPreferenceKey(system.id, tg.id);
             this.preferences.set(key, pref);
         });

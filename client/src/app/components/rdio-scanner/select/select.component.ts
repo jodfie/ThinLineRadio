@@ -317,11 +317,11 @@ export class RdioScannerSelectComponent implements OnDestroy, OnInit {
         return 'some';
     }
 
-    getScanListBulkIcon(list: ScanList): string {
+    getScanListBulkLabel(list: ScanList): string {
         const s = this.getScanListLiveState(list);
-        if (s === 'all') return 'check_box';
-        if (s === 'some') return 'indeterminate_check_box';
-        return 'check_box_outline_blank';
+        if (s === 'all') return 'All';
+        if (s === 'some') return 'Some';
+        return 'None';
     }
 
     /**
@@ -450,23 +450,46 @@ export class RdioScannerSelectComponent implements OnDestroy, OnInit {
     }
 
     toggleTag(systemId: number, tag: string, event?: Event): void {
+        // Bail out if the click originated inside an interactive control
+        // (favorite-toggle, mini-button, toggle-badge, etc.) — those have
+        // their own handlers and must not be hijacked by the row toggle.
+        if (this.clickOriginatedInsideInteractive(event)) return;
+
         const key = `${systemId}-${tag}`;
 
         const current = this.expandedTags.get(key) || false;
         this.expandedTags.set(key, !current);
+        this.cdRef.markForCheck();
     }
 
     isTalkgroupEnabled(systemId: number, talkgroupId: number): boolean {
         return !!(this.map[systemId] && this.map[systemId][talkgroupId] && this.map[systemId][talkgroupId].active);
     }
 
-    toggleTalkgroup(systemId: number, talkgroupId: number): void {
+    toggleTalkgroup(systemId: number, talkgroupId: number, event?: Event): void {
+        // Same guard as `toggleTag` — don't fire when the user actually
+        // clicked the row's favorite-toggle button.
+        if (this.clickOriginatedInsideInteractive(event)) return;
+
         const system = this.systems?.find(s => s.id === systemId);
         const talkgroup = system?.talkgroups?.find(tg => tg.id === talkgroupId);
-        
+
         if (system && talkgroup) {
             this.avoid({ system, talkgroup });
         }
+    }
+
+    /**
+     * Returns true when the DOM event was triggered from inside a control
+     * that lives within a row (favorite button, mini Enable/Disable button,
+     * toggle badge, etc.). Used by the row-level click handlers so that
+     * clicking a nested control doesn't *also* fire the row's own action.
+     */
+    private clickOriginatedInsideInteractive(event?: Event): boolean {
+        if (!event) return false;
+        const target = event.target as HTMLElement | null;
+        if (!target || typeof target.closest !== 'function') return false;
+        return !!target.closest('.favorite-toggle, .mini-button, .toggle-badge, button');
     }
 
     toggleSystemTalkgroups(system: RdioScannerSystem, event: Event): void {
@@ -734,6 +757,7 @@ export class RdioScannerSelectComponent implements OnDestroy, OnInit {
 
     toggleFavoriteSystem(systemId: number, event: Event): void {
         event.stopPropagation();
+        event.preventDefault();
         const system = this.systems?.find(s => s.id === systemId);
         if (!system) return;
 
@@ -776,6 +800,7 @@ export class RdioScannerSelectComponent implements OnDestroy, OnInit {
 
     toggleFavoriteTag(systemId: number, tag: string, event: Event): void {
         event.stopPropagation();
+        event.preventDefault();
         const system = this.systems?.find(s => s.id === systemId);
         if (!system) return;
 
@@ -817,6 +842,7 @@ export class RdioScannerSelectComponent implements OnDestroy, OnInit {
 
     toggleFavoriteTalkgroup(systemId: number, talkgroupId: number, event: Event): void {
         event.stopPropagation();
+        event.preventDefault();
         const system = this.systems?.find(s => s.id === systemId);
         const talkgroup = system?.talkgroups?.find(tg => tg.id === talkgroupId);
         if (!system || !talkgroup) return;

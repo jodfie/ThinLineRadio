@@ -61,6 +61,10 @@ export class RdioScannerAdminOptionsComponent implements OnInit, AfterViewInit, 
     centralConnectionMessage: string = '';
     showExternalAPIKey: boolean = false;
 
+    get isCentrallyManaged(): boolean {
+        return this.form?.get('centralManagementEnabled')?.value === true;
+    }
+
     /** Populated from GET /api/admin/relay-suspension when relay has fully suspended this scanner. */
     relaySuspensionStatus: {
         fully_suspended: boolean;

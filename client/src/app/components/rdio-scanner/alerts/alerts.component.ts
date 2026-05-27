@@ -540,6 +540,21 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
         return `${datePart}${spacer}${timePart}`;
     }
 
+    formatAlertDate(timestamp: number): string {
+        return new Date(timestamp).toLocaleDateString(undefined, {
+            month: 'numeric',
+            day: 'numeric',
+            year: '2-digit',
+        });
+    }
+
+    formatAlertTime(timestamp: number): string {
+        return new Date(timestamp).toLocaleTimeString(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+        });
+    }
+
     // Update cached grouped alerts (called when alerts change to avoid recalculation on every change detection)
     private updateGroupedAlerts(): void {
         // Group tone alerts by tone set name

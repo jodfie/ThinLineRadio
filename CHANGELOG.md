@@ -1,5 +1,11 @@
 # Change log
 
+## Version 26.05.008 - Released May 27, 2026
+
+- UI updates and bug fixes.
+
+---
+
 ## Version 26.05.007 - Released May 21, 2026
 
 ### Fixed

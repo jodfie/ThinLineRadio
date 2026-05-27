@@ -199,6 +199,8 @@ export interface RdioScannerConfig {
     alerts?: RdioScannerAlerts;
     branding?: string;
     email?: string;
+    /** Reported by the server via the VER websocket message. CalVer YY.MM.NNN. */
+    version?: string;
     groups: { [key: string]: { [key: number]: number[] } };
     groupsData: RdioScannerGroupData[];
     keypadBeeps: RdioScannerKeypadBeeps | undefined;

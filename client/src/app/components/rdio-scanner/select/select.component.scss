@@ -19,6 +19,10 @@
   padding: 0 12px 12px;
 }
 
+:host-context(.embed-panel) .select-container {
+  padding: 0;
+}
+
 .channels-board {
   flex: 1;
   min-height: 0;
@@ -113,6 +117,7 @@
         width: 16px;
         height: 16px;
         font-size: 16px;
+        line-height: 1;
         color: rgba(255, 234, 0, 0.85);
       }
 
@@ -155,7 +160,15 @@
 
     .controls-actions {
       display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
       gap: 6px;
+
+      .scan-list-btn {
+        height: 28px;
+        padding: 0 10px;
+        font-size: 11px;
+      }
     }
 
     .icon-action {
@@ -209,137 +222,155 @@
   }
 }
 
+// ── Channels split — horizontal systems bar on top, full-width detail below
+//
+// The old left-hand sidebar (`.channels-sidebar`) was replaced with a
+// horizontal `.channels-systems-bar` that wraps to multiple rows when there
+// are many systems. The active system reads as a highlighted pill. With the
+// sidebar gone, `.channels-detail` claims the full pane width, which lets
+// the talkgroup grid pack 4 cards per row at desktop widths.
 .channels-split {
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
-  gap: 12px;
+  gap: 10px;
   margin-top: 8px;
-
-  @media (max-width: 700px) {
-    flex-direction: column;
-
-    .channels-sidebar {
-      width: 100%;
-      max-height: 38vh;
-      flex-shrink: 0;
-    }
-
-    .channels-detail {
-      flex: 1;
-      min-height: 48vh;
-    }
-  }
 }
 
-.channels-sidebar {
-  width: min(280px, 34%);
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+// 5-column grid — wide enough for icon + label + toggle without overlap
+// (overflow is clipped inside each chip so content never bleeds into the
+// next cell). Capped at 4 visible rows; additional systems scroll inside
+// this bar so the tag/talkgroup detail stays higher on the page.
+.channels-systems-bar {
+  --system-chip-row-h: 40px;
+  --system-bar-gap: 6px;
+  --system-bar-pad-y: 16px; // 8px padding top + bottom
+
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: stretch;
+  gap: var(--system-bar-gap);
+  padding: 8px;
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  overflow: hidden;
+  flex-shrink: 0;
+  max-height: calc(
+    var(--system-bar-pad-y) +
+    4 * var(--system-chip-row-h) +
+    3 * var(--system-bar-gap)
+  );
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 
-  .sidebar-head {
-    padding: 10px 12px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.5);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    flex-shrink: 0;
+  @media (max-width: 1100px) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .sidebar-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 6px;
-    min-height: 0;
+  @media (max-width: 900px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .sidebar-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    padding: 20px 12px;
-    color: rgba(255, 255, 255, 0.55);
-
-    mat-icon {
-      font-size: 36px;
-      width: 36px;
-      height: 36px;
-      margin-bottom: 8px;
-      color: rgba(255, 234, 0, 0.35);
-    }
-
-    span {
-      font-weight: 600;
-      margin-bottom: 6px;
-    }
-
-    p {
-      margin: 0;
-      font-size: 12px;
-      line-height: 1.4;
-      color: rgba(255, 255, 255, 0.45);
-    }
+  @media (max-width: 680px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .sidebar-system-row {
-    width: 100%;
+  @media (max-width: 420px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  &.is-empty {
+    display: block;
+    padding: 14px 16px;
+  }
+
+  .systems-bar-empty {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 8px;
-    margin-bottom: 4px;
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background: transparent;
+    padding: 4px 6px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.55);
+
+    mat-icon {
+      width: 18px;
+      height: 18px;
+      font-size: 18px;
+      line-height: 1;
+      color: rgba(255, 234, 0, 0.45);
+    }
+  }
+
+  .system-chip {
+    box-sizing: border-box;
+    min-height: var(--system-chip-row-h, 40px);
+    // Constrain to the grid cell — without this, flex children (label +
+    // toggle button) paint outside the cell and overlap the next chip.
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px 6px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
     color: inherit;
     text-align: left;
     cursor: pointer;
-    transition: background 0.15s ease, border-color 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.06);
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.18);
     }
 
     &.active {
       background: rgba(0, 230, 118, 0.12);
-      border-color: rgba(0, 230, 118, 0.45);
+      border-color: rgba(0, 230, 118, 0.5);
+      box-shadow: inset 0 0 0 1px rgba(0, 230, 118, 0.2);
+
+      .system-chip-icon { background: rgba(0, 230, 118, 0.22); }
+      .system-chip-label { color: #fff; }
     }
 
-    .sidebar-row-icon {
+    .system-chip-icon {
       flex-shrink: 0;
-      width: 36px;
-      height: 36px;
-      display: flex;
+      width: 24px;
+      height: 24px;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       background: rgba(0, 230, 118, 0.12);
-      border-radius: 8px;
+      border-radius: 6px;
 
       mat-icon {
-        font-size: 20px;
-        width: 20px;
-        height: 20px;
+        width: 14px;
+        height: 14px;
+        font-size: 14px;
+        line-height: 1;
         color: #00e676;
       }
     }
 
-    .sidebar-row-text {
-      flex: 1;
+    .system-chip-body {
+      flex: 1 1 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
       min-width: 0;
+      overflow: hidden;
+      gap: 0;
     }
 
-    .sidebar-row-label {
-      display: block;
-      font-size: 14px;
+    .system-chip-label {
+      width: 100%;
+      font-size: 12px;
       font-weight: 600;
       color: rgba(255, 255, 255, 0.92);
       white-space: nowrap;
@@ -347,11 +378,13 @@
       text-overflow: ellipsis;
     }
 
-    .sidebar-row-meta {
-      display: block;
-      font-size: 12px;
+    .system-chip-meta {
+      width: 100%;
+      font-size: 10px;
       color: rgba(255, 255, 255, 0.5);
-      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
 
       .enabled-count {
         font-weight: 700;
@@ -359,16 +392,20 @@
       }
     }
 
-    .sidebar-row-badge {
+    .system-chip-badge {
       flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
     }
 
-    .sidebar-row-star {
+    .system-chip-star {
       flex-shrink: 0;
-      width: 18px;
-      height: 18px;
-      font-size: 18px;
+      width: 14px;
+      height: 14px;
+      font-size: 14px;
+      line-height: 1;
       color: #ffea00;
+      filter: drop-shadow(0 0 2px rgba(255, 234, 0, 0.35));
     }
   }
 }
@@ -457,16 +494,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     background: rgba(0, 230, 118, 0.15);
-    border-radius: 10px;
+    border-radius: 8px;
     flex-shrink: 0;
 
     mat-icon {
-      width: 24px;
-      height: 24px;
-      font-size: 24px;
+      width: 20px;
+      height: 20px;
+      font-size: 20px;
       color: #00e676;
     }
   }
@@ -520,63 +557,12 @@
 
   .system-toggle {
     margin-right: 8px;
-
-    .toggle-badge {
-      padding: 4px 8px;
-      border-radius: 6px;
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-
-      &.all {
-        background: rgba(0, 230, 118, 0.2);
-        border: 1px solid #00e676;
-        color: #00e676;
-      }
-
-      &.some {
-        background: rgba(255, 145, 0, 0.2);
-        border: 1px solid #ff9100;
-        color: #ff9100;
-      }
-
-      &:not(.all):not(.some) {
-        background: transparent;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.6);
-      }
-    }
   }
 
   .system-actions {
     display: flex;
     align-items: center;
     gap: 4px;
-  }
-}
-
-.sidebar-system-row .toggle-badge.mini {
-  padding: 2px 6px;
-  font-size: 10px;
-  border-radius: 5px;
-  display: inline-block;
-  cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-
-  &.all {
-    background: rgba(0, 230, 118, 0.18);
-    border-color: #00e676;
-    color: #00e676;
-  }
-
-  &.some {
-    background: rgba(255, 145, 0, 0.18);
-    border-color: #ff9100;
-    color: #ff9100;
-  }
-
-  &:not(.all):not(.some) {
-    color: rgba(255, 255, 255, 0.55);
   }
 }
 
@@ -604,16 +590,16 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 44px;
-      height: 44px;
+      width: 36px;
+      height: 36px;
       background: rgba(0, 230, 118, 0.15);
-      border-radius: 10px;
+      border-radius: 8px;
       flex-shrink: 0;
 
       mat-icon {
-        width: 24px;
-        height: 24px;
-        font-size: 24px;
+        width: 20px;
+        height: 20px;
+        font-size: 20px;
         color: #00e676;
       }
     }
@@ -671,37 +657,6 @@
 
     .system-toggle {
       margin-right: 8px;
-
-      .toggle-badge {
-        padding: 4px 8px;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-
-        &.all {
-          background: rgba(0, 230, 118, 0.2);
-          border: 1px solid #00e676;
-          color: #00e676;
-        }
-
-        &.some {
-          background: rgba(255, 145, 0, 0.2);
-          border: 1px solid #ff9100;
-          color: #ff9100;
-        }
-
-        &:not(.all):not(.some) {
-          background: transparent;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          color: rgba(255, 255, 255, 0.6);
-        }
-
-        &:hover {
-          opacity: 0.8;
-        }
-      }
     }
 
     .system-actions {
@@ -744,7 +699,7 @@
   .tag-header {
     display: flex;
     align-items: center;
-    padding: 10px;
+    padding: 8px 10px;
     cursor: pointer;
     transition: background 0.2s ease;
 
@@ -756,23 +711,24 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 36px;
-      height: 36px;
+      width: 28px;
+      height: 28px;
       background: rgba(255, 255, 255, 0.1);
-      border-radius: 6px;
+      border-radius: 5px;
       flex-shrink: 0;
-      margin-right: 10px;
+      margin-right: 8px;
 
       mat-icon {
-        width: 20px;
-        height: 20px;
-        font-size: 20px;
+        width: 16px;
+        height: 16px;
+        font-size: 16px;
+        line-height: 1;
       }
     }
 
     .tag-label {
       flex: 1;
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 600;
       color: rgba(255, 255, 255, 0.9);
     }
@@ -807,34 +763,6 @@
 
     .tag-toggle {
       margin-right: 8px;
-
-      .toggle-badge {
-        padding: 3px 6px;
-        border-radius: 4px;
-        font-size: 10px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s ease;
-
-        &.all {
-          background: rgba(0, 230, 118, 0.2);
-          color: #00e676;
-        }
-
-        &.some {
-          background: rgba(255, 145, 0, 0.2);
-          color: #ff9100;
-        }
-
-        &:not(.all):not(.some) {
-          background: transparent;
-          color: rgba(255, 255, 255, 0.6);
-        }
-
-        &:hover {
-          opacity: 0.8;
-        }
-      }
     }
 
     .expand-icon {
@@ -858,23 +786,47 @@
   }
 }
 
-// Talkgroup bubble list
+// ── Talkgroup grid ──────────────────────────────────────────────────────────
+//
+// Fixed 4 columns on desktop so each card is wide enough for the label +
+// description without ellipsis clipping ("Forestry Fire…"). Narrower viewports
+// step down to 3 → 2 → 1 column. Applies to both console and classic views
+// (both render `<rdio-scanner-select>`).
 .talkgroup-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  align-items: stretch;
+
+  @media (max-width: 900px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @media (max-width: 680px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 420px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .talkgroup-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  // Tightened gap + horizontal padding to give the label / description more
+  // breathing room inside a 220px-wide grid cell. Vertical padding stays
+  // the same so the card height isn't visibly different.
+  gap: 8px;
+  padding: 8px 10px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
+  // Slightly squarer corners read better than the original pill shape now
+  // that each card is no longer the full width of the panel.
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.15s ease;
+  min-width: 0;     // allow the grid cell to shrink rather than overflow
 
   &:hover {
     background: rgba(255, 255, 255, 0.08);
@@ -944,6 +896,83 @@
   position: relative;
 }
 
+// ── Enable-state toggle (None / Some / All) ─────────────────────────────────
+//
+// Shared pill button used on system chips, system headers, and tag headers.
+// Previously these were bare `<span>` labels with minimal styling; they now
+// read as proper clickable controls with visible borders and state colours.
+.toggle-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.38);
+    color: #fff;
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+  }
+
+  &.all {
+    background: rgba(0, 230, 118, 0.14);
+    border-color: rgba(0, 230, 118, 0.55);
+    color: #00e676;
+    box-shadow: inset 0 0 0 1px rgba(0, 230, 118, 0.12);
+
+    &:hover {
+      background: rgba(0, 230, 118, 0.22);
+      border-color: #00e676;
+      color: #00e676;
+    }
+  }
+
+  &.some {
+    background: rgba(255, 145, 0, 0.14);
+    border-color: rgba(255, 145, 0, 0.55);
+    color: #ff9100;
+    box-shadow: inset 0 0 0 1px rgba(255, 145, 0, 0.1);
+
+    &:hover {
+      background: rgba(255, 145, 0, 0.22);
+      border-color: #ff9100;
+      color: #ff9100;
+    }
+  }
+
+  &.mini {
+    min-width: 42px;
+    height: 22px;
+    padding: 0 8px;
+    font-size: 10px;
+    border-radius: 5px;
+  }
+}
+
 .mini-button {
   padding: 4px 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -961,28 +990,85 @@
   }
 }
 
+// ── Favorite-star buttons (unified across system / tag / talkgroup rows) ────
+//
+// All `.favorite-toggle` buttons render identically so the eye reads them as
+// a single control type:
+//   • A square 28x28 button (rounded 6px corners) holding a centred 18px star
+//   • Outlined star → not favorited (subtle, low-contrast)
+//   • Filled star  → favorited (bright LCD gold, soft glow)
+//
+// The legacy 32px-circle variant was inconsistent with the rest of the LCD
+// chrome and clipped some glyphs, which is what the user described as
+// "messed up". Setting explicit width/height/font-size/line-height on
+// `mat-icon` is required because the Material baseline still defaults to a
+// 24px box even when font-size is overridden.
 .favorite-toggle {
-  display: flex;
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.05);
+  // `position: relative` + `z-index: 2` keep the button visually and
+  // hit-test wise on top of any sibling badges / labels in the parent
+  // row, so a click never slips through to the parent's click handler
+  // (which would toggle the tag-expand / talkgroup-enable state).
+  position: relative;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 234, 0, 0.45);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
 
   mat-icon {
+    width: 18px;
+    height: 18px;
     font-size: 18px;
-    color: #ffea00;
+    line-height: 1;
+    color: inherit;
+    // Force the button itself to be the click target — prevents weird
+    // event-bubbling issues when the icon catches the click instead.
+    pointer-events: none;
   }
 
   &:hover {
-    border-color: rgba(255, 255, 255, 0.4);
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 234, 0, 0.35);
+    color: rgba(255, 234, 0, 0.85);
   }
 
+  &:active {
+    transform: scale(0.94);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: rgba(255, 234, 0, 0.7);
+    box-shadow: 0 0 0 2px rgba(255, 234, 0, 0.25);
+  }
+
+  // Favorited state — bright filled gold with a subtle LCD glow.
+  &.is-favorited {
+    color: #ffea00;
+    background: rgba(255, 234, 0, 0.12);
+    border-color: rgba(255, 234, 0, 0.4);
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 234, 0, 0.08),
+      0 0 6px rgba(255, 234, 0, 0.25);
+
+    &:hover {
+      background: rgba(255, 234, 0, 0.18);
+      border-color: rgba(255, 234, 0, 0.6);
+    }
+  }
+
+  // `.chip-favorite` is now an alias of the default style — kept for
+  // backward compatibility with templates / scan-list rows.
   &.chip-favorite {
     width: 28px;
     height: 28px;
@@ -1131,21 +1217,10 @@
 
   .scan-list-actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
     gap: 4px;
-
-    .icon-action.bulk-toggle {
-      color: rgba(255, 255, 255, 0.45);
-      transition: color 120ms ease-out, text-shadow 120ms ease-out;
-
-      &.some-on {
-        color: #ffb74d;
-      }
-
-      &.all-on {
-        color: #00e676;
-        text-shadow: 0 0 6px rgba(0, 230, 118, 0.55);
-      }
-    }
   }
 
   .expand-icon {
@@ -1235,6 +1310,96 @@
   font-size: 14px;
   color: rgba(255, 255, 255, 0.4);
   flex-shrink: 0;
+}
+
+// Named text buttons for scan-list row actions (replaces icon-only controls).
+.scan-list-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.35);
+    color: #fff;
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &.bulk-toggle {
+    min-width: 42px;
+
+    &.all-on {
+      background: rgba(0, 230, 118, 0.14);
+      border-color: rgba(0, 230, 118, 0.55);
+      color: #00e676;
+    }
+
+    &.some-on {
+      background: rgba(255, 145, 0, 0.14);
+      border-color: rgba(255, 145, 0, 0.55);
+      color: #ff9100;
+    }
+  }
+
+  &.active {
+    background: rgba(0, 230, 118, 0.14);
+    border-color: rgba(0, 230, 118, 0.55);
+    color: #00e676;
+  }
+
+  &.partial {
+    background: rgba(255, 145, 0, 0.14);
+    border-color: rgba(255, 145, 0, 0.55);
+    color: #ff9100;
+  }
+
+  &.inactive {
+    background: rgba(255, 23, 68, 0.1);
+    border-color: rgba(255, 23, 68, 0.4);
+    color: #ff1744;
+  }
+
+  &.fav {
+    border-color: rgba(255, 234, 0, 0.4);
+    background: rgba(255, 234, 0, 0.1);
+    color: #ffea00;
+
+    &:hover {
+      background: rgba(255, 234, 0, 0.16);
+      border-color: rgba(255, 234, 0, 0.55);
+      color: #ffea00;
+    }
+  }
+
+  &.danger {
+    border-color: rgba(255, 23, 68, 0.35);
+    background: rgba(255, 23, 68, 0.08);
+    color: #ff1744;
+
+    &:hover {
+      background: rgba(255, 23, 68, 0.16);
+      border-color: rgba(255, 23, 68, 0.55);
+      color: #ff5252;
+    }
+  }
 }
 
 // Small icon-action variant

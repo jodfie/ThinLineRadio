@@ -39,22 +39,27 @@
         <span class="stat-label"> enabled</span>
       </span>
       <div class="controls-actions">
-        <button class="icon-action"
+        <button type="button"
+                class="scan-list-btn"
                 [class.active]="isAllEnabled()"
                 [class.partial]="isPartiallyEnabled() && !isAllEnabled()"
                 [class.inactive]="!isPartiallyEnabled()"
-                [title]="isAllEnabled() ? 'Disable All' : 'Enable All'"
+                [title]="isAllEnabled() ? 'Disable all talkgroups' : 'Enable all talkgroups'"
                 (click)="toggleAllTalkgroups()">
-          <mat-icon>{{ isAllEnabled() ? 'toggle_on' : 'toggle_off' }}</mat-icon>
+          {{ isAllEnabled() ? 'Disable All' : 'Enable All' }}
         </button>
-        <button class="icon-action" title="Systems" (click)="showSystemsModal()">
-          <mat-icon>filter_list</mat-icon>
+        <button type="button"
+                class="scan-list-btn"
+                title="Show or hide systems"
+                (click)="showSystemsModal()">
+          Systems
         </button>
         <button *ngIf="getFavoriteItems().length > 0"
-                class="icon-action fav"
-                [title]="areAllFavoritesEnabled() ? 'Disable favorites' : 'Enable favorites'"
+                type="button"
+                class="scan-list-btn fav"
+                [title]="areAllFavoritesEnabled() ? 'Disable all favorites' : 'Enable all favorites'"
                 (click)="toggleFavoritesBulk($event)">
-          <mat-icon>{{ areAllFavoritesEnabled() ? 'pause_circle' : 'play_circle' }}</mat-icon>
+          {{ areAllFavoritesEnabled() ? 'Disable Favs' : 'Enable Favs' }}
         </button>
       </div>
     </div>
@@ -64,9 +69,7 @@
   <div *ngIf="navMode === 'scanLists'" class="scan-lists-panel">
     <div class="scan-lists-header">
       <span class="scan-lists-title">Scan Lists</span>
-      <button class="icon-action" title="New Scan List" (click)="createScanList()">
-        <mat-icon>add</mat-icon>
-      </button>
+      <button type="button" class="scan-list-btn" (click)="createScanList()">New List</button>
     </div>
 
     <div *ngIf="scanLists.length === 0" class="scan-lists-empty">
@@ -100,22 +103,34 @@
           </span>
           <div class="scan-list-actions" (click)="$event.stopPropagation()">
             <button *ngIf="list.channels.length > 0"
-                    class="icon-action sm bulk-toggle"
+                    type="button"
+                    class="scan-list-btn bulk-toggle"
                     [class.all-on]="getScanListLiveState(list) === 'all'"
                     [class.some-on]="getScanListLiveState(list) === 'some'"
-                    title="Toggle all channels in this list"
+                    [title]="getScanListLiveState(list) === 'all' ? 'All enabled — click to disable list' : getScanListLiveState(list) === 'some' ? 'Some enabled — click to toggle list' : 'None enabled — click to enable list'"
                     matTooltip="Turns every channel in this list on or off. Channels outside the list are unaffected, so this combines with manual selections from the Channels tab."
                     (click)="bulkToggleScanList(list, $event)">
-              <mat-icon>{{ getScanListBulkIcon(list) }}</mat-icon>
+              {{ getScanListBulkLabel(list) }}
             </button>
-            <button class="icon-action sm" title="Edit channels" (click)="editScanListChannels(list, $event)">
-              <mat-icon>playlist_add_check</mat-icon>
+            <button type="button"
+                    class="scan-list-btn"
+                    title="Edit channels in this list"
+                    (click)="editScanListChannels(list, $event)">
+              Channels
             </button>
-            <button *ngIf="!list.isFavoritesSource" class="icon-action sm" title="Rename" (click)="renameScanList(list)">
-              <mat-icon>edit</mat-icon>
+            <button *ngIf="!list.isFavoritesSource"
+                    type="button"
+                    class="scan-list-btn"
+                    title="Rename this scan list"
+                    (click)="renameScanList(list)">
+              Rename
             </button>
-            <button *ngIf="!list.isFavoritesSource" class="icon-action sm error" title="Delete" (click)="deleteScanList(list)">
-              <mat-icon>delete_outline</mat-icon>
+            <button *ngIf="!list.isFavoritesSource"
+                    type="button"
+                    class="scan-list-btn danger"
+                    title="Delete this scan list"
+                    (click)="deleteScanList(list)">
+              Delete
             </button>
           </div>
           <mat-icon class="expand-icon">{{ isScanListExpanded(list.id) ? 'keyboard_arrow_down' : 'keyboard_arrow_right' }}</mat-icon>
@@ -149,7 +164,7 @@
                     </mat-icon>
                     <div class="row-text">
                       <span class="row-label">{{ ch.talkgroupLabel }}</span>
-                      <span *ngIf="ch.talkgroupName && ch.talkgroupName !== ch.talkgroupLabel" class="row-name">{{ ch.talkgroupName }}</span>
+                      <span *ngIf="ch.talkgroupName" class="row-name">{{ ch.talkgroupName }}</span>
                     </div>
                     <span class="row-id">{{ ch.talkgroupId }}</span>
                     <button class="icon-action sm error" title="Remove from list" (click)="removeScanListChannel(list, ch, $event)">
@@ -172,46 +187,56 @@
   </div>
 
   <div *ngIf="navMode !== 'scanLists' && systems && systems.length > 0" class="channels-split">
-    <aside class="channels-sidebar">
-      <div class="sidebar-head">Systems</div>
-      <div class="sidebar-list">
-        <div
-          *ngIf="navMode === 'favorites' && getSystemsForSidebar().length === 0"
-          class="sidebar-empty">
-          <mat-icon>star_border</mat-icon>
-          <span>No favorites yet</span>
-          <p>Star systems, tags, or talkgroups to list them here</p>
-        </div>
-        <button
-          *ngFor="let system of getSystemsForSidebar()"
-          type="button"
-          class="sidebar-system-row"
-          [class.active]="detailSystemId === system.id"
-          (click)="selectDetailSystem(system.id)">
-          <span class="sidebar-row-icon">
-            <mat-icon>radio</mat-icon>
+    <!--
+      Systems bar — horizontal row of chips that replaces the old left-hand
+      sidebar. Chips wrap to multiple rows when there are many systems and
+      the active system reads as a highlighted pill. This frees the entire
+      detail-pane width for the talkgroup grid (lets us pack 4 cards per
+      row at typical desktop widths instead of 3).
+    -->
+    <nav class="channels-systems-bar"
+         [class.is-empty]="navMode === 'favorites' && getSystemsForSidebar().length === 0">
+      <div
+        *ngIf="navMode === 'favorites' && getSystemsForSidebar().length === 0"
+        class="systems-bar-empty">
+        <mat-icon>star_border</mat-icon>
+        <span>No favorite systems yet — star a system, tag, or talkgroup to list it here</span>
+      </div>
+      <div
+        *ngFor="let system of getSystemsForSidebar()"
+        class="system-chip"
+        role="button"
+        tabindex="0"
+        [class.active]="detailSystemId === system.id"
+        [title]="system.label"
+        (click)="selectDetailSystem(system.id)"
+        (keydown.enter)="selectDetailSystem(system.id)"
+        (keydown.space)="$event.preventDefault(); selectDetailSystem(system.id)">
+        <span class="system-chip-icon">
+          <mat-icon>radio</mat-icon>
+        </span>
+        <span class="system-chip-body">
+          <span class="system-chip-label">{{ system.label }}</span>
+          <span class="system-chip-meta">
+            <span class="enabled-count">{{ getEnabledCountInSystem(system) }}</span>
+            <span class="total-count">/ {{ getFilteredTalkgroups(system).length }}</span>
           </span>
-          <span class="sidebar-row-text">
-            <span class="sidebar-row-label">{{ system.label }}</span>
-            <span class="sidebar-row-meta">
-              <span class="enabled-count">{{ getEnabledCountInSystem(system) }}</span>
-              <span class="total-count">/ {{ getFilteredTalkgroups(system).length }}</span>
-            </span>
-          </span>
-          <span class="sidebar-row-badge">
-            <span class="toggle-badge mini"
+        </span>
+        <span class="system-chip-badge">
+          <button type="button"
+                  class="toggle-badge mini"
                   [class.all]="isAllEnabledInSystem(system)"
                   [class.some]="isSomeEnabledInSystem(system)"
+                  [title]="isAllEnabledInSystem(system) ? 'All enabled — click to disable' : isSomeEnabledInSystem(system) ? 'Some enabled — click to toggle' : 'None enabled — click to enable all'"
                   (click)="toggleSystemTalkgroups(system, $event)">
-              {{ isAllEnabledInSystem(system) ? 'All' : isSomeEnabledInSystem(system) ? 'Some' : 'None' }}
-            </span>
-          </span>
-          <mat-icon
-            *ngIf="isSystemFavorite(system.id) || getFavoriteTalkgroupsCount(system) > 0"
-            class="sidebar-row-star">star</mat-icon>
-        </button>
+            {{ isAllEnabledInSystem(system) ? 'All' : isSomeEnabledInSystem(system) ? 'Some' : 'None' }}
+          </button>
+        </span>
+        <mat-icon
+          *ngIf="isSystemFavorite(system.id) || getFavoriteTalkgroupsCount(system) > 0"
+          class="system-chip-star">star</mat-icon>
       </div>
-    </aside>
+    </nav>
 
     <main class="channels-detail">
       <ng-container *ngIf="getDetailSystem() as ds">
@@ -230,17 +255,24 @@
             <mat-icon [class]="getSystemStatusClass(ds)">{{ getSystemStatusIcon(ds) }}</mat-icon>
           </div>
           <div class="system-toggle">
-            <span class="toggle-badge"
-                  [class.all]="isAllEnabledInSystem(ds)"
-                  [class.some]="isSomeEnabledInSystem(ds)"
-                  (click)="toggleSystemTalkgroups(ds, $event)">
+            <button type="button"
+                    class="toggle-badge"
+                    [class.all]="isAllEnabledInSystem(ds)"
+                    [class.some]="isSomeEnabledInSystem(ds)"
+                    [title]="isAllEnabledInSystem(ds) ? 'All enabled — click to disable' : isSomeEnabledInSystem(ds) ? 'Some enabled — click to toggle' : 'None enabled — click to enable all'"
+                    (click)="toggleSystemTalkgroups(ds, $event)">
               {{ isAllEnabledInSystem(ds) ? 'All' : isSomeEnabledInSystem(ds) ? 'Some' : 'None' }}
-            </span>
+            </button>
           </div>
           <div class="system-actions">
             <button class="mini-button" (click)="setSystemTalkgroupsStatus(ds, true, $event)">Enable</button>
             <button class="mini-button" (click)="setSystemTalkgroupsStatus(ds, false, $event)">Disable</button>
-            <button class="favorite-toggle" (click)="toggleFavoriteSystem(ds.id, $event)">
+            <button type="button"
+                    class="favorite-toggle"
+                    [class.is-favorited]="isSystemFavorite(ds.id)"
+                    [attr.aria-label]="(isSystemFavorite(ds.id) ? 'Unfavorite ' : 'Favorite ') + ds.label"
+                    [title]="isSystemFavorite(ds.id) ? 'Unfavorite system' : 'Favorite system'"
+                    (click)="toggleFavoriteSystem(ds.id, $event)">
               <mat-icon>{{ isSystemFavorite(ds.id) ? 'star' : 'star_border' }}</mat-icon>
             </button>
           </div>
@@ -260,17 +292,24 @@
                 <mat-icon [class]="getTagStatusClass(ds.id, tagGroup.tag)">{{ getTagStatusIcon(ds.id, tagGroup.tag) }}</mat-icon>
               </div>
               <div class="tag-toggle">
-                <span class="toggle-badge"
-                      [class.all]="isAllEnabledInTag(ds.id, tagGroup.tag)"
-                      [class.some]="isSomeEnabledInTag(ds.id, tagGroup.tag)"
-                      (click)="toggleTagTalkgroups(ds.id, tagGroup.tag, tagGroup.talkgroups, $event)">
+                <button type="button"
+                        class="toggle-badge"
+                        [class.all]="isAllEnabledInTag(ds.id, tagGroup.tag)"
+                        [class.some]="isSomeEnabledInTag(ds.id, tagGroup.tag)"
+                        [title]="isAllEnabledInTag(ds.id, tagGroup.tag) ? 'All enabled — click to disable' : isSomeEnabledInTag(ds.id, tagGroup.tag) ? 'Some enabled — click to toggle' : 'None enabled — click to enable all'"
+                        (click)="toggleTagTalkgroups(ds.id, tagGroup.tag, tagGroup.talkgroups, $event)">
                   {{ isAllEnabledInTag(ds.id, tagGroup.tag) ? 'All' : isSomeEnabledInTag(ds.id, tagGroup.tag) ? 'Some' : 'None' }}
-                </span>
+                </button>
               </div>
               <div class="tag-actions">
                 <button class="mini-button" (click)="setTagTalkgroupsStatus(ds.id, tagGroup.tag, tagGroup.talkgroups, true, $event)">Enable</button>
                 <button class="mini-button" (click)="setTagTalkgroupsStatus(ds.id, tagGroup.tag, tagGroup.talkgroups, false, $event)">Disable</button>
-                <button class="favorite-toggle" (click)="toggleFavoriteTag(ds.id, tagGroup.tag, $event)">
+                <button type="button"
+                        class="favorite-toggle"
+                        [class.is-favorited]="isTagFavorite(ds.id, tagGroup.tag)"
+                        [attr.aria-label]="(isTagFavorite(ds.id, tagGroup.tag) ? 'Unfavorite ' : 'Favorite ') + (tagGroup.tag || 'Untagged')"
+                        [title]="isTagFavorite(ds.id, tagGroup.tag) ? 'Unfavorite tag' : 'Favorite tag'"
+                        (click)="toggleFavoriteTag(ds.id, tagGroup.tag, $event)">
                   <mat-icon>{{ isTagFavorite(ds.id, tagGroup.tag) ? 'star' : 'star_border' }}</mat-icon>
                 </button>
               </div>
@@ -282,16 +321,21 @@
                 <div *ngFor="let talkgroup of tagGroup.talkgroups"
                      class="talkgroup-row"
                      [class.enabled]="isTalkgroupEnabled(ds.id, talkgroup.id)"
-                     (click)="toggleTalkgroup(ds.id, talkgroup.id)">
+                     (click)="toggleTalkgroup(ds.id, talkgroup.id, $event)">
                   <mat-icon class="row-radio-icon">
                     {{ isTalkgroupEnabled(ds.id, talkgroup.id) ? 'radio_button_checked' : 'radio_button_unchecked' }}
                   </mat-icon>
                   <div class="row-text">
                     <span class="row-label">{{ talkgroup.label }}</span>
-                    <span *ngIf="talkgroup.name && talkgroup.name !== talkgroup.label" class="row-name">{{ talkgroup.name }}</span>
+                    <span *ngIf="talkgroup.name" class="row-name">{{ talkgroup.name }}</span>
                   </div>
                   <span class="row-id">{{ talkgroup.id }}</span>
-                  <button class="favorite-toggle chip-favorite" (click)="toggleFavoriteTalkgroup(ds.id, talkgroup.id, $event)">
+                  <button type="button"
+                          class="favorite-toggle chip-favorite"
+                          [class.is-favorited]="isFavorite(ds.id, talkgroup.id)"
+                          [attr.aria-label]="(isFavorite(ds.id, talkgroup.id) ? 'Unfavorite ' : 'Favorite ') + talkgroup.label"
+                          [title]="isFavorite(ds.id, talkgroup.id) ? 'Unfavorite' : 'Favorite'"
+                          (click)="toggleFavoriteTalkgroup(ds.id, talkgroup.id, $event)">
                     <mat-icon>{{ isFavorite(ds.id, talkgroup.id) ? 'star' : 'star_border' }}</mat-icon>
                   </button>
                 </div>

@@ -75,6 +75,7 @@ const SETTINGS_INDEX: SearchResult[] = [
     { label: 'Email Verification', keywords: 'email verification required signup verify', breadcrumb: 'Config → Options → User Registration', icon: 'mark_email_read', tab: 0, configSection: 'options', optionPanel: 'userRegistrationExpanded' },
     { label: 'Cloudflare Turnstile', keywords: 'turnstile cloudflare captcha site key secret', breadcrumb: 'Config → Options → User Registration', icon: 'security', tab: 0, configSection: 'options', optionPanel: 'userRegistrationExpanded' },
     { label: 'Invitation Codes', keywords: 'invitation invite code access registration', breadcrumb: 'Config → Options → User Registration', icon: 'card_giftcard', tab: 0, configSection: 'options', optionPanel: 'userRegistrationExpanded' },
+    { label: 'Leave Central Management', keywords: 'central management leave unlink removal code disconnect hub', breadcrumb: 'Config → Options → User Registration', icon: 'link_off', tab: 0, configSection: 'options', optionPanel: 'userRegistrationExpanded' },
     // ── Stripe ────────────────────────────────────────────────────────────────
     { label: 'Stripe Paywall', keywords: 'stripe paywall enable payments billing', breadcrumb: 'Config → Options → Stripe', icon: 'payment', tab: 0, configSection: 'options', optionPanel: 'stripeExpanded' },
     { label: 'Stripe Publishable Key', keywords: 'stripe publishable key pk live test', breadcrumb: 'Config → Options → Stripe', icon: 'vpn_key', tab: 0, configSection: 'options', optionPanel: 'stripeExpanded' },
@@ -102,7 +103,6 @@ const SETTINGS_INDEX: SearchResult[] = [
     { label: 'Groups', keywords: 'groups talkgroup organize category', breadcrumb: 'Config → Groups', icon: 'folder', tab: 0, configSection: 'groups' },
     { label: 'Tags', keywords: 'tags labels talkgroup filter', breadcrumb: 'Config → Tags', icon: 'label', tab: 0, configSection: 'tags' },
     { label: 'Keyword Lists', keywords: 'keyword list alert word filter transcription', breadcrumb: 'Config → Keyword Lists', icon: 'list', tab: 0, configSection: 'keyword-lists' },
-    { label: 'User Registration Settings', keywords: 'user registration options config', breadcrumb: 'Config → User Registration', icon: 'how_to_reg', tab: 0, configSection: 'user-registration' },
     // ── Tools ─────────────────────────────────────────────────────────────────
     { label: 'Import Talkgroups', keywords: 'import talkgroups csv json file upload', breadcrumb: 'Tools → Import Talkgroups', icon: 'description', tab: 3, toolSection: 'import-talkgroups' },
     { label: 'Import Units', keywords: 'import units csv json file upload', breadcrumb: 'Tools → Import Units', icon: 'description', tab: 3, toolSection: 'import-units' },

@@ -17,22 +17,28 @@
     </rdio-scanner-mobile-web-hub>
 
     <!-- ═══════════════════════════════════════════════════════════════════
-         NEW TAB-BASED LAYOUT
+         Both layouts are kept mounted simultaneously; only one is visible at
+         a time. Toggling between them is instant — no re-mount, no refetch,
+         no loss of filter / scroll / form state. Cost: both subscribe to the
+         singleton scanner service, which is cheap since audio + websocket
+         state lives in the service itself, not the views.
     ════════════════════════════════════════════════════════════════════ -->
-    <ng-container *ngIf="!hasVerificationToken() && (!authRequired || userAuthenticated) && !isMobileRestrictedBrowser && !useClassicView">
-        <rdio-scanner-chassis class="thinline-skin">
-            <rdio-scanner-main
-                (toggleFullscreen)="toggleFullscreen()"
-                (signOut)="onSignOut()"
-                (toggleClassicViewRequest)="toggleClassicView()">
-            </rdio-scanner-main>
-        </rdio-scanner-chassis>
-    </ng-container>
+    <ng-container *ngIf="!hasVerificationToken() && (!authRequired || userAuthenticated) && !isMobileRestrictedBrowser">
 
-    <!-- ═══════════════════════════════════════════════════════════════════
-         CLASSIC LAYOUT — original mat-sidenav-container structure
-    ════════════════════════════════════════════════════════════════════ -->
-    <ng-container *ngIf="!hasVerificationToken() && (!authRequired || userAuthenticated) && !isMobileRestrictedBrowser && useClassicView">
+        <!-- NEW TAB-BASED LAYOUT -->
+        <div class="view-host" [hidden]="useClassicView">
+            <rdio-scanner-chassis class="thinline-skin">
+                <rdio-scanner-console
+                    [viewActive]="!useClassicView"
+                    (toggleFullscreen)="toggleFullscreen()"
+                    (signOut)="onSignOut()"
+                    (toggleClassicViewRequest)="toggleClassicView()">
+                </rdio-scanner-console>
+            </rdio-scanner-chassis>
+        </div>
+
+        <!-- CLASSIC LAYOUT -->
+        <div class="view-host" [hidden]="!useClassicView">
         <mat-sidenav-container [hasBackdrop]="false" class="thinline-skin">
             <mat-sidenav #classicSearchPanel [autoFocus]="false" [disableClose]="true" position="start" (closedStart)="onSearchPanelClosed()">
                 <div class="panel search">
@@ -104,6 +110,7 @@
 
             <mat-sidenav-content>
                 <rdio-scanner-main-legacy
+                    [viewActive]="useClassicView"
                     (openSearchPanel)="classicScrollTop(classicScrollableSearch); classicSearchPanel.open(); classicSearchComponent.searchCalls()"
                     (openSelectPanel)="classicScrollTop(classicScrollableSelect); classicSelectPanel.open()"
                     (openSettingsPanel)="classicScrollTop(classicScrollableSettings); classicSettingsPanel.open()"
@@ -114,5 +121,6 @@
                 </rdio-scanner-main-legacy>
             </mat-sidenav-content>
         </mat-sidenav-container>
+        </div>
     </ng-container>
 </div>

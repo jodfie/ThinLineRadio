@@ -228,6 +228,590 @@ $admin-dark-theme: mat.define-dark-theme((
 }
 
 
+/* ── ThinLine LCD menu panel ─────────────────────────────────────────────────
+ * Used by `<mat-menu class="tlr-lcd-menu">` (and any future overlay that
+ * wants the LCD look). CDK renders overlay panels at <body> level, outside
+ * any `.thinline-skin` scope, so these rules live globally and inherit only
+ * from CSS variables defined on `:root` in thinline-tokens.scss. */
+.tlr-lcd-menu.mat-mdc-menu-panel {
+  background: var(--tlr-lcd-gradient) !important;
+  border: 1px solid var(--tlr-bezel-border) !important;
+  border-radius: var(--tlr-bezel-radius) !important;
+  box-shadow: var(--tlr-bezel-shadow),
+              0 0 0 1px rgba(57, 255, 20, 0.06) inset !important;
+  overflow: hidden;
+  position: relative;
+
+  /* Subtle scanline overlay — same treatment as the LCD live strip. */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(var(--tlr-lcd-scanline-step) - 1px),
+      var(--tlr-lcd-scanline-color) calc(var(--tlr-lcd-scanline-step) - 1px),
+      var(--tlr-lcd-scanline-color) var(--tlr-lcd-scanline-step)
+    );
+    z-index: 0;
+  }
+
+  .mat-mdc-menu-content {
+    background: transparent !important;
+    padding: 4px 0 !important;
+    position: relative;
+    z-index: 1;
+  }
+
+  .mat-mdc-menu-item {
+    background: transparent;
+    color: var(--tlr-accent);
+    font-family: var(--tlr-font-primary);
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    min-height: 32px;
+    padding: 0 14px;
+    transition: background 0.15s ease, color 0.15s ease, text-shadow 0.15s ease;
+
+    .mdc-list-item__primary-text,
+    .mat-mdc-menu-item-text {
+      color: var(--tlr-accent) !important;
+      font-family: inherit !important;
+      font-size: inherit !important;
+      letter-spacing: inherit !important;
+    }
+
+    mat-icon,
+    .mat-icon {
+      color: var(--tlr-primary);
+      filter: drop-shadow(0 0 4px rgba(57, 255, 20, 0.4));
+    }
+
+    &:hover:not([disabled]),
+    &.cdk-program-focused,
+    &.cdk-keyboard-focused {
+      background: rgba(57, 255, 20, 0.08) !important;
+      color: var(--tlr-primary) !important;
+
+      .mdc-list-item__primary-text,
+      .mat-mdc-menu-item-text {
+        color: var(--tlr-primary) !important;
+        text-shadow: 0 0 6px rgba(57, 255, 20, 0.55);
+      }
+    }
+
+    &[disabled] {
+      opacity: 0.45;
+    }
+
+    /* Material's hover ripple — recolour to neon green */
+    .mat-mdc-menu-ripple,
+    .mat-mdc-focus-indicator,
+    .mdc-list-item__ripple::before,
+    .mdc-list-item__ripple::after {
+      background-color: rgba(57, 255, 20, 0.18) !important;
+    }
+  }
+
+  /* Free-form children (e.g. the "No favorites saved" message) */
+  .no-favorites-message {
+    position: relative;
+    z-index: 1;
+    color: var(--tlr-text-secondary) !important;
+  }
+
+  /* Custom scrollbar so the dropdown still feels like an LCD readout */
+  .mat-mdc-menu-content {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(57, 255, 20, 0.35) transparent;
+
+    &::-webkit-scrollbar { width: 6px; }
+    &::-webkit-scrollbar-track { background: transparent; }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(57, 255, 20, 0.35);
+      border-radius: 3px;
+    }
+    &::-webkit-scrollbar-thumb:hover { background: rgba(57, 255, 20, 0.55); }
+  }
+}
+
+/* ── Time-of-day picker (rendered inside .tlr-lcd-menu.tlr-time-menu) ────── */
+.tlr-lcd-menu.tlr-time-menu .mat-mdc-menu-content { padding: 0 !important; }
+
+.tlr-time-picker {
+  position: relative;
+  z-index: 1;
+  padding: 10px 12px 8px;
+  min-width: 180px;
+  color: var(--tlr-accent);
+  font-family: var(--tlr-font-primary);
+
+  .tlr-time-display {
+    text-align: center;
+    font-family: var(--tlr-font-numeric);
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--tlr-primary);
+    text-shadow: 0 0 8px rgba(57, 255, 20, 0.55);
+    margin-bottom: 8px;
+  }
+
+  .tlr-time-cols {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .tlr-time-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .tlr-time-sep {
+    font-family: var(--tlr-font-numeric);
+    font-size: 22px;
+    color: var(--tlr-primary);
+    padding-bottom: 18px;
+  }
+
+  .tlr-time-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 22px;
+    padding: 0;
+    background: rgba(57, 255, 20, 0.06);
+    border: 1px solid rgba(57, 255, 20, 0.25);
+    border-radius: 4px;
+    color: var(--tlr-primary);
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+
+    mat-icon {
+      width: 18px;
+      height: 18px;
+      font-size: 18px;
+      color: var(--tlr-primary);
+    }
+
+    &:hover {
+      background: rgba(57, 255, 20, 0.16);
+      border-color: rgba(57, 255, 20, 0.6);
+    }
+  }
+
+  .tlr-time-value {
+    font-family: var(--tlr-font-numeric);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--tlr-accent);
+    min-width: 44px;
+    text-align: center;
+    padding: 2px 0;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+  }
+
+  .tlr-time-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--tlr-text-secondary);
+    text-transform: uppercase;
+  }
+
+  .tlr-time-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--tlr-header-divider);
+  }
+
+  .tlr-time-action {
+    flex: 1;
+    height: 26px;
+    padding: 0 10px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: var(--tlr-text-secondary);
+    font-family: var(--tlr-font-primary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--tlr-text);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+  }
+
+  .tlr-time-action--primary {
+    background: rgba(57, 255, 20, 0.12);
+    border-color: rgba(57, 255, 20, 0.55);
+    color: var(--tlr-primary);
+
+    &:hover {
+      background: rgba(57, 255, 20, 0.22);
+      border-color: var(--tlr-primary);
+      color: var(--tlr-primary);
+    }
+  }
+}
+
+/* ── ThinLine LCD datepicker overlay (mat-datepicker panelClass) ─────────────
+ * MatDatepicker applies `panelClass` to the inner `<mat-calendar>` element
+ * (see @angular/material/datepicker source: `[ngClass]="datepicker.panelClass"`
+ * on mat-calendar). The outer `<mat-datepicker-content>` wrapper does NOT
+ * receive the class, so we reach it via `:has()`. */
+.mat-datepicker-content:has(.tlr-lcd-datepicker) {
+  background: var(--tlr-lcd-gradient) !important;
+  color: var(--tlr-accent) !important;
+  border: 1px solid var(--tlr-bezel-border) !important;
+  border-radius: var(--tlr-bezel-radius) !important;
+  box-shadow: var(--tlr-bezel-shadow),
+              0 0 0 1px rgba(57, 255, 20, 0.06) inset !important;
+  font-family: var(--tlr-font-primary) !important;
+  overflow: hidden;
+}
+
+/* Calendar grid itself */
+.mat-calendar.tlr-lcd-datepicker {
+  background: transparent !important;
+  color: var(--tlr-accent) !important;
+  font-family: var(--tlr-font-primary) !important;
+
+  .mat-calendar-header {
+    background: transparent !important;
+    border-bottom: 1px solid var(--tlr-header-divider);
+  }
+
+  .mat-calendar-period-button,
+  .mat-calendar-previous-button,
+  .mat-calendar-next-button {
+    color: var(--tlr-primary) !important;
+  }
+
+  .mat-calendar-period-button:hover,
+  .mat-calendar-previous-button:hover,
+  .mat-calendar-next-button:hover {
+    background: rgba(57, 255, 20, 0.1) !important;
+  }
+
+  .mat-calendar-arrow {
+    fill: var(--tlr-primary) !important;
+  }
+
+  .mat-calendar-table-header,
+  .mat-calendar-table-header th {
+    color: var(--tlr-text-secondary) !important;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .mat-calendar-table-header-divider::after {
+    background: var(--tlr-header-divider) !important;
+  }
+
+  .mat-calendar-body-label,
+  .mat-calendar-body-cell-content {
+    color: var(--tlr-accent) !important;
+  }
+
+  .mat-calendar-body-cell:not(.mat-calendar-body-disabled):hover
+    .mat-calendar-body-cell-content:not(.mat-calendar-body-selected) {
+    background: rgba(57, 255, 20, 0.12) !important;
+    color: var(--tlr-primary) !important;
+  }
+
+  .mat-calendar-body-cell-content.mat-focus-indicator {
+    border-color: rgba(57, 255, 20, 0.4) !important;
+  }
+
+  .mat-calendar-body-selected {
+    background: var(--tlr-primary) !important;
+    color: #001a00 !important;
+    box-shadow: 0 0 12px rgba(57, 255, 20, 0.5);
+  }
+
+  .mat-calendar-body-today:not(.mat-calendar-body-selected) {
+    border-color: var(--tlr-primary) !important;
+    color: var(--tlr-primary) !important;
+  }
+
+  .mat-calendar-body-disabled > .mat-calendar-body-cell-content {
+    color: rgba(255, 255, 255, 0.25) !important;
+  }
+}
+
+/* Optional action row (Today/Cancel) when used */
+.mat-datepicker-content:has(.tlr-lcd-datepicker) .mat-datepicker-actions {
+  border-top: 1px solid var(--tlr-header-divider) !important;
+  background: transparent !important;
+}
+.mat-datepicker-content:has(.tlr-lcd-datepicker) .mat-datepicker-actions button {
+  color: var(--tlr-primary) !important;
+}
+
+/* ── ThinLine LCD dialog ─────────────────────────────────────────────────────
+ * Used by `MatDialog.open(..., { panelClass: 'tlr-lcd-dialog' })`. Same
+ * skin family as `.tlr-lcd-menu` / `.tlr-lcd-datepicker` — bezelled LCD
+ * chassis, neon-green title + accents, faint scanline overlay, dimmed
+ * backdrop so the dialog reads against a dark scrim instead of the
+ * default light wash. Lives globally because CDK renders overlay panels
+ * at <body>, outside any `.thinline-skin` scope. */
+.cdk-overlay-dark-backdrop.tlr-lcd-dialog-backdrop,
+.tlr-lcd-dialog-backdrop {
+  background: rgba(2, 8, 10, 0.72) !important;
+  backdrop-filter: blur(2px);
+}
+
+.tlr-lcd-dialog .mat-mdc-dialog-surface,
+.mat-mdc-dialog-container.tlr-lcd-dialog .mat-mdc-dialog-surface,
+.tlr-lcd-dialog.mat-mdc-dialog-panel .mat-mdc-dialog-surface {
+  background: var(--tlr-lcd-gradient) !important;
+  color: var(--tlr-accent) !important;
+  border: 1px solid var(--tlr-bezel-border) !important;
+  border-radius: var(--tlr-bezel-radius) !important;
+  box-shadow: var(--tlr-bezel-shadow),
+              0 0 0 1px rgba(57, 255, 20, 0.06) inset !important;
+  overflow: hidden;
+  position: relative;
+
+  /* Subtle scanline overlay — same treatment as the LCD live strip. */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(var(--tlr-lcd-scanline-step) - 1px),
+      var(--tlr-lcd-scanline-color) calc(var(--tlr-lcd-scanline-step) - 1px),
+      var(--tlr-lcd-scanline-color) var(--tlr-lcd-scanline-step)
+    );
+    z-index: 0;
+  }
+
+  .mat-mdc-dialog-title,
+  .mat-mdc-dialog-content,
+  .mat-mdc-dialog-actions {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+.tlr-lcd-dialog .mat-mdc-dialog-title,
+.tlr-lcd-dialog .mdc-dialog__title {
+  color: var(--tlr-primary) !important;
+  font-family: var(--tlr-font-primary) !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 8px rgba(57, 255, 20, 0.45);
+  padding: 18px 22px 8px !important;
+
+  &::before { display: none !important; } /* MDC injects an invisible spacer */
+}
+
+.tlr-lcd-dialog .mat-mdc-dialog-content,
+.tlr-lcd-dialog .mdc-dialog__content {
+  color: var(--tlr-accent) !important;
+  font-family: var(--tlr-font-primary) !important;
+  font-size: 13px !important;
+  letter-spacing: 0.02em;
+  padding: 4px 22px 18px !important;
+  line-height: 1.5;
+}
+
+.tlr-lcd-dialog .mat-mdc-dialog-actions {
+  border-top: 1px solid var(--tlr-header-divider) !important;
+  padding: 12px 16px !important;
+  justify-content: space-between !important;
+  background: transparent;
+}
+
+.tlr-lcd-dialog .tlr-dialog-btn.mat-mdc-button {
+  font-family: var(--tlr-font-primary) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  min-width: 88px;
+  height: 34px;
+  padding: 0 16px !important;
+  border-radius: 6px !important;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+
+  .mat-mdc-button-persistent-ripple,
+  .mat-mdc-focus-indicator,
+  .mat-ripple { display: none !important; }
+
+  .mdc-button__label { letter-spacing: inherit; }
+}
+
+.tlr-lcd-dialog .tlr-dialog-btn--ghost.mat-mdc-button {
+  color: var(--tlr-text-secondary) !important;
+  background: transparent !important;
+  border: 1px solid var(--tlr-bezel-border) !important;
+
+  &:hover {
+    color: var(--tlr-accent) !important;
+    background: rgba(126, 200, 232, 0.06) !important;
+  }
+}
+
+.tlr-lcd-dialog .tlr-dialog-btn--primary.mat-mdc-button {
+  color: var(--tlr-primary) !important;
+  background: rgba(57, 255, 20, 0.08) !important;
+  border: 1px solid rgba(57, 255, 20, 0.55) !important;
+  text-shadow: 0 0 8px rgba(57, 255, 20, 0.55);
+
+  &:hover {
+    background: rgba(57, 255, 20, 0.16) !important;
+    box-shadow: 0 0 12px rgba(57, 255, 20, 0.35);
+  }
+}
+
+/* ── ThinLine Archive tab: document-level scrolling ──────────────────────────
+ * By default the console is viewport-locked: html, body, rdio-scanner :host,
+ * .scanner-shell, .view-host, rdio-scanner-chassis :host, .chassis,
+ * rdio-scanner-console :host, .console, and .board-tabs all stack a `height:
+ * 100%` + `flex/min-height: 0` chain so the LCD strip / transport / tab bar
+ * stay pinned and only `.mat-mdc-tab-body-content` scrolls.
+ *
+ * The Archive *and Channels* tabs want the *whole page* to scroll instead —
+ * header, LCD strip, transport, tabs, filter row, sidebar and content all
+ * move up together. To get that without breaking the other tabs we release
+ * the height chain only while `body.tlr-page-scroll` is set, which the
+ * console component toggles whenever it activates one of those tabs (and
+ * clears on unload). The Channels tab additionally needs to drop the
+ * internal scroll viewports inside `<rdio-scanner-select>` — those rules
+ * are gated behind a second class, `body.tlr-channels-scroll`. */
+body.tlr-page-scroll {
+  &, html { height: auto !important; min-height: 100%; overflow: auto !important; }
+}
+
+html:has(body.tlr-page-scroll) { height: auto !important; min-height: 100%; overflow: auto !important; }
+
+body.tlr-page-scroll rdio-scanner,
+body.tlr-page-scroll rdio-scanner-chassis,
+body.tlr-page-scroll rdio-scanner-console {
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+body.tlr-page-scroll .scanner-shell,
+body.tlr-page-scroll .chassis,
+body.tlr-page-scroll .console {
+  height: auto !important;
+  min-height: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+body.tlr-page-scroll .view-host {
+  display: block !important;     // drop the flex column so children flow naturally
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+/* Release every layer Material stacks inside .board-tabs so the tab body
+   stops being its own scroll viewport. The `.archive-panel` rules in
+   console.component.scss already make the inner cards (.rdio-list,
+   .archive-table-scroll, etc.) `overflow: visible`.
+
+   IMPORTANT: do NOT use `flex: 0 0 auto` on `.mat-mdc-tab-body` /
+   `.mat-mdc-tab-body-content`. Material's `.mat-mdc-tab-body-wrapper`
+   is a flex *row*, so `flex: 0 0 auto` shrinks the body to its content
+   width and the tab content collapses to the left with a gap on the
+   right. We release height/overflow only and let the default width
+   sizing keep the body full-width. */
+body.tlr-page-scroll .board-tabs,
+body.tlr-page-scroll .board-tabs .mat-mdc-tab-group,
+body.tlr-page-scroll .board-tabs .mat-mdc-tab-body-wrapper {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  flex: 0 0 auto !important;
+}
+
+body.tlr-page-scroll .board-tabs .mat-mdc-tab-body,
+body.tlr-page-scroll .board-tabs .mat-mdc-tab-body-active,
+body.tlr-page-scroll .board-tabs .mat-mdc-tab-body-content {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  width: 100% !important;        // never let `flex: ... auto` shrink-fit
+}
+
+/* ── Channels tab: also release internal scroll viewports inside
+   `<rdio-scanner-select>` so the master-detail panes flow naturally
+   into the page scroll. Without these, the sidebar systems list and
+   the right-hand talkgroup body each carry their own scrollbar even
+   though the outer page is already scrolling.
+
+   IMPORTANT: only release *height* / *overflow* — never `flex` or
+   `width`. The master-detail row must keep its horizontal sizing
+   (fixed-width sidebar + flexible detail pane). Earlier we applied
+   `flex: 0 0 auto !important` to the sidebar/detail and it caused the
+   entire panel to collapse to content width. */
+body.tlr-channels-scroll rdio-scanner-select,
+body.tlr-channels-scroll rdio-scanner-select .select-container,
+body.tlr-channels-scroll rdio-scanner-select .channels-board {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+
+/* The split row stays a flex row and keeps stretching; we only allow
+   the row itself to grow with its tallest column. */
+body.tlr-channels-scroll rdio-scanner-select .channels-split {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  align-items: stretch;
+}
+
+/* Systems bar keeps its 4-row scroll cap even in page-scroll mode.
+   Only the detail pane below grows with the document. */
+body.tlr-channels-scroll rdio-scanner-select .channels-systems-bar {
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+body.tlr-channels-scroll rdio-scanner-select .channels-detail {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+}
+
+/* Drop the inner scroll viewport on the detail body — content now flows
+   into the page. (The systems bar wraps naturally, no scroll viewport.) */
+body.tlr-channels-scroll rdio-scanner-select .channels-detail-body {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  flex: 0 0 auto !important;
+}
+
 body {
 	font-family: $rdio-scanner-font-family;
 	margin: 0;

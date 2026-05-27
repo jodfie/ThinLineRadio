@@ -40,7 +40,7 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
     docker = false;
 
     /** Currently active section in the sidebar nav */
-    activeSection = 'user-registration';
+    activeSection = 'user-groups';
 
     form: FormGroup | undefined;
 

@@ -880,12 +880,16 @@ export class RdioScannerService implements OnDestroy {
         this.sendtoWebsocket(WebsocketCommand.LivefeedMap, null);
     }
 
-    stopPlaybackMode(): void {
+    stopPlaybackMode(options?: { clearList?: boolean }): void {
+        const clearList = options?.clearList ?? true;
+
         // Only stop playback mode if we're actually in playback mode
         // This prevents disabling live feed when search panel closes if we were never in playback mode
         if (this.livefeedMode !== RdioScannerLivefeedMode.Playback) {
             // Clear playback list even if not in playback mode (in case it exists)
-            this.playbackList = undefined;
+            if (clearList) {
+                this.playbackList = undefined;
+            }
             return;
         }
 
@@ -906,13 +910,20 @@ export class RdioScannerService implements OnDestroy {
         this.playbackRefreshing = false;
         this.isOneOffPlayback = false; // Reset one-off flag when stopping playback mode
 
-        // Clear playback list when stopping playback mode
-        // This ensures old search results don't persist when the playback screen is closed
-        this.playbackList = undefined;
+        // Clear playback list when fully exiting archive playback (e.g. tab change).
+        // When the user only stops the current call from a row button, keep the
+        // list so the next Play can auto-advance through results again.
+        if (clearList) {
+            this.playbackList = undefined;
+        }
 
         this.clearQueue();
 
-        this.emitEvent({ livefeedMode: this.livefeedMode, queue: 0, playbackList: undefined });
+        const event: RdioScannerEvent = { livefeedMode: this.livefeedMode, queue: 0 };
+        if (clearList) {
+            event.playbackList = undefined;
+        }
+        this.emitEvent(event);
 
         this.stop();
     }
@@ -1471,6 +1482,7 @@ export class RdioScannerService implements OnDestroy {
                     if (data !== null && typeof data === 'object') {
                         const branding = data['branding'];
                         const email = data['email'];
+                        const version = data['version'];
 
                         if (typeof branding === 'string') {
                             this.config.branding = branding;
@@ -1480,7 +1492,14 @@ export class RdioScannerService implements OnDestroy {
                             this.config.email = email;
                         }
 
-                        if (this.config.branding || this.config.email) {
+                        // The server is the source of truth for the running
+                        // version (server/version.go). The client's
+                        // package.json is only a build-time fallback.
+                        if (typeof version === 'string') {
+                            this.config.version = version;
+                        }
+
+                        if (this.config.branding || this.config.email || this.config.version) {
                             this.emitEvent({ config: this.config });
                         }
                     }

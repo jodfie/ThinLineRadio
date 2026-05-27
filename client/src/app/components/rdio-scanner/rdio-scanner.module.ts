@@ -22,7 +22,7 @@ import { NgModule } from '@angular/core';
 import { AppSharedModule } from '../../shared/shared.module';
 import { RdioScannerComponent } from './rdio-scanner.component';
 import { RdioScannerService } from './rdio-scanner.service';
-import { RdioScannerMainComponent } from './main/main.component';
+import { RdioScannerConsoleComponent } from './console/console.component';
 import { RdioScannerMainLegacyComponent } from './main/main-legacy.component';
 import { RdioScannerSupportComponent } from './main/support/support.component';
 import { RdioScannerNativeModule } from './native/native.module';
@@ -40,6 +40,7 @@ import { RdioScannerStripeCheckoutComponent } from './stripe-checkout/stripe-che
 import { RdioScannerSettingsComponent } from './settings/settings.component';
 import { RdioScannerAlertsComponent } from './alerts/alerts.component';
 import { RdioScannerAlertPreferencesComponent } from './alerts/preferences/preferences.component';
+import { KeywordListInfoDialogComponent } from './alerts/preferences/keyword-list-info-dialog.component';
 import { SettingsService } from './settings/settings.service';
 import { AlertsService } from './alerts/alerts.service';
 import { TagColorService } from './tag-color.service';
@@ -55,7 +56,7 @@ import { RdioScannerLcdBottomNavComponent } from './skin/lcd-bottom-nav.componen
 @NgModule({
     declarations: [
         RdioScannerComponent,
-        RdioScannerMainComponent,
+        RdioScannerConsoleComponent,
         RdioScannerMainLegacyComponent,
         RdioScannerSearchComponent,
         RdioScannerSelectComponent,
@@ -73,6 +74,7 @@ import { RdioScannerLcdBottomNavComponent } from './skin/lcd-bottom-nav.componen
         RdioScannerSettingsComponent,
         RdioScannerAlertsComponent,
         RdioScannerAlertPreferencesComponent,
+        KeywordListInfoDialogComponent,
         RdioScannerMobileWebHubComponent,
         RdioScannerChassisComponent,
         RdioScannerLcdFrameComponent,
