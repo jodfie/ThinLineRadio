@@ -58,7 +58,7 @@ export class RdioScannerAdminImportUnitsComponent implements OnInit{
             order: idx + 1,
         }));
 
-        this.system.units = this.system?.units?.concat(units);
+        this.system.units = (this.system.units || []).concat(units);
 
         this.csv = [];
 

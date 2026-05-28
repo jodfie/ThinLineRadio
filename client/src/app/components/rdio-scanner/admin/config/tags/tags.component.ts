@@ -98,23 +98,28 @@ export class RdioScannerAdminTagsComponent {
     }
 
     cleanupUnused(): void {
-        if (!this.form) return;
-        const systemsArray = this.form.root.get('systems') as FormArray;
-        if (!systemsArray) return;
+        if (!this.form || !this.originalConfig?.systems) return;
+
         const usedTagIds = new Set<number>();
-        systemsArray.controls.forEach(sys => {
-            const tgs = sys.get('talkgroups') as FormArray;
-            if (tgs) {
-                tgs.controls.forEach(tg => {
-                    const id = tg.get('tagId')?.value;
-                    if (id) usedTagIds.add(id);
-                });
+        for (const system of this.originalConfig.systems) {
+            if (!system.talkgroups || !Array.isArray(system.talkgroups)) {
+                continue;
             }
-        });
+            for (const talkgroup of system.talkgroups) {
+                const tagId = talkgroup.tagId ?? talkgroup.tag;
+                if (tagId) {
+                    usedTagIds.add(tagId);
+                }
+            }
+        }
+
         for (let i = this.form.controls.length - 1; i >= 0; i--) {
             const id = this.form.at(i).get('id')?.value;
-            if (id && !usedTagIds.has(id)) this.form.removeAt(i);
+            if (id && !usedTagIds.has(id)) {
+                this.form.removeAt(i);
+            }
         }
+
         this.form.markAsDirty();
     }
 }

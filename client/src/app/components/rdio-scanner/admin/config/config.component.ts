@@ -306,12 +306,51 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
         return systemId ? this.systemsWithLoadedTalkgroups.has(systemId) : false;
     }
 
+    /** Merge units/talkgroups from an emitted config into originalConfig for save. */
+    private syncLazyLoadedSystemData(config?: Config): void {
+        if (!config?.systems?.length || !this.originalConfig.systems?.length) {
+            return;
+        }
+
+        config.systems.forEach((importedSystem) => {
+            if (!importedSystem.id) {
+                return;
+            }
+
+            const originalSystem = this.originalConfig.systems!.find((s) => s.id === importedSystem.id);
+            if (!originalSystem) {
+                return;
+            }
+
+            if (importedSystem.units) {
+                originalSystem.units = importedSystem.units;
+            }
+
+            if (importedSystem.talkgroups) {
+                originalSystem.talkgroups = importedSystem.talkgroups;
+            }
+        });
+
+        if (config.groups) {
+            this.originalConfig.groups = config.groups;
+        }
+
+        if (config.tags) {
+            this.originalConfig.tags = config.tags;
+        }
+    }
+
     // ─── Form lifecycle ───────────────────────────────────────────────────────
 
     reset(config = this.config, options?: { dirty?: boolean, isImport?: boolean }): void {
         // Stamp time so the WebSocket event handler can detect a recent rebuild
         // and skip the redundant second reset.
         this._lastResetTime = Date.now();
+
+        // Tools > Import Units/Talkgroups emit a separate config copy; units and
+        // talkgroups are lazy-loaded outside the form and restored from
+        // originalConfig on save — merge imported data before rebuilding the form.
+        this.syncLazyLoadedSystemData(config);
 
         // Unsubscribe from previous subscriptions to prevent duplicates
         this.groupsSubscription?.unsubscribe();

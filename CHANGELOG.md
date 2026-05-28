@@ -1,5 +1,34 @@
 # Change log
 
+## Version 26.05.009 - Released May 28, 2026
+
+### Added
+
+- **Server — Cloudflare Workers AI transcription** *(contribution by [@robertlynch3](https://github.com/robertlynch3))*
+  - New transcription provider option: **Cloudflare Workers AI** (Whisper models via REST API).
+  - Admin options: Account ID, API token, and model ID (e.g. `@cf/openai/whisper-large-v3-turbo`).
+  - Server sends call audio to `https://api.cloudflare.com/client/v4/accounts/{id}/ai/run/{model}` and processes the transcript through the existing keyword/tone alert pipeline.
+  - Files: `server/transcription_cloudflare.go`, `server/transcription_queue.go`, `server/options.go`, admin transcription options UI.
+
+- **Admin — Cloudflare Workers AI setup guide**
+  - In-app panel when Cloudflare is selected: dashboard links, Account ID / API token / model steps, billing note, and link to the REST API docs.
+  - Global admin search includes Cloudflare-related keywords.
+
+### Fixed
+
+- **Admin — Tools > Import Units had no effect after Save** ([#206](https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio/issues/206))
+  - Imported unit IDs were merged into a separate config copy but never synced into `originalConfig`; Save always restored units from the pre-import snapshot (empty or stale).
+  - `reset()` now merges lazy-loaded units (and talkgroups/groups/tags from Import Talkgroups) into `originalConfig` before Save.
+  - First import on a system with no existing units no longer silently fails (`undefined.concat`).
+
+- **Admin — Cleanup Unused Groups / Tags deleted every group or tag** ([#209](https://github.com/Thinline-Dynamic-Solutions/ThinLineRadio/issues/209))
+  - Cleanup scanned the lazy-loaded systems form (empty talkgroups) instead of `originalConfig`, so every group/tag appeared unused and was removed on Save.
+
+- **Admin — Import Units step 3 label**
+  - Corrected “review talkgroups to import” → “review units to import”.
+
+---
+
 ## Version 26.05.008 - Released May 27, 2026
 
 - UI updates and bug fixes.

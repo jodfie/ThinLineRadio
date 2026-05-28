@@ -1213,42 +1213,62 @@
         </div>
 
         <!-- Cloudflare Workers AI Configuration -->
-        <div class="row" *ngIf="form?.get('transcriptionConfig')?.get('provider')?.value === 'cloudflare'">
-          <p>
-            <span class="mat-body">Cloudflare Account ID</span><br>
-            <span class="mat-caption">Your Cloudflare account ID. Found in the Cloudflare dashboard URL or under Workers &amp; Pages.</span>
-          </p>
-          <mat-form-field floatLabel="auto">
-            <input type="text" matInput formControlName="cloudflareAccountID" placeholder="Account ID" autocomplete="off">
-          </mat-form-field>
-        </div>
+        <ng-container *ngIf="form?.get('transcriptionConfig')?.get('provider')?.value === 'cloudflare'">
+          <div style="background:#1a237e;border:1px solid #5c6bc0;border-radius:8px;padding:16px;margin:8px 0 16px 0;color:#e8eaf6;">
+            <div style="display:flex;align-items:flex-start;gap:12px;">
+              <mat-icon style="color:#90caf9;">cloud</mat-icon>
+              <div style="flex:1;font-size:13px;line-height:1.55;">
+                <div style="font-weight:600;font-size:15px;margin-bottom:8px;">Cloudflare Workers AI setup (Whisper)</div>
+                <ol style="margin:0 0 12px 0;padding-left:20px;">
+                  <li style="margin-bottom:6px;">Sign in to the <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer" style="color:#90caf9;">Cloudflare Dashboard</a>.</li>
+                  <li style="margin-bottom:6px;">Open <a href="https://dash.cloudflare.com/?to=/:account/ai/workers-ai" target="_blank" rel="noopener noreferrer" style="color:#90caf9;">Workers &amp; Pages → Workers AI</a> and choose <strong>Use REST API</strong>.</li>
+                  <li style="margin-bottom:6px;"><strong>Account ID:</strong> copy the value shown on that page, from the dashboard URL (<code style="color:#c5cae9;">dash.cloudflare.com/&lt;ACCOUNT_ID&gt;/…</code>), or from Account Home → Overview (right sidebar).</li>
+                  <li style="margin-bottom:6px;"><strong>API token:</strong> click <strong>Create a Workers AI API Token</strong> on the Workers AI page and save it immediately (shown once). Alternative: <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer" style="color:#90caf9;">My Profile → API Tokens</a> → Create Token → <strong>Workers AI</strong> template (requires Workers AI Read and Edit).</li>
+                  <li style="margin-bottom:6px;"><strong>Model:</strong> use the full Workers AI model ID including the <code style="color:#c5cae9;">@cf/</code> prefix (default below is recommended). Browse all models in the <a href="https://developers.cloudflare.com/workers-ai/models/" target="_blank" rel="noopener noreferrer" style="color:#90caf9;">Workers AI model catalog</a>.</li>
+                </ol>
+                <p style="margin:0 0 8px 0;opacity:0.9;">Usage is billed to your Cloudflare account (many plans include a free daily allowance). Transcription still runs only for talkgroups where a user has <strong>alert notifications enabled</strong> (bell icon) plus tone or keyword alerts — keyword list buttons alone are not enough.</p>
+                <p style="margin:0;font-size:12px;opacity:0.85;">REST API reference: <a href="https://developers.cloudflare.com/workers-ai/get-started/rest-api/" target="_blank" rel="noopener noreferrer" style="color:#90caf9;">Cloudflare Workers AI REST API</a></p>
+              </div>
+            </div>
+          </div>
 
-        <div class="row" *ngIf="form?.get('transcriptionConfig')?.get('provider')?.value === 'cloudflare'">
-          <p>
-            <span class="mat-body">Cloudflare API Token</span><br>
-            <span class="mat-caption">Cloudflare API token with Workers AI permission. Create one at Cloudflare dashboard → My Profile → API Tokens.</span>
-          </p>
-          <mat-form-field floatLabel="auto">
-            <input type="text" matInput formControlName="cloudflareAPIToken" placeholder="API Token" autocomplete="off">
-          </mat-form-field>
-        </div>
+          <div class="row">
+            <p>
+              <span class="mat-body">Cloudflare Account ID</span><br>
+              <span class="mat-caption">32-character ID from the <a href="https://dash.cloudflare.com/?to=/:account/ai/workers-ai" target="_blank" rel="noopener noreferrer" style="color: #cc0000;">Workers AI</a> page, your dashboard URL, or Account Home → Overview.</span>
+            </p>
+            <mat-form-field floatLabel="auto">
+              <input type="text" matInput formControlName="cloudflareAccountID" placeholder="Account ID" autocomplete="off">
+            </mat-form-field>
+          </div>
 
-        <div class="row" *ngIf="form?.get('transcriptionConfig')?.get('provider')?.value === 'cloudflare'">
-          <p>
-            <span class="mat-body">Model</span><br>
-            <span class="mat-caption">Cloudflare Workers AI Whisper model to use.</span>
-          </p>
-          <mat-form-field floatLabel="auto">
-            <input type="text" matInput formControlName="cloudflareModel"
-                   placeholder="@cf/openai/whisper-large-v3-turbo"
-                   list="cloudflare-model-suggestions" autocomplete="off">
-            <datalist id="cloudflare-model-suggestions">
-              <option value="@cf/openai/whisper-large-v3-turbo">@cf/openai/whisper-large-v3-turbo — faster, recommended</option>
-              <option value="@cf/openai/whisper-large-v3">@cf/openai/whisper-large-v3 — higher accuracy</option>
-              <option value="@cf/openai/whisper">@cf/openai/whisper — original Whisper</option>
-            </datalist>
-          </mat-form-field>
-        </div>
+          <div class="row">
+            <p>
+              <span class="mat-body">Cloudflare API Token</span><br>
+              <span class="mat-caption">Workers AI token from <a href="https://dash.cloudflare.com/?to=/:account/ai/workers-ai" target="_blank" rel="noopener noreferrer" style="color: #cc0000;">Workers AI → Use REST API</a>, or create via <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer" style="color: #cc0000;">API Tokens</a> (Workers AI Read + Edit).</span>
+            </p>
+            <mat-form-field floatLabel="auto">
+              <input type="text" matInput formControlName="cloudflareAPIToken" placeholder="API Token" autocomplete="off">
+            </mat-form-field>
+          </div>
+
+          <div class="row">
+            <p>
+              <span class="mat-body">Model</span><br>
+              <span class="mat-caption">Cloudflare Workers AI Whisper model ID (must include <code>@cf/</code>). See the <a href="https://developers.cloudflare.com/workers-ai/models/" target="_blank" rel="noopener noreferrer" style="color: #cc0000;">model catalog</a>.</span>
+            </p>
+            <mat-form-field floatLabel="auto">
+              <input type="text" matInput formControlName="cloudflareModel"
+                     placeholder="@cf/openai/whisper-large-v3-turbo"
+                     list="cloudflare-model-suggestions" autocomplete="off">
+              <datalist id="cloudflare-model-suggestions">
+                <option value="@cf/openai/whisper-large-v3-turbo">@cf/openai/whisper-large-v3-turbo — faster, recommended</option>
+                <option value="@cf/openai/whisper-large-v3">@cf/openai/whisper-large-v3 — higher accuracy</option>
+                <option value="@cf/openai/whisper">@cf/openai/whisper — original Whisper</option>
+              </datalist>
+            </mat-form-field>
+          </div>
+        </ng-container>
 
         <!-- Common Settings -->
         <div class="row">

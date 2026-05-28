@@ -50,7 +50,21 @@ export class RdioScannerAdminImportTalkgroupsComponent implements OnInit {
     }
 
     async import(): Promise<void> {
-        if (this.system === undefined) return;
+        const system = this.system;
+        if (system === undefined) return;
+
+        if (!this.baseConfig.groups) {
+            this.baseConfig.groups = [];
+        }
+
+        if (!this.baseConfig.tags) {
+            this.baseConfig.tags = [];
+        }
+
+        if (!system.talkgroups) {
+            system.talkgroups = [];
+        }
+        const talkgroups = system.talkgroups;
 
         this.csv.forEach((csv) => {
             const group = csv[6];
@@ -74,7 +88,7 @@ export class RdioScannerAdminImportTalkgroupsComponent implements OnInit {
             const groupId = this.baseConfig.groups?.find((g) => g.label === csv[6])?.id;
             const tagId = this.baseConfig.tags?.find((t) => t.label === csv[5])?.id;
 
-            this.system?.talkgroups?.push({
+            talkgroups.push({
                 talkgroupRef: +csv[0],
                 label: csv[2],
                 name: csv[4],

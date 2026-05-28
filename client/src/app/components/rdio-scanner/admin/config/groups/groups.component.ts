@@ -86,23 +86,20 @@ export class RdioScannerAdminGroupsComponent {
     }
 
     cleanupUnused(): void {
-        if (!this.form) return;
-
-        const systemsArray = this.form.root.get('systems') as FormArray;
-        if (!systemsArray) return;
+        if (!this.form || !this.originalConfig?.systems) return;
 
         const usedGroupIds = new Set<number>();
-        systemsArray.controls.forEach((systemControl) => {
-            const talkgroupsArray = systemControl.get('talkgroups') as FormArray;
-            if (talkgroupsArray) {
-                talkgroupsArray.controls.forEach((talkgroupControl) => {
-                    const groupIds = talkgroupControl.get('groupIds')?.value;
-                    if (Array.isArray(groupIds)) {
-                        groupIds.forEach((id: number) => usedGroupIds.add(id));
-                    }
-                });
+        for (const system of this.originalConfig.systems) {
+            if (!system.talkgroups || !Array.isArray(system.talkgroups)) {
+                continue;
             }
-        });
+            for (const talkgroup of system.talkgroups) {
+                const groupIds = talkgroup.groupIds || talkgroup.group;
+                if (Array.isArray(groupIds)) {
+                    groupIds.forEach((id: number) => usedGroupIds.add(id));
+                }
+            }
+        }
 
         for (let i = this.form.controls.length - 1; i >= 0; i--) {
             const groupId = this.form.at(i).get('id')?.value;
@@ -111,8 +108,6 @@ export class RdioScannerAdminGroupsComponent {
             }
         }
 
-        if (this.form.dirty) {
-            this.form.markAsDirty();
-        }
+        this.form.markAsDirty();
     }
 }
