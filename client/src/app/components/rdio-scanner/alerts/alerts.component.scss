@@ -458,6 +458,12 @@
     align-items: center;
     color: rgba(255, 255, 255, 0.7);
 
+    .footer-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
     .btn-play {
         padding: 0.5rem 1rem;
         background-color: #00e676;
@@ -469,6 +475,384 @@
 
         &:hover {
             background-color: #00d469;
+        }
+    }
+
+    .btn-edit-training {
+        padding: 0.4rem 0.85rem;
+        background: rgba(138, 180, 248, 0.12);
+        color: #8ab4f8;
+        border: 1px solid rgba(138, 180, 248, 0.35);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        transition: background 0.15s, border-color 0.15s;
+
+        &:hover {
+            background: rgba(138, 180, 248, 0.22);
+            border-color: #8ab4f8;
+        }
+
+        &--active {
+            background: rgba(242, 139, 130, 0.15);
+            color: #f28b82;
+            border-color: rgba(242, 139, 130, 0.4);
+
+            &:hover {
+                background: rgba(242, 139, 130, 0.25);
+                border-color: #f28b82;
+            }
+        }
+
+        .draft-hint {
+            font-weight: 500;
+            opacity: 0.85;
+        }
+    }
+
+    .training-submitted-badge {
+        padding: 0.4rem 0.85rem;
+        background: rgba(129, 201, 149, 0.12);
+        color: #81c995;
+        border: 1px solid rgba(129, 201, 149, 0.35);
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+}
+
+.global-training-goal {
+    margin-bottom: 16px;
+    padding: 16px 18px;
+    background: linear-gradient(135deg, rgba(129, 201, 149, 0.08), rgba(138, 180, 248, 0.06));
+    border: 1px solid rgba(129, 201, 149, 0.25);
+    border-radius: 10px;
+
+    .global-training-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        color: #e8eaed;
+        margin-bottom: 10px;
+
+        mat-icon {
+            color: #81c995;
+            font-size: 20px;
+            width: 20px;
+            height: 20px;
+        }
+    }
+
+    .global-training-loading {
+        color: #9aa0a6;
+        font-size: 13px;
+    }
+
+    .global-training-stats {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 8px 16px;
+        margin-bottom: 10px;
+    }
+
+    .global-training-primary {
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: #81c995;
+    }
+
+    .global-training-detail {
+        font-size: 13px;
+        color: #9aa0a6;
+    }
+
+    .global-training-bar {
+        height: 10px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-bottom: 8px;
+    }
+
+    .global-training-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #137333, #81c995);
+        border-radius: 999px;
+        min-width: 2px;
+        transition: width 0.4s ease;
+    }
+
+    .global-training-meta {
+        font-size: 12px;
+        color: #9aa0a6;
+    }
+}
+
+.transcripts-admin-bar {
+    margin-bottom: 12px;
+}
+
+.btn-training-tips {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0.45rem 0.9rem;
+    background: rgba(138, 180, 248, 0.1);
+    color: #8ab4f8;
+    border: 1px solid rgba(138, 180, 248, 0.35);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.15s, border-color 0.15s;
+
+    mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+    }
+
+    &:hover {
+        background: rgba(138, 180, 248, 0.2);
+        border-color: #8ab4f8;
+    }
+}
+
+.collector-setup {
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    background: #1a2332;
+    border: 1px solid #3c5a80;
+    border-radius: 10px;
+
+    .collector-setup-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        color: #e8eaed;
+        margin-bottom: 6px;
+
+        mat-icon {
+            color: #8ab4f8;
+            font-size: 20px;
+            width: 20px;
+            height: 20px;
+        }
+    }
+
+    .collector-status {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: #3c4043;
+        color: #bdc1c6;
+
+        &--ok {
+            background: rgba(19, 115, 51, 0.25);
+            color: #81c995;
+        }
+
+        &--warn {
+            background: rgba(242, 139, 130, 0.15);
+            color: #f28b82;
+        }
+    }
+
+    .collector-setup-hint {
+        margin: 0 0 12px;
+        font-size: 13px;
+        color: #9aa0a6;
+        line-height: 1.45;
+    }
+
+    .collector-setup-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .btn-collector-connect,
+    .btn-collector-save {
+        padding: 0.45rem 1rem;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+    }
+
+    .btn-collector-connect {
+        background: #137333;
+        color: #fff;
+
+        &:hover:not(:disabled) {
+            background: #1a9644;
+        }
+    }
+
+    .collector-manual {
+        display: flex;
+        flex: 1;
+        min-width: 240px;
+        gap: 8px;
+    }
+
+    .collector-key-input {
+        flex: 1;
+        min-width: 160px;
+        padding: 0.45rem 0.75rem;
+        background: #121316;
+        border: 1px solid #3c4043;
+        border-radius: 6px;
+        color: #e8eaed;
+        font-size: 13px;
+
+        &:focus {
+            outline: none;
+            border-color: #8ab4f8;
+        }
+    }
+
+    .btn-collector-save {
+        background: #3c4043;
+        color: #e8eaed;
+
+        &:hover:not(:disabled) {
+            background: #4a4e52;
+        }
+    }
+
+    .collector-contribution {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(138, 180, 248, 0.15);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 8px 16px;
+        font-size: 13px;
+
+        .contrib-label {
+            color: #9aa0a6;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.04em;
+        }
+
+        .contrib-value {
+            color: #e8eaed;
+            font-weight: 600;
+        }
+
+        .contrib-detail {
+            color: #8ab4f8;
+            font-size: 12px;
+        }
+    }
+}
+
+.training-edit-panel {
+    margin-top: 14px;
+    padding: 16px;
+    background: #0e1117;
+    border: 1px solid #3c4043;
+    border-radius: 8px;
+
+    .training-edit-audio {
+        margin-bottom: 12px;
+
+        .audio-status {
+            font-size: 12px;
+            color: #9aa0a6;
+        }
+
+        .audio-status--unavail {
+            color: #f28b82;
+        }
+
+        .edit-audio-player {
+            width: 100%;
+            height: 36px;
+        }
+    }
+
+    .training-edit-label {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #8ab4f8;
+        margin-bottom: 6px;
+    }
+
+    .training-edit-textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        background: #1a1b1f;
+        border: 1px solid #3c4043;
+        border-radius: 6px;
+        color: #e8eaed;
+        font-size: 14px;
+        line-height: 1.5;
+        font-family: inherit;
+        resize: vertical;
+        min-height: 100px;
+
+        &:focus {
+            outline: none;
+            border-color: #8ab4f8;
+            box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.2);
+        }
+    }
+
+    .training-edit-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 10px;
+
+        button {
+            padding: 0.45rem 1rem;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: background 0.15s, opacity 0.15s;
+
+            &:disabled {
+                opacity: 0.45;
+                cursor: default;
+            }
+        }
+
+        .btn-save-draft {
+            background: #3c4043;
+            color: #e8eaed;
+
+            &:not(:disabled):hover { background: #4a4e52; }
+        }
+
+        .btn-approve {
+            background: #137333;
+            color: #fff;
+
+            &:not(:disabled):hover { background: #1a9644; }
         }
     }
 }
@@ -1424,6 +1808,20 @@
         .btn-play {
             background: var(--tlr-primary);
             color: var(--tlr-bg);
+        }
+
+        .btn-edit-training {
+            background: rgba(57, 255, 20, 0.08);
+            color: var(--tlr-primary);
+            border-color: rgba(57, 255, 20, 0.35);
+
+            &:hover { background: rgba(57, 255, 20, 0.18); }
+
+            &--active {
+                background: rgba(242, 139, 130, 0.15);
+                color: #f28b82;
+                border-color: rgba(242, 139, 130, 0.4);
+            }
         }
     }
 

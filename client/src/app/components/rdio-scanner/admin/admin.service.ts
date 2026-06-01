@@ -336,6 +336,8 @@ export interface Options {
         hallucinationDetectionMode?: string;
         hallucinationMinOccurrences?: number;
         timeoutSeconds?: number;
+        collectorURL?: string;
+        collectorAPIKey?: string;
     };
     alertRetentionDays?: number;
     systemHealthAlertsEnabled?: boolean;

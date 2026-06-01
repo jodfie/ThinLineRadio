@@ -1,0 +1,64 @@
+<div class="tr-wrap">
+    <div class="tr-toolbar">
+        <button class="btn-refresh" (click)="load()" [disabled]="loading">
+            {{ loading ? 'Loading…' : 'Refresh' }}
+        </button>
+        <button type="button" class="btn-training-tips" (click)="showTrainingTips = !showTrainingTips">
+            {{ showTrainingTips ? 'Hide training tips' : 'Show training tips' }}
+        </button>
+        <span class="tr-count" *ngIf="!loading">{{ transcripts.length }} loaded</span>
+    </div>
+
+    <rdio-scanner-transcript-training-tips *ngIf="showTrainingTips"></rdio-scanner-transcript-training-tips>
+
+    <div *ngIf="error" class="tr-error">{{ error }}</div>
+
+    <div *ngIf="!loading && transcripts.length === 0 && !error" class="tr-empty">
+        No transcripts found. Make sure you are signed in to TLR so your PIN is saved.
+    </div>
+
+    <div class="tr-list" *ngIf="transcripts.length > 0">
+        <div *ngFor="let t of transcripts; trackBy: trackById" class="tr-item">
+            <div class="tr-item-header">
+                <span class="tr-channel">{{ channelLabel(t) }}</span>
+                <span class="tr-time">{{ formatTime(t.timestamp) }}</span>
+            </div>
+            <p class="tr-text">{{ t.transcript || '(no text)' }}</p>
+            <div class="tr-item-footer">
+                <button *ngIf="t.trainingReviewStatus !== 'submitted'" class="btn-edit"
+                    [class.btn-edit--active]="editingCallId === t.callId"
+                    (click)="toggleEdit(t)">
+                    <span *ngIf="editingCallId !== t.callId">
+                        ✎ Edit for Training<span *ngIf="t.trainingReviewStatus === 'pending'"> (draft)</span>
+                    </span>
+                    <span *ngIf="editingCallId === t.callId">✕ Cancel</span>
+                </button>
+                <span *ngIf="t.trainingReviewStatus === 'submitted'" class="tr-submitted-badge">✓ Submitted for training</span>
+            </div>
+
+            <div class="tr-edit-panel" *ngIf="editingCallId === t.callId">
+                <div class="tr-edit-audio">
+                    <span *ngIf="editAudioLoading" class="audio-hint">Loading audio…</span>
+                    <audio *ngIf="editAudioSrc" controls [src]="editAudioSrc"></audio>
+                    <span *ngIf="!editAudioSrc && !editAudioLoading" class="audio-hint">Audio unavailable</span>
+                </div>
+                <label class="tr-edit-label">Edit transcript for Whisper training</label>
+                <textarea class="tr-edit-textarea" rows="4" [(ngModel)]="editText" placeholder="Edit transcript…"></textarea>
+                <div class="tr-edit-actions">
+                    <button class="btn-draft" (click)="saveDraft()" [disabled]="editSaving || editApproving || !editText.trim()">
+                        {{ editSaving ? 'Saving…' : 'Save Draft' }}
+                    </button>
+                    <button class="btn-approve" (click)="approve()" [disabled]="editSaving || editApproving || !editText.trim()">
+                        {{ editApproving ? 'Sending…' : '✓ Approve & Send' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="tr-pagination">
+            <button class="btn-nav" (click)="prevPage()" [disabled]="offset === 0 || loading">‹ Prev</button>
+            <span>{{ offset + 1 }}–{{ offset + transcripts.length }}</span>
+            <button class="btn-nav" (click)="nextPage()" [disabled]="!hasMore || loading">Next ›</button>
+        </div>
+    </div>
+</div>

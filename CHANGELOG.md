@@ -1,5 +1,29 @@
 # Change log
 
+## Version 26.06.02 - Released June 1, 2026
+
+### Added
+
+- **Transcript Collector — community Whisper training dataset (data collection)**
+  - New standalone service (`transcript-collector/`) for reviewed dispatch audio + transcripts from ThinLine Radio servers.
+  - Ingest API (`POST /api/v1/submissions`): API-key auth, multipart audio + metadata; **ffmpeg** converts uploads to **16 kHz mono WAV**; writes `data/training/audio/`, matching `.txt` transcripts, and appends **OpenAI/HuggingFace-compatible** `manifest.jsonl`.
+  - Stores reviewed and original transcript text in **lowercase**; rejects duplicate submissions for the same TLR call ID per server.
+  - Tracks **audio duration** (hours/minutes/seconds) globally and per TLR server; admin portal with submissions list, **Servers** tab, training-audio totals, and **Rebuild manifest** from the database.
+  - Self-registration and admin API-key issuance; production URL: `https://transcripts.thinlineds.com`.
+
+- **Client — Transcripts tab: review and send for training**
+  - System admins can **Edit for Training**, save drafts, and **Approve & Send** to the transcript collector (audio playback in-panel).
+  - **Request API Key** registers this TLR server with the collector (no manual URL/key fields in Admin → Options).
+  - **Connected** status, per-server contribution stats, and a **community 5,000-hour** progress bar (all signed-in users on the Transcripts tab).
+  - **Already submitted** calls show a badge and cannot be edited or re-sent; collapsible **Training tips** at the top of the tab (formatting, digits, homophones, etc.).
+
+- **Server — transcript review and collector integration**
+  - Admin API: collector key request/status, approve/send, per-server stats proxy, draft save with `trainingReviewStatus`.
+  - `GET /api/transcripts/training-progress` — global collector training progress for authenticated users.
+  - Transcripts list includes `trainingReviewStatus` and `reviewedTranscript`; approve blocked after submit.
+
+---
+
 ## Version 26.06.01 - Released June 1, 2026
 
 ### Fixed

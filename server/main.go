@@ -324,6 +324,11 @@ func main() {
 	http.HandleFunc("/api/admin/system-health-alerts-enabled", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.SystemHealthAlertsEnabledHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/system-health-alert-settings", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.SystemHealthAlertSettingsHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/call-audio/", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.CallAudioHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/transcript-review/collector/request-key", wrapHandler(http.HandlerFunc(controller.Admin.TranscriptReviewRequestCollectorKeyHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/transcript-review/collector/stats", wrapHandler(http.HandlerFunc(controller.Admin.TranscriptReviewCollectorStatsHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/transcript-review/collector", wrapHandler(http.HandlerFunc(controller.Admin.TranscriptReviewCollectorHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/transcript-review", wrapHandler(http.HandlerFunc(controller.Admin.TranscriptReviewHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/transcript-review/", wrapHandler(http.HandlerFunc(controller.Admin.TranscriptReviewCallHandler)).ServeHTTP)
 
 	http.HandleFunc("/api/admin/tone-import", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.ToneImportHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/sync-tone-sets", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.SyncToneSetsHandler)).ServeHTTP)
@@ -519,6 +524,7 @@ func main() {
 	http.HandleFunc("/api/alerts/preferences", wrapHandler(corsMiddleware(http.HandlerFunc(controller.Api.AlertPreferencesHandler))).ServeHTTP)
 	http.HandleFunc("/api/stats", wrapHandler(corsMiddleware(http.HandlerFunc(controller.Api.StatsHandler))).ServeHTTP)
 	http.HandleFunc("/api/transcripts", wrapHandler(corsMiddleware(http.HandlerFunc(controller.Api.TranscriptsHandler))).ServeHTTP)
+	http.HandleFunc("/api/transcripts/training-progress", wrapHandler(corsMiddleware(http.HandlerFunc(controller.Api.TranscriptsTrainingProgressHandler))).ServeHTTP)
 	http.HandleFunc("/api/keyword-lists", wrapHandler(http.HandlerFunc(controller.Api.KeywordListsHandler)).ServeHTTP)
 
 	// System alert routes (system admins only)

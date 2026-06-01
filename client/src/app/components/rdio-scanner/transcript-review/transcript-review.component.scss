@@ -1,0 +1,204 @@
+:host { display: block; width: 100%; }
+
+.tr-wrap { width: 100%; }
+
+.tr-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.tr-count { font-size: 13px; color: #9aa0a6; }
+
+.tr-error {
+    padding: 12px 16px;
+    background: #5f2120;
+    border: 1px solid #842029;
+    border-radius: 8px;
+    color: #f8d7da;
+    margin-bottom: 16px;
+    font-size: 14px;
+}
+
+.tr-empty {
+    padding: 40px;
+    text-align: center;
+    color: #9aa0a6;
+    background: #1e1f22;
+    border: 1px solid #3c4043;
+    border-radius: 12px;
+}
+
+.tr-list { display: flex; flex-direction: column; gap: 12px; }
+
+.tr-item {
+    background: #1e1f22;
+    border: 1px solid #3c4043;
+    border-radius: 10px;
+    padding: 14px 16px;
+}
+
+.tr-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.tr-channel { font-size: 14px; font-weight: 600; color: #e8eaed; }
+.tr-time { font-size: 12px; color: #9aa0a6; white-space: nowrap; }
+.tr-text { margin: 0 0 10px; font-size: 14px; color: #bdc1c6; line-height: 1.5; }
+
+.tr-item-footer { display: flex; justify-content: flex-end; }
+
+.btn-training-tips {
+    padding: 0.45rem 0.9rem;
+    background: rgba(138, 180, 248, 0.1);
+    color: #8ab4f8;
+    border: 1px solid rgba(138, 180, 248, 0.35);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    &:hover { background: rgba(138, 180, 248, 0.2); border-color: #8ab4f8; }
+}
+
+.tr-edit-panel {
+    margin-top: 12px;
+    padding: 14px;
+    background: #0e1117;
+    border: 1px solid #3c4043;
+    border-radius: 8px;
+}
+
+.tr-edit-audio {
+    margin-bottom: 10px;
+
+    audio { width: 100%; }
+    .audio-hint { font-size: 12px; color: #9aa0a6; }
+}
+
+.tr-edit-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8ab4f8;
+    margin-bottom: 6px;
+}
+
+.tr-edit-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    background: #1a1b1f;
+    border: 1px solid #3c4043;
+    border-radius: 6px;
+    color: #e8eaed;
+    font-size: 14px;
+    line-height: 1.5;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 90px;
+
+    &:focus { outline: none; border-color: #8ab4f8; }
+}
+
+.tr-edit-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 10px;
+
+    button {
+        padding: 0.4rem 1rem;
+        border-radius: 5px;
+        border: none;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        &:disabled { opacity: 0.4; cursor: default; }
+    }
+}
+
+.tr-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding-top: 16px;
+    color: #9aa0a6;
+    font-size: 13px;
+}
+
+// ── Buttons ──────────────────────────────────────────────────────────────────
+
+.btn-refresh {
+    padding: 0.45rem 1rem;
+    background: #2a2b2f;
+    color: #e8eaed;
+    border: 1px solid #3c4043;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    &:hover:not(:disabled) { background: #3c4043; }
+    &:disabled { opacity: 0.5; cursor: default; }
+}
+
+.btn-edit {
+    padding: 0.35rem 0.8rem;
+    background: rgba(138, 180, 248, 0.1);
+    color: #8ab4f8;
+    border: 1px solid rgba(138, 180, 248, 0.3);
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    &:hover { background: rgba(138, 180, 248, 0.2); }
+
+    &--active {
+        background: rgba(242, 139, 130, 0.12);
+        color: #f28b82;
+        border-color: rgba(242, 139, 130, 0.35);
+        &:hover { background: rgba(242, 139, 130, 0.22); }
+    }
+}
+
+.tr-submitted-badge {
+    padding: 0.35rem 0.8rem;
+    background: rgba(129, 201, 149, 0.12);
+    color: #81c995;
+    border: 1px solid rgba(129, 201, 149, 0.35);
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.btn-draft {
+    background: #3c4043;
+    color: #e8eaed;
+    &:hover:not(:disabled) { background: #4a4e52; }
+}
+
+.btn-approve {
+    background: #137333;
+    color: #fff;
+    &:hover:not(:disabled) { background: #1a9644; }
+}
+
+.btn-nav {
+    padding: 0.35rem 0.8rem;
+    background: #2a2b2f;
+    color: #e8eaed;
+    border: 1px solid #3c4043;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    &:disabled { opacity: 0.4; cursor: default; }
+    &:hover:not(:disabled) { background: #3c4043; }
+}

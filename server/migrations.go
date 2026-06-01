@@ -2760,3 +2760,23 @@ func migrateCallsAudioHash(db *Database) error {
 	}
 	return nil
 }
+
+func migrateCallsTrainingReview(db *Database) error {
+	qs := []string{
+		`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "reviewedTranscript" text NOT NULL DEFAULT ''`,
+		`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "trainingReviewStatus" text NOT NULL DEFAULT ''`,
+		`CREATE INDEX IF NOT EXISTS "calls_training_review_idx" ON "calls" ("trainingReviewStatus", "transcriptionStatus", "timestamp" DESC)`,
+	}
+	for _, q := range qs {
+		if _, err := db.Sql.Exec(q); err != nil {
+			return fmt.Errorf("migrateCallsTrainingReview: %w", err)
+		}
+	}
+	// Partial index for the pending-review queue (callId DESC matches list query).
+	partial := `CREATE INDEX IF NOT EXISTS "calls_transcript_review_pending_idx" ON "calls" ("callId" DESC) WHERE "transcript" <> '' AND "transcriptionStatus" = 'completed' AND COALESCE("trainingReviewStatus", '') <> 'submitted'`
+	if _, err := db.Sql.Exec(partial); err != nil {
+		// SQLite < 3.8 or older PG without partial indexes — non-fatal.
+		log.Printf("migrateCallsTrainingReview: partial index skipped: %v", err)
+	}
+	return nil
+}

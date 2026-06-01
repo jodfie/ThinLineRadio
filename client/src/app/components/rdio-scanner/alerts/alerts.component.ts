@@ -19,13 +19,16 @@
 
 import { Component, EventEmitter, Input, OnDestroy, OnInit, Output } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Subject, Subscription } from 'rxjs';
+import { Subject, Subscription, firstValueFrom } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { RdioScannerAlert, RdioScannerCall, RdioScannerService, RdioScannerTranscript } from '../rdio-scanner';
 import { AlertsService } from './alerts.service';
 import { AlertSoundService } from '../alert-sound.service';
 import { SettingsService } from '../settings/settings.service';
 import { TranscriptAnnotation, renderAnnotatedTranscript } from '../transcript-utils';
+import { RdioScannerAdminService } from '../admin/admin.service';
+import { TranscriptReviewService } from '../transcript-review/transcript-review.service';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 /** Main board hosts separate tabs; each instance uses one mode. */
 export type RdioScannerAlertsPanelMode = 'alertsAndPreferences' | 'transcripts' | 'stats';
@@ -109,12 +112,49 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
     private searchSubject = new Subject<string>();
     private searchSubscription?: Subscription;
 
+    // ── Admin transcript-edit mode ────────────────────────────────────────────
+    get adminAuthenticated(): boolean {
+        return this.rdioScannerService.isSystemAdmin();
+    }
+    editingCallId: number | null = null;
+    editText = '';
+    editSaving = false;
+    editApproving = false;
+    editAudioSrc = '';
+    editAudioLoading = false;
+    private editAudioObjectUrl: string | null = null;
+
+    // Transcript collector (global server setting)
+    collectorConnected = false;
+    collectorHasApiKey = false;
+    collectorServerName = '';
+    collectorLoading = false;
+    collectorConnecting = false;
+    collectorStats: { submissions: number; formatted: string; hours: number; minutes: number; seconds: number } | null = null;
+
+    globalTrainingProgress: {
+        goalHours: number;
+        hoursDecimal: number;
+        percentOfGoal: number;
+        formatted: string;
+        hours: number;
+        minutes: number;
+        seconds: number;
+        submissions: number;
+        serverAccounts: number;
+    } | null = null;
+    globalTrainingLoading = false;
+    showTrainingTips = false;
+
     constructor(
         private rdioScannerService: RdioScannerService,
         private alertsService: AlertsService,
         private alertSoundService: AlertSoundService,
         private settingsService: SettingsService,
         private http: HttpClient,
+        private adminService: RdioScannerAdminService,
+        private reviewService: TranscriptReviewService,
+        private snackBar: MatSnackBar,
     ) {
         // Get PIN from localStorage using the service method
         this.pin = this.rdioScannerService.readPin();
@@ -131,6 +171,7 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
 
         // Refresh PIN from localStorage
         this.pin = this.rdioScannerService.readPin();
+
 
         // For the embed rail, paint cached alerts immediately (synchronously) so the
         // LCP element (p.transcript-text) is visible on the very first frame instead
@@ -155,6 +196,8 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
             }
             if (!this.boardEmbed && this.panelMode === 'transcripts') {
                 this.loadTranscripts();
+                void this.loadCollectorSettings();
+                void this.loadGlobalTrainingProgress();
             }
             if (!this.boardEmbed && this.panelMode === 'stats') {
                 this.loadStats();
@@ -310,6 +353,242 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
         }
         this.searchSubscription?.unsubscribe();
         this.searchSubject.complete();
+        this.revokeEditAudio();
+    }
+
+    // ── Admin edit mode methods ───────────────────────────────────────────────
+
+    toggleEdit(transcript: RdioScannerTranscript): void {
+        if (this.isTrainingSubmitted(transcript)) {
+            return;
+        }
+        if (this.editingCallId === transcript.callId) {
+            this.cancelEdit();
+            return;
+        }
+        this.cancelEdit();
+        this.editingCallId = transcript.callId ?? null;
+        this.editText = transcript.reviewedTranscript?.trim() || transcript.transcript || '';
+        if (transcript.callId != null) {
+            void this.ensureAdminToken().then((ok) => {
+                if (ok && transcript.callId != null) {
+                    void this.loadEditAudio(transcript.callId);
+                }
+            });
+        }
+    }
+
+    cancelEdit(): void {
+        this.editingCallId = null;
+        this.editText = '';
+        this.revokeEditAudio();
+    }
+
+    isTrainingSubmitted(transcript: RdioScannerTranscript): boolean {
+        return transcript.trainingReviewStatus === 'submitted';
+    }
+
+    hasTrainingDraft(transcript: RdioScannerTranscript): boolean {
+        return transcript.trainingReviewStatus === 'pending';
+    }
+
+    async saveEditDraft(): Promise<void> {
+        if (this.editingCallId == null || !this.editText.trim()) return;
+        if (!(await this.ensureAdminToken())) {
+            this.snackBar.open('Could not authorize — sign in as system admin', '', { duration: 5000 });
+            return;
+        }
+        this.editSaving = true;
+        try {
+            await this.reviewService.save(this.editingCallId, this.editText.trim());
+            const callId = this.editingCallId;
+            const idx = this.transcripts.findIndex((t) => t.callId === callId);
+            if (idx >= 0) {
+                this.transcripts[idx] = {
+                    ...this.transcripts[idx],
+                    reviewedTranscript: this.editText.trim(),
+                    trainingReviewStatus: 'pending',
+                };
+            }
+            this.snackBar.open('Draft saved', '', { duration: 2500 });
+        } catch (e: any) {
+            this.snackBar.open(e?.error?.error || 'Save failed', '', { duration: 5000 });
+        } finally {
+            this.editSaving = false;
+        }
+    }
+
+    async approveEdit(): Promise<void> {
+        if (this.editingCallId == null || !this.editText.trim()) return;
+        if (!(await this.ensureAdminToken())) {
+            this.snackBar.open('Could not authorize — sign in as system admin', '', { duration: 5000 });
+            return;
+        }
+        if (!this.collectorHasApiKey || !this.collectorConnected) {
+            this.snackBar.open('Request a transcript collector API key first (see setup above)', '', { duration: 5000 });
+            return;
+        }
+        this.editApproving = true;
+        try {
+            const res = await this.reviewService.approve(this.editingCallId, this.editText.trim());
+            this.snackBar.open(res.message || 'Approved & sent to collector', '', { duration: 4000 });
+            this.cancelEdit();
+            this.loadTranscripts();
+            void this.loadCollectorSettings();
+            void this.loadGlobalTrainingProgress();
+        } catch (e: any) {
+            this.snackBar.open(e?.error?.error || 'Approve failed', '', { duration: 6000 });
+        } finally {
+            this.editApproving = false;
+        }
+    }
+
+    private async loadEditAudio(callId: number): Promise<void> {
+        this.revokeEditAudio();
+        this.editAudioLoading = true;
+        try {
+            const res = await fetch(this.reviewService.audioUrl(callId), {
+                headers: this.reviewService.getAudioFetchHeaders(),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            if (!blob.size) throw new Error('Empty audio');
+            this.editAudioObjectUrl = URL.createObjectURL(blob);
+            this.editAudioSrc = this.editAudioObjectUrl;
+        } catch {
+            this.editAudioSrc = '';
+        } finally {
+            this.editAudioLoading = false;
+        }
+    }
+
+    private revokeEditAudio(): void {
+        if (this.editAudioObjectUrl) {
+            URL.revokeObjectURL(this.editAudioObjectUrl);
+            this.editAudioObjectUrl = null;
+        }
+        this.editAudioSrc = '';
+        this.editAudioLoading = false;
+    }
+
+    // ── Transcript collector (global server config) ─────────────────────────────
+
+    async loadCollectorSettings(): Promise<void> {
+        if (!this.adminAuthenticated) {
+            return;
+        }
+        if (!(await this.ensureAdminToken())) {
+            this.collectorConnected = false;
+            this.collectorHasApiKey = false;
+            return;
+        }
+        this.collectorLoading = true;
+        try {
+            const settings = await this.reviewService.getCollectorSettings();
+            this.collectorHasApiKey = !!settings?.hasApiKey;
+            this.collectorConnected = !!settings?.connected;
+            this.collectorServerName = settings?.serverName || '';
+            if (this.collectorHasApiKey && this.collectorConnected) {
+                try {
+                    const stats = await this.reviewService.getCollectorStats();
+                    const dur = stats?.audioDuration;
+                    this.collectorStats = {
+                        submissions: stats?.submissions ?? 0,
+                        formatted: dur?.formatted || '0s',
+                        hours: dur?.hours ?? 0,
+                        minutes: dur?.minutes ?? 0,
+                        seconds: dur?.seconds ?? 0,
+                    };
+                } catch {
+                    this.collectorStats = null;
+                }
+            } else {
+                this.collectorStats = null;
+            }
+        } catch {
+            this.collectorConnected = false;
+            this.collectorHasApiKey = false;
+            this.collectorServerName = '';
+            this.collectorStats = null;
+        } finally {
+            this.collectorLoading = false;
+        }
+    }
+
+    async loadGlobalTrainingProgress(): Promise<void> {
+        const pin = this.rdioScannerService.readPin();
+        if (!pin) {
+            this.globalTrainingProgress = null;
+            return;
+        }
+        this.globalTrainingLoading = true;
+        try {
+            const progress = await firstValueFrom(this.alertsService.getTrainingProgress(pin));
+            const dur = progress?.audioDuration;
+            const goalHours = progress?.goalHours ?? 5000;
+            const hoursDecimal = progress?.hoursDecimal ?? 0;
+            this.globalTrainingProgress = {
+                goalHours,
+                hoursDecimal,
+                percentOfGoal: Math.min(100, progress?.percentOfGoal ?? 0),
+                formatted: dur?.formatted || '0s',
+                hours: dur?.hours ?? 0,
+                minutes: dur?.minutes ?? 0,
+                seconds: dur?.seconds ?? 0,
+                submissions: progress?.submissions ?? 0,
+                serverAccounts: progress?.serverAccounts ?? 0,
+            };
+        } catch {
+            this.globalTrainingProgress = null;
+        } finally {
+            this.globalTrainingLoading = false;
+        }
+    }
+
+    async requestCollectorKey(): Promise<void> {
+        if (!(await this.ensureAdminToken())) {
+            this.snackBar.open('Could not authorize — sign in as system admin', '', { duration: 5000 });
+            return;
+        }
+        this.collectorConnecting = true;
+        try {
+            const res = await this.reviewService.requestCollectorKey();
+            this.collectorServerName = res.serverName || this.collectorServerName;
+            await this.loadCollectorSettings();
+            this.snackBar.open(res.message || 'Connected to transcript collector', '', { duration: 4000 });
+        } catch (e: any) {
+            this.snackBar.open(e?.message || e?.error?.error || 'Could not request API key', '', { duration: 6000 });
+        } finally {
+            this.collectorConnecting = false;
+        }
+    }
+
+    private async ensureAdminToken(): Promise<boolean> {
+        if (this.reviewService.hasAdminToken()) {
+            return true;
+        }
+        const pin = this.rdioScannerService.readPin();
+        if (!pin) {
+            return false;
+        }
+        try {
+            const res = await fetch('/api/admin/sso', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin }),
+            });
+            if (!res.ok) {
+                return false;
+            }
+            const data = await res.json();
+            if (data?.token) {
+                this.adminService.setTokenFromExternal(data.token);
+                return true;
+            }
+        } catch {
+            // ignore
+        }
+        return false;
     }
 
     /** When true, classic sidenav shows Alerts | Preferences | Transcripts inner tabs. */
@@ -334,6 +613,8 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
         }
         if (tab === 'transcripts') {
             this.loadTranscripts();
+            void this.loadCollectorSettings();
+            void this.loadGlobalTrainingProgress();
         }
     }
 

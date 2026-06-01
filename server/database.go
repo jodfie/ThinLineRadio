@@ -411,6 +411,10 @@ func (db *Database) migrate() error {
 		return formatError(err, "")
 	}
 
+	if err := migrateCallsTrainingReview(db); err != nil {
+		return formatError(err, "")
+	}
+
 	// Add human-review column for duplicate verification
 	if err := migrateCallsVerifiedDuplicate(db); err != nil {
 		return formatError(err, "")

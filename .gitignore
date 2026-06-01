@@ -64,6 +64,7 @@ docker/config/*.ini
 
 # Separate repositories (Git managed independently)
 relay-server/
+transcript-collector/
 ThinlineRadio-Mobile/
 ThinlineRadio-Website/
 ThinlineRadio-Web/

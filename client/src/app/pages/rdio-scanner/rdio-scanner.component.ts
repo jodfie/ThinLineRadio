@@ -22,5 +22,6 @@ import { Component } from '@angular/core';
 @Component({
     selector: 'rdio-scanner-page',
     template: '<router-outlet></router-outlet>',
+    styles: [`:host { display: block; width: 100%; min-height: 100%; }`],
 })
 export class RdioScannerPageComponent { }

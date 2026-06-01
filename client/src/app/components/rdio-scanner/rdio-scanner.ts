@@ -127,6 +127,8 @@ export interface RdioScannerTranscript {
     systemId: number;
     talkgroupId: number;
     transcript: string;
+    reviewedTranscript?: string;
+    trainingReviewStatus?: string;
     transcriptionStatus?: string;
     timestamp?: number;
     alertSummary?: string;

@@ -48,6 +48,9 @@ import { FavoritesService } from './favorites.service';
 import { ScanListsService } from './scan-lists.service';
 import { RdioScannerSelectLegacyComponent } from './select/select-legacy.component';
 import { AlertSoundService } from './alert-sound.service';
+import { RdioScannerAdminService } from './admin/admin.service';
+import { TranscriptReviewService } from './transcript-review/transcript-review.service';
+import { RdioScannerTranscriptTrainingTipsComponent } from './transcript-review/transcript-training-tips.component';
 import { RdioScannerMobileWebHubComponent } from './mobile-web-hub/mobile-web-hub.component';
 import { RdioScannerChassisComponent } from './skin/chassis.component';
 import { RdioScannerLcdFrameComponent } from './skin/lcd-frame.component';
@@ -73,6 +76,7 @@ import { RdioScannerLcdBottomNavComponent } from './skin/lcd-bottom-nav.componen
         RdioScannerStripeCheckoutComponent,
         RdioScannerSettingsComponent,
         RdioScannerAlertsComponent,
+        RdioScannerTranscriptTrainingTipsComponent,
         RdioScannerAlertPreferencesComponent,
         KeywordListInfoDialogComponent,
         RdioScannerMobileWebHubComponent,
@@ -98,6 +102,8 @@ import { RdioScannerLcdBottomNavComponent } from './skin/lcd-bottom-nav.componen
         FavoritesService,
         ScanListsService,
         AlertSoundService,
+        RdioScannerAdminService,
+        TranscriptReviewService,
         { provide: OverlayContainer, useClass: FullscreenOverlayContainer },
     ],
 })

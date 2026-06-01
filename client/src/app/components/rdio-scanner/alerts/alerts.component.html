@@ -194,6 +194,60 @@
     </div>
     
     <div class="transcripts-content" *ngIf="!boardEmbed && (panelMode === 'transcripts' || (panelMode === 'alertsAndPreferences' && activeTab === 'transcripts'))">
+        <div class="global-training-goal" *ngIf="globalTrainingProgress || globalTrainingLoading">
+            <div class="global-training-header">
+                <mat-icon>groups</mat-icon>
+                <span>Community Whisper training goal</span>
+            </div>
+            <div *ngIf="globalTrainingLoading && !globalTrainingProgress" class="global-training-loading">Loading progress…</div>
+            <ng-container *ngIf="globalTrainingProgress">
+                <div class="global-training-stats">
+                    <span class="global-training-primary">{{ globalTrainingProgress.hoursDecimal | number:'1.1-1' }} / {{ globalTrainingProgress.goalHours | number }} hours</span>
+                    <span class="global-training-detail">{{ globalTrainingProgress.hours }}h {{ globalTrainingProgress.minutes }}m {{ globalTrainingProgress.seconds }}s · {{ globalTrainingProgress.percentOfGoal | number:'1.1-1' }}%</span>
+                </div>
+                <div class="global-training-bar" role="progressbar"
+                    [attr.aria-valuenow]="globalTrainingProgress.percentOfGoal"
+                    aria-valuemin="0" aria-valuemax="100">
+                    <div class="global-training-bar-fill" [style.width.%]="globalTrainingProgress.percentOfGoal"></div>
+                </div>
+                <div class="global-training-meta muted">
+                    {{ globalTrainingProgress.submissions }} reviewed submissions across {{ globalTrainingProgress.serverAccounts }} TLR servers
+                </div>
+            </ng-container>
+        </div>
+
+        <div class="transcripts-admin-bar" *ngIf="adminAuthenticated">
+            <button type="button" class="btn-training-tips" (click)="showTrainingTips = !showTrainingTips">
+                <mat-icon>{{ showTrainingTips ? 'expand_less' : 'help_outline' }}</mat-icon>
+                {{ showTrainingTips ? 'Hide training tips' : 'Show training tips' }}
+            </button>
+        </div>
+        <rdio-scanner-transcript-training-tips *ngIf="adminAuthenticated && showTrainingTips"></rdio-scanner-transcript-training-tips>
+
+        <div class="collector-setup" *ngIf="adminAuthenticated">
+            <div class="collector-setup-header">
+                <mat-icon>cloud_upload</mat-icon>
+                <span>Transcript Collector</span>
+                <span class="collector-status collector-status--ok" *ngIf="collectorHasApiKey && collectorConnected && !collectorLoading">
+                    Connected<span *ngIf="collectorServerName"> · {{ collectorServerName }}</span>
+                </span>
+                <span class="collector-status collector-status--warn" *ngIf="(!collectorHasApiKey || !collectorConnected) && !collectorLoading">Not connected</span>
+                <span class="collector-status" *ngIf="collectorLoading">Checking…</span>
+            </div>
+            <div class="collector-setup-actions" *ngIf="!collectorHasApiKey || !collectorConnected">
+                <button type="button" class="btn-collector-connect"
+                    (click)="requestCollectorKey()"
+                    [disabled]="collectorConnecting">
+                    {{ collectorConnecting ? 'Requesting…' : 'Request API Key' }}
+                </button>
+            </div>
+            <div class="collector-contribution" *ngIf="collectorStats">
+                <span class="contrib-label">Training data contributed<span *ngIf="collectorServerName"> · {{ collectorServerName }}</span></span>
+                <span class="contrib-value">{{ collectorStats.submissions }} submissions · {{ collectorStats.formatted }}</span>
+                <span class="contrib-detail">{{ collectorStats.hours }}h {{ collectorStats.minutes }}m {{ collectorStats.seconds }}s</span>
+            </div>
+        </div>
+
         <!-- Filter Controls -->
         <div class="transcript-filters">
             <div class="filter-row">
@@ -264,9 +318,40 @@
                 </div>
                 <div class="transcript-footer">
                     <span>{{ transcript.timestamp ? formatTimestamp(transcript.timestamp) : '' }}</span>
-                    <button class="btn-play" (click)="playCall(transcript.callId)">
-                        Play Call
-                    </button>
+                    <div class="footer-actions">
+                        <button class="btn-play" (click)="playCall(transcript.callId)">
+                            Play Call
+                        </button>
+                        <button *ngIf="adminAuthenticated && !isTrainingSubmitted(transcript)" class="btn-edit-training"
+                            [class.btn-edit-training--active]="editingCallId === transcript.callId"
+                            (click)="toggleEdit(transcript)">
+                            <span *ngIf="editingCallId !== transcript.callId">
+                                ✎ Edit for Training<span *ngIf="hasTrainingDraft(transcript)" class="draft-hint"> (draft)</span>
+                            </span>
+                            <span *ngIf="editingCallId === transcript.callId">✕ Cancel</span>
+                        </button>
+                        <span *ngIf="adminAuthenticated && isTrainingSubmitted(transcript)" class="training-submitted-badge">
+                            ✓ Submitted for training
+                        </span>
+                    </div>
+                </div>
+
+                <div class="training-edit-panel" *ngIf="editingCallId === transcript.callId">
+                    <div class="training-edit-audio">
+                        <span *ngIf="editAudioLoading" class="audio-status">Loading audio…</span>
+                        <audio *ngIf="editAudioSrc && !editAudioLoading" controls [src]="editAudioSrc" class="edit-audio-player"></audio>
+                        <span *ngIf="!editAudioSrc && !editAudioLoading" class="audio-status audio-status--unavail">Audio unavailable</span>
+                    </div>
+                    <label class="training-edit-label">Edit transcript for Whisper training:</label>
+                    <textarea class="training-edit-textarea" rows="5" [(ngModel)]="editText" placeholder="Edit transcript text…"></textarea>
+                    <div class="training-edit-actions">
+                        <button class="btn-save-draft" (click)="saveEditDraft()" [disabled]="editSaving || editApproving || !editText.trim()">
+                            {{ editSaving ? 'Saving…' : 'Save Draft' }}
+                        </button>
+                        <button class="btn-approve" (click)="approveEdit()" [disabled]="editSaving || editApproving || !editText.trim()">
+                            {{ editApproving ? 'Sending…' : '✓ Approve & Send' }}
+                        </button>
+                    </div>
                 </div>
             </div>
 

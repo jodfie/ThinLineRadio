@@ -598,6 +598,17 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
                         .filter((line: string) => line.length > 0);
                 }
             }
+
+            // Collector URL/key are managed from the Transcripts tab — preserve existing values on save.
+            const savedCollector = this.config?.options?.transcriptionConfig;
+            if (formValue.options.transcriptionConfig && savedCollector) {
+                if (savedCollector.collectorURL) {
+                    formValue.options.transcriptionConfig.collectorURL = savedCollector.collectorURL;
+                }
+                if (savedCollector.collectorAPIKey) {
+                    formValue.options.transcriptionConfig.collectorAPIKey = savedCollector.collectorAPIKey;
+                }
+            }
             
             formValue.options.relayServerURL = 'https://tlradioserver.thinlineds.com';
         }

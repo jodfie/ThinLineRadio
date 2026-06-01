@@ -22,6 +22,21 @@ import { Injectable } from '@angular/core';
 import { Observable, BehaviorSubject, of } from 'rxjs';
 import { RdioScannerAlert, RdioScannerAlertPreference, RdioScannerKeywordList } from '../rdio-scanner';
 
+export interface GlobalTrainingProgress {
+    goalHours: number;
+    submissions?: number;
+    serverAccounts?: number;
+    hoursDecimal?: number;
+    percentOfGoal?: number;
+    audioDurationMs?: number;
+    audioDuration?: {
+        hours?: number;
+        minutes?: number;
+        seconds?: number;
+        formatted?: string;
+    };
+}
+
 @Injectable()
 export class AlertsService {
     private readonly apiUrl = '/api/alerts';
@@ -250,6 +265,15 @@ export class AlertsService {
         }
         const headers = pin ? new HttpHeaders().set('Authorization', `Bearer ${pin}`) : undefined;
         return this.http.get<any[]>(url, { headers });
+    }
+
+    getTrainingProgress(pin?: string): Observable<GlobalTrainingProgress> {
+        let url = `${this.getFullUrl('/api/transcripts/training-progress')}`;
+        if (pin) {
+            url += `?pin=${encodeURIComponent(pin)}`;
+        }
+        const headers = pin ? new HttpHeaders().set('Authorization', `Bearer ${pin}`) : undefined;
+        return this.http.get<GlobalTrainingProgress>(url, { headers });
     }
 
     getPreferences(pin?: string): Observable<RdioScannerAlertPreference[]> {

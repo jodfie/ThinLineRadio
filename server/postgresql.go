@@ -126,6 +126,8 @@ var PostgresqlSchema = []string{
 	`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "transcriptConfidence" real NOT NULL DEFAULT 0;`,
 	`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "transcriptionStatus" text NOT NULL DEFAULT 'pending';`,
 	`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "transcriptionFailureReason" text NOT NULL DEFAULT '';`,
+	`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "reviewedTranscript" text NOT NULL DEFAULT '';`,
+	`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "trainingReviewStatus" text NOT NULL DEFAULT '';`,
 	`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "alertSummary" text NOT NULL DEFAULT '';`,
 	`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "transmissionId" text NOT NULL DEFAULT '';`,
 	`ALTER TABLE "calls" ADD COLUMN IF NOT EXISTS "requestId" text NOT NULL DEFAULT '';`,

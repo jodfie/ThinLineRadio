@@ -1,0 +1,67 @@
+<div class="transcript-page admin-dark-theme">
+    <header class="page-header">
+        <div class="header-left">
+            <mat-icon>transcribe</mat-icon>
+            <div>
+                <span class="title">Transcript Review</span>
+                <span class="subtitle" *ngIf="version">ThinLine Radio v{{ version }}</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <a mat-stroked-button routerLink="/admin">Admin</a>
+            <button *ngIf="authenticated" mat-stroked-button type="button" (click)="logout()">
+                <mat-icon>logout</mat-icon>
+                Logout
+            </button>
+        </div>
+    </header>
+
+    <main class="page-body">
+        <ng-container *ngIf="!authenticated">
+            <div class="login-panel">
+                <h1>Admin login required</h1>
+                <p>Review transcripts, edit text, and approve submissions for Whisper training.</p>
+                <form [formGroup]="loginForm" (ngSubmit)="login()">
+                    <mat-form-field appearance="outline" class="full-width">
+                        <mat-label>Admin password</mat-label>
+                        <input matInput type="password" formControlName="password" autocomplete="current-password">
+                    </mat-form-field>
+                    <button mat-raised-button color="primary" type="submit" [disabled]="loginLoading || loginForm.invalid">
+                        Log in
+                    </button>
+                </form>
+                <button mat-stroked-button type="button" class="sso-btn" (click)="ssoLogin()" [disabled]="loginLoading">
+                    Sign in with TLR session (SSO)
+                </button>
+                <p class="login-error" *ngIf="loginMessage">{{ loginMessage }}</p>
+            </div>
+        </ng-container>
+
+        <ng-container *ngIf="authenticated">
+            <section class="collector-setup">
+                <div class="collector-status" *ngIf="collectorConfigured && !requestingKey">
+                    <mat-icon>check_circle</mat-icon>
+                    <span>Connected to transcript collector<ng-container *ngIf="collectorServerName"> · {{ collectorServerName }}</ng-container></span>
+                </div>
+
+                <div class="collector-status collector-status--pending" *ngIf="requestingKey">
+                    <mat-spinner diameter="20"></mat-spinner>
+                    <span>Requesting collector API key from this server…</span>
+                </div>
+
+                <div class="collector-status collector-status--error" *ngIf="!collectorConfigured && !requestingKey">
+                    <mat-icon>cloud_off</mat-icon>
+                    <span>{{ collectorError || 'Not connected to transcript collector' }}</span>
+                    <button mat-raised-button color="primary" type="button" (click)="requestCollectorKey()">
+                        Connect to collector
+                    </button>
+                </div>
+            </section>
+
+            <rdio-scanner-transcript-review
+                [collectorConfigured]="collectorConfigured"
+                (requestCollectorSetup)="requestCollectorKey()">
+            </rdio-scanner-transcript-review>
+        </ng-container>
+    </main>
+</div>

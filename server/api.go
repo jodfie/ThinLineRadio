@@ -3497,7 +3497,7 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 
 	for chunk := 0; uint(len(results)) < limit && chunk < maxChunks; chunk++ {
 		query := fmt.Sprintf(
-			`SELECT c."callId", c."systemId", c."talkgroupId", c."transcriptionStatus", c."transcript", c."timestamp", c."alertSummary", s."label" as "systemLabel", t."label" as "talkgroupLabel", t."name" as "talkgroupName" `+
+			`SELECT c."callId", c."systemId", c."talkgroupId", c."transcriptionStatus", c."transcript", COALESCE(c."reviewedTranscript", ''), COALESCE(c."trainingReviewStatus", ''), c."timestamp", c."alertSummary", s."label" as "systemLabel", t."label" as "talkgroupLabel", t."name" as "talkgroupName" `+
 				`FROM "calls" c `+
 				`LEFT JOIN "delayed" AS d ON d."callId" = c."callId" `+
 				`LEFT JOIN "systems" s ON s."systemId" = c."systemId" `+
@@ -3522,6 +3522,8 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 				tgId                uint64
 				transcriptionStatus sql.NullString
 				transcript          sql.NullString
+				reviewedTranscript  sql.NullString
+				trainingReviewStatus sql.NullString
 				callTimestamp       sql.NullInt64
 				alertSummary        sql.NullString
 				systemLabel         sql.NullString
@@ -3529,7 +3531,7 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 				talkgroupName       sql.NullString
 			)
 
-			if err := rows.Scan(&callId, &sysId, &tgId, &transcriptionStatus, &transcript, &callTimestamp, &alertSummary, &systemLabel, &talkgroupLabel, &talkgroupName); err != nil {
+			if err := rows.Scan(&callId, &sysId, &tgId, &transcriptionStatus, &transcript, &reviewedTranscript, &trainingReviewStatus, &callTimestamp, &alertSummary, &systemLabel, &talkgroupLabel, &talkgroupName); err != nil {
 				continue
 			}
 
@@ -3593,6 +3595,12 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 			if talkgroupName.Valid {
 				entry["talkgroupName"] = talkgroupName.String
 			}
+			if reviewedTranscript.Valid && reviewedTranscript.String != "" {
+				entry["reviewedTranscript"] = reviewedTranscript.String
+			}
+			if trainingReviewStatus.Valid && trainingReviewStatus.String != "" {
+				entry["trainingReviewStatus"] = trainingReviewStatus.String
+			}
 			results = append(results, entry)
 			if uint(len(results)) >= limit {
 				break
@@ -3626,6 +3634,37 @@ func (api *Api) TranscriptsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("TranscriptsHandler: failed to marshal results: %v", err)
 		api.exitWithError(w, http.StatusInternalServerError, "failed to marshal transcripts")
 	}
+}
+
+// TranscriptsTrainingProgressHandler returns community-wide Whisper training progress from the transcript collector.
+func (api *Api) TranscriptsTrainingProgressHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	client := api.getClient(r)
+	if client == nil || client.User == nil {
+		api.exitWithError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	collectorURL := defaultTranscriptCollectorURL
+	api.Controller.Options.mutex.Lock()
+	if u := strings.TrimSpace(api.Controller.Options.TranscriptionConfig.CollectorURL); u != "" {
+		collectorURL = u
+	}
+	api.Controller.Options.mutex.Unlock()
+
+	progress, err := fetchCollectorGlobalProgress(collectorURL)
+	if err != nil {
+		log.Printf("TranscriptsTrainingProgressHandler: %v", err)
+		api.exitWithError(w, http.StatusBadGateway, "could not load training progress")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(progress)
 }
 
 // AlertPreferencesHandler handles GET/PUT /api/alerts/preferences

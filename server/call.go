@@ -83,6 +83,8 @@ type Call struct {
 	ToneSequence         *ToneSequence
 	HasTones             bool
 	Transcript           string
+	ReviewedTranscript   string
+	TrainingReviewStatus string // pending, submitted
 	TranscriptConfidence float64
 	TranscriptionStatus  string
 	AlertSummary         string  // Optional short LLM summary for alerts (when summarized alerts enabled)
@@ -611,19 +613,21 @@ func (calls *Calls) GetCall(id uint64) (*Call, error) {
 	call := Call{Id: id}
 
 	if calls.controller.Database.Config.DbType == DbTypePostgresql {
-		query = fmt.Sprintf(`SELECT c."audio", c."audioFilename", c."audioMime", c."siteRef", c."timestamp", STRING_AGG(CAST(COALESCE(cpt."talkgroupRef", 0) AS text), ','), sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary" FROM "calls" AS c LEFT JOIN "callPatches" AS cp on cp."callId" = c."callId" LEFT JOIN "talkgroups" AS cpt ON cpt."talkgroupId" = cp."talkgroupId" LEFT JOIN "systems" AS sy ON sy."systemId" = c."systemId" LEFT JOIN "talkgroups" AS t ON t."talkgroupId" = c."talkgroupId" WHERE c."callId" = %d GROUP BY c."callId", c."audio", c."audioFilename", c."audioMime", c."siteRef", c."timestamp", sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary"`, id)
+		query = fmt.Sprintf(`SELECT c."audio", c."audioFilename", c."audioMime", c."siteRef", c."timestamp", STRING_AGG(CAST(COALESCE(cpt."talkgroupRef", 0) AS text), ','), sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."reviewedTranscript", c."trainingReviewStatus", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary" FROM "calls" AS c LEFT JOIN "callPatches" AS cp on cp."callId" = c."callId" LEFT JOIN "talkgroups" AS cpt ON cpt."talkgroupId" = cp."talkgroupId" LEFT JOIN "systems" AS sy ON sy."systemId" = c."systemId" LEFT JOIN "talkgroups" AS t ON t."talkgroupId" = c."talkgroupId" WHERE c."callId" = %d GROUP BY c."callId", c."audio", c."audioFilename", c."audioMime", c."siteRef", c."timestamp", sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."reviewedTranscript", c."trainingReviewStatus", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary"`, id)
 
 	} else {
-		query = fmt.Sprintf(`SELECT c."audio", c."audioFilename", c."audioMime", c."siteRef", c."timestamp", GROUP_CONCAT(COALESCE(cpt."talkgroupRef", 0)), sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary" FROM "calls" AS c LEFT JOIN "callPatches" AS cp on cp."callId" = c."callId" LEFT JOIN "talkgroups" AS cpt ON cpt."talkgroupId" = cp."talkgroupId" LEFT JOIN "systems" AS sy ON sy."systemId" = c."systemId" LEFT JOIN "talkgroups" AS t ON t."talkgroupId" = c."talkgroupId" WHERE c."callId" = %d GROUP BY c."callId", c."audio", c."audioFilename", c."audioMime", c."siteRef", c."timestamp", sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary"`, id)
+		query = fmt.Sprintf(`SELECT c."audio", c."audioFilename", c."audioMime", c."siteRef", c."timestamp", GROUP_CONCAT(COALESCE(cpt."talkgroupRef", 0)), sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."reviewedTranscript", c."trainingReviewStatus", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary" FROM "calls" AS c LEFT JOIN "callPatches" AS cp on cp."callId" = c."callId" LEFT JOIN "talkgroups" AS cpt ON cpt."talkgroupId" = cp."talkgroupId" LEFT JOIN "systems" AS sy ON sy."systemId" = c."systemId" LEFT JOIN "talkgroups" AS t ON t."talkgroupId" = c."talkgroupId" WHERE c."callId" = %d GROUP BY c."callId", c."audio", c."audioFilename", c."audioMime", c."siteRef", c."timestamp", sy."systemId", t."talkgroupId", c."frequency", c."toneSequence", c."hasTones", c."transcript", c."reviewedTranscript", c."trainingReviewStatus", c."transcriptConfidence", c."transcriptionStatus", c."alertSummary"`, id)
 	}
 
 	var toneSequenceJson sql.NullString
 	var transcript sql.NullString
+	var reviewedTranscript sql.NullString
+	var trainingReviewStatus sql.NullString
 	var transcriptConfidence sql.NullFloat64
 	var transcriptionStatus sql.NullString
 	var alertSummary sql.NullString
 
-	if err = tx.QueryRow(query).Scan(&call.Audio, &call.AudioFilename, &call.AudioMime, &call.SiteRef, &timestamp, &patch, &systemId, &talkgroupId, &frequency, &toneSequenceJson, &call.HasTones, &transcript, &transcriptConfidence, &transcriptionStatus, &alertSummary); err != nil && err != sql.ErrNoRows {
+	if err = tx.QueryRow(query).Scan(&call.Audio, &call.AudioFilename, &call.AudioMime, &call.SiteRef, &timestamp, &patch, &systemId, &talkgroupId, &frequency, &toneSequenceJson, &call.HasTones, &transcript, &reviewedTranscript, &trainingReviewStatus, &transcriptConfidence, &transcriptionStatus, &alertSummary); err != nil && err != sql.ErrNoRows {
 		tx.Rollback()
 		return nil, formatError(err, query)
 	}
@@ -651,6 +655,12 @@ func (calls *Calls) GetCall(id uint64) (*Call, error) {
 	// Load transcript
 	if transcript.Valid {
 		call.Transcript = transcript.String
+	}
+	if reviewedTranscript.Valid {
+		call.ReviewedTranscript = reviewedTranscript.String
+	}
+	if trainingReviewStatus.Valid {
+		call.TrainingReviewStatus = trainingReviewStatus.String
 	}
 	if transcriptConfidence.Valid {
 		call.TranscriptConfidence = transcriptConfidence.Float64
