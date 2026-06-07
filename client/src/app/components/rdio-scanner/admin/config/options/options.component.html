@@ -138,7 +138,7 @@
         <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08);">
           <p>
             <span class="mat-body"><strong>Auto-learn tone sets</strong></span><br>
-            <span class="mat-caption">Duration windows and thresholds when system/talkgroup auto-learn is enabled. <strong>Calls required</strong> also applies to unit alias auto-learn. Single tone patterns are auto-added after enough calls; stacked tones (multiple patterns on one voice call) are emailed to system admins for manual review. OpenAI API key and model are configured under <strong>External Integrations</strong> below.</span>
+            <span class="mat-caption">Duration windows and thresholds when system/talkgroup auto-learn is enabled. <strong>Calls required</strong> also applies to unit alias auto-learn. Single tone patterns are auto-added after enough calls; stacked or ambiguous patterns are logged only (add manually in admin). OpenAI API key and model are configured under <strong>External Integrations</strong> below.</span>
           </p>
           <div formGroupName="autoLearnToneSetConfig" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 12px;">
             <mat-form-field>

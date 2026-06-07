@@ -1,6 +1,6 @@
 // Copyright (C) 2025 Thinline Dynamic Solutions
 //
-// Auto-learn tone sets: observe paging patterns and email system admins for review.
+// Auto-learn tone sets: observe paging patterns and auto-add confident matches.
 
 package main
 
@@ -343,11 +343,38 @@ func (controller *Controller) upsertToneLearnCandidate(call *Call, transcript st
 	}
 
 	if toneLearnCandidateNeedsReview(records) {
-		go controller.sendToneLearnReviewEmail(call.System, call.Talkgroup, cand, records, cfg)
+		controller.skipToneLearnCandidate(call.System, call.Talkgroup, cand,
+			"stacked tones on same voice call (add tone sets manually in admin if needed)")
 		return
 	}
 
 	go controller.autoAddLearnedToneSet(call.System, call.Talkgroup, cand, records, cfg)
+}
+
+// skipToneLearnCandidate marks a candidate finalized without auto-adding or emailing.
+func (controller *Controller) skipToneLearnCandidate(system *System, talkgroup *Talkgroup, cand toneLearnCandidate, reason string) {
+	if controller == nil || system == nil || talkgroup == nil {
+		return
+	}
+
+	now := time.Now().UnixMilli()
+	updateQuery := `UPDATE "toneSetLearnCandidates" SET "reviewEmailedAt" = $1 WHERE "systemId" = $2 AND "talkgroupId" = $3 AND "signatureHash" = $4 AND ("reviewEmailedAt" IS NULL OR "reviewEmailedAt" = 0)`
+	if controller.Database.Config.DbType != DbTypePostgresql {
+		updateQuery = `UPDATE "toneSetLearnCandidates" SET "reviewEmailedAt" = ? WHERE "systemId" = ? AND "talkgroupId" = ? AND "signatureHash" = ? AND ("reviewEmailedAt" IS NULL OR "reviewEmailedAt" = 0)`
+	}
+	res, err := controller.Database.Sql.Exec(updateQuery, now, system.Id, talkgroup.Id, cand.SignatureHash)
+	if err != nil {
+		controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("tone auto-learn: mark skipped failed: %v", err))
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return
+	}
+
+	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf(
+		"tone auto-learn: skipped signature %s on talkgroup %d — %s",
+		cand.SignatureHash[:8], talkgroup.TalkgroupRef, reason,
+	))
 }
 
 func toneLearnCandidateNeedsReview(records []toneLearnCallRecord) bool {

@@ -203,7 +203,8 @@ func (controller *Controller) upsertUnitLearnCandidate(call *Call, obs unitObser
 
 	label, consistent, conflict := consistentRadioLabel(records)
 	if conflict {
-		go controller.sendUnitLearnReviewEmail(call.System, call.Talkgroup, obs.UnitRef, records, "", true)
+		controller.skipUnitLearnCandidate(call.System, call.Talkgroup, obs.UnitRef,
+			"conflicting radio aliases across calls")
 		return
 	}
 	if consistent && label != "" {
@@ -221,10 +222,37 @@ func (controller *Controller) upsertUnitLearnCandidate(call *Call, obs unitObser
 
 	suggested := controller.suggestUnitLearnLabel(call.System, call.Talkgroup, obs.UnitRef, records)
 	if suggested == "" || suggested == "UNKNOWN" {
-		go controller.sendUnitLearnReviewEmail(call.System, call.Talkgroup, obs.UnitRef, records, suggested, false)
+		controller.skipUnitLearnCandidate(call.System, call.Talkgroup, obs.UnitRef,
+			"could not determine a consistent unit label")
 		return
 	}
 	go controller.autoAddLearnedUnitAlias(call.System, call.Talkgroup, obs.UnitRef, suggested, records, true)
+}
+
+// skipUnitLearnCandidate marks a candidate finalized without auto-adding or emailing.
+func (controller *Controller) skipUnitLearnCandidate(system *System, talkgroup *Talkgroup, unitRef uint, reason string) {
+	if controller == nil || system == nil || talkgroup == nil || unitRef == 0 {
+		return
+	}
+
+	now := time.Now().UnixMilli()
+	updateQuery := `UPDATE "unitAliasLearnCandidates" SET "finalizedAt" = $1 WHERE "systemId" = $2 AND "talkgroupId" = $3 AND "unitRef" = $4 AND ("finalizedAt" IS NULL OR "finalizedAt" = 0)`
+	if controller.Database.Config.DbType != DbTypePostgresql {
+		updateQuery = `UPDATE "unitAliasLearnCandidates" SET "finalizedAt" = ? WHERE "systemId" = ? AND "talkgroupId" = ? AND "unitRef" = ? AND ("finalizedAt" IS NULL OR "finalizedAt" = 0)`
+	}
+	res, err := controller.Database.Sql.Exec(updateQuery, now, system.Id, talkgroup.Id, unitRef)
+	if err != nil {
+		controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("unit auto-learn: mark skipped failed: %v", err))
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return
+	}
+
+	controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf(
+		"unit auto-learn: skipped unitRef %d on talkgroup %d — %s (add manually in admin if needed)",
+		unitRef, talkgroup.TalkgroupRef, reason,
+	))
 }
 
 func consistentRadioLabel(records []unitLearnCallRecord) (label string, consistent bool, conflict bool) {

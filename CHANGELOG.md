@@ -1,18 +1,28 @@
 # Change log
 
+## Version 26.06.05 - Released June 6, 2026
+
+### Fixed
+
+- **Server — Auto-learn no longer emails per unit ID or tone pattern**
+  - Review emails with MP3 attachments were sent for every ambiguous unit alias or stacked tone candidate. Removed — confident matches still auto-add; skipped cases are logged only.
+  - Admin UI copy updated to match (logged only, not emailed).
+
+---
+
 ## Version 26.06.04 - Released June 6, 2026
 
 ### Added
 
 - **Server — Auto-learn tone sets**
   - System and talkgroup toggles observe paging audio on selected channels and build tone-set candidates after enough matching calls (`autoLearnToneSetConfig.callsRequired`).
-  - Single-tone patterns with consistent frequencies are auto-added; stacked / ambiguous patterns are emailed to system admins for manual review.
+  - Single-tone patterns with consistent frequencies are auto-added; stacked / ambiguous patterns were emailed to system admins for manual review (removed in 26.06.05 — logged only).
   - **Tag rollout**: enable auto-learn on all talkgroups matching selected tags; optional **auto-off** timer disables rollout on the system and tagged talkgroups when it expires.
   - OpenAI (when configured) suggests human-readable tone-set labels from observed frequencies and transcripts.
 
 - **Server — Auto-learn unit aliases**
   - Maps radio `unitRef` values to human labels (e.g. `45012` → `Engine Five`) using P25 radio metadata and voice transcripts.
-  - Consistent P25 alias on every call auto-adds without OpenAI; conflicting aliases or missing metadata trigger an OpenAI naming pass; uncertain results are emailed to system admins.
+  - Consistent P25 alias on every call auto-adds without OpenAI; conflicting aliases or missing metadata trigger an OpenAI naming pass; uncertain results were emailed to system admins (removed in 26.06.05 — logged only).
   - System/talkgroup toggles, tag rollout, and optional auto-off mirror auto-learn tone sets.
   - Reuses `autoLearnToneSetConfig.callsRequired` for the observation threshold.
 

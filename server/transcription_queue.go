@@ -451,7 +451,7 @@ func (queue *TranscriptionQueue) worker(workerId int) {
 		// Process keywords if needed - use cleaned transcript
 		go queue.processKeywords(job.CallId, job.SystemId, job.TalkgroupId, cleanedResult)
 
-		// Auto-learn tone sets (observe patterns, email admins after N voiced calls)
+		// Auto-learn tone sets (observe patterns, auto-add or log after N voiced calls)
 		go func() {
 			if postCall != nil {
 				call := postCall
