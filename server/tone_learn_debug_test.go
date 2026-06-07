@@ -286,3 +286,53 @@ func TestProductionDetectLearnedLFD(t *testing.T) {
 	}
 	t.Logf("production Detect matched learned tone set: %d / %d files", matched, len(entries))
 }
+
+func TestDebugCall44571060DiscoverDetect(t *testing.T) {
+	const (
+		audioPath    = "/tmp/tlr-debug/tg-46036-3d/audio/44571060_20260604_062449.851.mp3"
+		systemId     = 44
+		talkgroupId  = 2762
+	)
+	if _, err := os.Stat(audioPath); err != nil {
+		t.Skipf("missing %s", audioPath)
+	}
+	audio, err := os.ReadFile(audioPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mime := toneHistoryAudioMime("", "20260604_062449.851.mp3")
+
+	detector := NewToneDetector()
+	cfg := DefaultAutoLearnToneSetConfig()
+	cfg.normalize()
+
+	tones, err := detector.Discover(audio, mime)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	t.Logf("Discover: %d tones", len(tones))
+	for i, tone := range tones {
+		t.Logf("  tone[%d] %.3f Hz type=%s start=%.3fs end=%.3fs dur=%.3fs",
+			i, tone.Frequency, tone.ToneType, tone.StartTime, tone.EndTime, tone.Duration)
+	}
+	cands := extractToneLearnCandidates(tones, cfg, systemId, talkgroupId)
+	t.Logf("learn candidates: %d [%s]", len(cands), formatCandidates(cands))
+
+	_, toneSets := load46036Export(t)
+	seq, err := detector.Detect(audio, "audio/mpeg", toneSets)
+	if err != nil {
+		t.Fatalf("Detect: %v", err)
+	}
+	if seq == nil {
+		t.Log("Detect: nil sequence")
+		return
+	}
+	t.Logf("Detect: HasTones=%v tones=%d [%s]", seq.HasTones, len(seq.Tones), formatTonesSummary(seq.Tones))
+	if seq.MatchedToneSet != nil {
+		t.Logf("Detect matched tone set: %s", seq.MatchedToneSet.Label)
+	} else if len(seq.MatchedToneSets) > 0 {
+		t.Logf("Detect matched tone sets: %d (first %s)", len(seq.MatchedToneSets), seq.MatchedToneSets[0].Label)
+	} else {
+		t.Log("Detect: no matched tone set")
+	}
+}

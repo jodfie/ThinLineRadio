@@ -18,18 +18,24 @@ import (
 
 const (
 	defaultExportDir = "/tmp/tlr-debug/tlr-lfd-export"
-	defaultCSV       = "calls_46038_last7d_top20.csv"
 	defaultTalkgroup = 46038
 )
 
 func main() {
 	exportDir := flag.String("export", defaultExportDir, "directory containing CSV and audio/")
+	csvName := flag.String("csv", "", "CSV filename in export dir (default: newest calls_*.csv)")
 	iniPath := flag.String("ini", "thinline-radio.ini", "database config ini (relative to server/ or absolute)")
 	talkgroupRef := flag.Int("talkgroup-ref", defaultTalkgroup, "talkgroupRef to import into")
 	dryRun := flag.Bool("dry-run", false, "parse files only, do not insert")
 	flag.Parse()
 
-	csvPath := filepath.Join(*exportDir, defaultCSV)
+	csvPath := filepath.Join(*exportDir, *csvName)
+	if *csvName == "" {
+		csvPath = largestCallsCSV(*exportDir)
+		if csvPath == "" {
+			csvPath = filepath.Join(*exportDir, "calls_46038_last600.csv")
+		}
+	}
 	audioDir := filepath.Join(*exportDir, "audio")
 
 	cfg, err := ini.Load(*iniPath)
@@ -160,6 +166,31 @@ type csvRow struct {
 	audioMime     string
 	audioFilename string
 	transcript    string
+}
+
+func largestCallsCSV(exportDir string) string {
+	matches, _ := filepath.Glob(filepath.Join(exportDir, "calls_*.csv"))
+	if len(matches) == 0 {
+		return ""
+	}
+	best := matches[0]
+	bestRows := 0
+	for _, path := range matches {
+		f, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+		rows, err := csv.NewReader(f).ReadAll()
+		f.Close()
+		if err != nil {
+			continue
+		}
+		if n := len(rows) - 1; n > bestRows {
+			bestRows = n
+			best = path
+		}
+	}
+	return best
 }
 
 func readCSV(path string) ([]csvRow, error) {

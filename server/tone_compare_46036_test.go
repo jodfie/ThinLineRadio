@@ -161,6 +161,107 @@ func TestCompareProd46036DirectDetect(t *testing.T) {
 		total, prodToneCalls, agreeNo, agreeTones, miss, extra)
 }
 
+// prodMatchedLabels returns the department label(s) prod stored for a call.
+func prodMatchedLabels(seqJSON string) []string {
+	seqJSON = strings.TrimSpace(seqJSON)
+	if seqJSON == "" || seqJSON == "{}" {
+		return nil
+	}
+	var seq ToneSequence
+	if err := json.Unmarshal([]byte(seqJSON), &seq); err != nil {
+		return nil
+	}
+	set := map[string]bool{}
+	if seq.MatchedToneSet != nil && seq.MatchedToneSet.Label != "" {
+		set[seq.MatchedToneSet.Label] = true
+	}
+	for _, ts := range seq.MatchedToneSets {
+		if ts != nil && ts.Label != "" {
+			set[ts.Label] = true
+		}
+	}
+	var out []string
+	for l := range set {
+		out = append(out, l)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func labelsOverlap(a, b []string) bool {
+	for _, x := range a {
+		for _, y := range b {
+			if x == y {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// TestDetect46036LabelParity: does the engine fire the SAME department alert as production,
+// using the real production tone-sets.json? This is the truest "same alert" accuracy metric.
+func TestDetect46036LabelParity(t *testing.T) {
+	calls, toneSets := load46036Export(t)
+	t.Logf("using %d production tone sets", len(toneSets))
+
+	detector := NewToneDetector()
+	oldStdout := os.Stdout
+	os.Stdout, _ = os.Open(os.DevNull)
+	defer func() { os.Stdout = oldStdout }()
+
+	var (
+		total, prodMatched, agree, weMissed, weExtra, bothNone int
+		disagreeShown                                          int
+	)
+
+	for _, call := range calls {
+		total++
+		audio, err := os.ReadFile(call.audioPath)
+		if err != nil {
+			continue
+		}
+		prodLabels := prodMatchedLabels(call.seqJSON)
+
+		seq, err := detector.Detect(audio, "audio/mpeg", toneSets)
+		if err != nil {
+			continue
+		}
+		var ourLabels []string
+		for _, ts := range detector.MatchToneSets(seq, toneSets) {
+			if ts != nil && ts.Label != "" {
+				ourLabels = append(ourLabels, ts.Label)
+			}
+		}
+		sort.Strings(ourLabels)
+
+		switch {
+		case len(prodLabels) > 0:
+			prodMatched++
+			if labelsOverlap(prodLabels, ourLabels) {
+				agree++
+			} else {
+				weMissed++
+				if disagreeShown < 12 {
+					disagreeShown++
+					os.Stdout = oldStdout
+					t.Logf("DISAGREE %s prod=%v ours=%v", call.callId, prodLabels, ourLabels)
+					os.Stdout, _ = os.Open(os.DevNull)
+				}
+			}
+		case len(ourLabels) > 0:
+			weExtra++
+		default:
+			bothNone++
+		}
+	}
+
+	os.Stdout = oldStdout
+	t.Logf("LABEL PARITY calls=%d prodMatched=%d agree=%d weMissed=%d weExtra=%d bothNone=%d (agree rate of prod-matched: %.1f%%)",
+		total, prodMatched, agree, weMissed, weExtra, bothNone,
+		100*float64(agree)/math.Max(1, float64(prodMatched)))
+}
+
 // TestLFDDetectTones: 78 LRDS FD export — Discover finds paging tones; Detect uses learned A/B Hz.
 func TestLFDDetectTones(t *testing.T) {
 	audioDir := "/tmp/tlr-debug/tlr-lfd-export/audio"

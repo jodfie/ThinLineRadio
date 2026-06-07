@@ -35,8 +35,11 @@ func (controller *Controller) suggestToneLearnLabel(system *System, talkgroup *T
 	}
 
 	systemPrompt := `You identify fire/EMS/police paging tone-outs from radio dispatch transcripts.
-Given multiple transcripts from the same paging tone pattern, return ONE short label for the department or station being toned out (e.g. "Station 12", "North EMS", "Akron FD").
-Return JSON only: {"label":"..."}. If unclear, use {"label":"UNKNOWN"}. Do not include tone frequencies in the label.`
+All of the transcripts provided belong to the SAME paging tone pattern, so they are the SAME station/unit being toned out. Your job is to find the ONE station or unit identifier that is consistent across the transcripts.
+- Pick the department/station/unit that recurs across the transcripts — it is usually the number or name spoken at the very start of the dispatch (e.g. "Station 47", "47 Duty", "Engine 12", "North EMS").
+- IGNORE one-off details that vary between transcripts: street addresses, cross streets, patient details, caller names, ages, times, and the nature of the call.
+- If different transcripts name different units, choose the single identifier common to most of them. Only return {"label":"UNKNOWN"} if no consistent station/unit can be found.
+Return ONE short label. Return JSON only: {"label":"..."}. Do not include tone frequencies in the label.`
 
 	userPrompt := fmt.Sprintf(`System: %s
 Talkgroup: %s (TGID %d)

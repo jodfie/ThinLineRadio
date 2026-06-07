@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -18,13 +19,19 @@ type ToneHistoryAnalyzeRequest struct {
 	Hours       int    `json:"hours"`
 }
 
+type ToneHistorySampleCall struct {
+	CallId     uint64 `json:"callId"`
+	Transcript string `json:"transcript"`
+}
+
 type ToneHistorySuggestion struct {
-	PatternType string   `json:"patternType"`
-	PatternDesc string   `json:"patternDesc"`
-	CallCount   int      `json:"callCount"`
-	CallIds     []uint64 `json:"callIds"`
-	Label       string   `json:"label"`
-	ToneSet     ToneSet  `json:"toneSet"`
+	PatternType string                  `json:"patternType"`
+	PatternDesc string                  `json:"patternDesc"`
+	CallCount   int                     `json:"callCount"`
+	CallIds     []uint64                `json:"callIds"`
+	Label       string                  `json:"label"`
+	ToneSet     ToneSet                 `json:"toneSet"`
+	Samples     []ToneHistorySampleCall `json:"samples,omitempty"`
 }
 
 type ToneHistoryPartialPattern struct {
@@ -98,6 +105,39 @@ func toneHistoryAudioMime(audioMime, audioFilename string) string {
 	}
 }
 
+func toneHistoryBestTranscript(call toneHistoryCallInput) string {
+	if t := strings.TrimSpace(call.reviewedTranscript); t != "" {
+		return t
+	}
+	return strings.TrimSpace(call.transcript)
+}
+
+// toneHistoryResolveVoice mirrors the live tone-alerting voice attachment: if the
+// tone call itself carries dispatch voice, use it (tones + voice on one call);
+// otherwise borrow the transcript from the next voice call on the same talkgroup
+// within the pending-tone window — the call the tones would have attached to in
+// real time. chronological must be sorted ascending by timestamp.
+func (controller *Controller) toneHistoryResolveVoice(call toneHistoryCallInput, chronological []toneHistoryCallInput) string {
+	own := toneHistoryBestTranscript(call)
+	if controller.isVoiceForToneAlerts(own) {
+		return own
+	}
+	windowMs := int64(pendingToneTimeoutMinutes) * 60 * 1000
+	for _, other := range chronological {
+		if other.callId == call.callId || other.timestamp <= call.timestamp {
+			continue
+		}
+		if other.timestamp-call.timestamp > windowMs {
+			break
+		}
+		candidate := toneHistoryBestTranscript(other)
+		if controller.isVoiceForToneAlerts(candidate) {
+			return candidate
+		}
+	}
+	return own
+}
+
 func (controller *Controller) analyzeTalkgroupToneHistory(systemId, talkgroupId uint64, limit, hours int) (*ToneHistoryAnalyzeResponse, error) {
 	if controller == nil || controller.Database == nil {
 		return nil, fmt.Errorf("server not ready")
@@ -162,6 +202,15 @@ func (controller *Controller) analyzeTalkgroupToneHistory(systemId, talkgroupId 
 			continue
 		}
 
+		// Chronological index of this batch so a tone-only call can borrow the
+		// dispatch voice from the call that follows it (post-tone voice), the same
+		// way live tone alerting attaches pending tones to the next voice call.
+		chronological := make([]toneHistoryCallInput, len(batch))
+		copy(chronological, batch)
+		sort.Slice(chronological, func(i, j int) bool {
+			return chronological[i].timestamp < chronological[j].timestamp
+		})
+
 		for _, call := range batch {
 			scannedIds[call.callId] = true
 			resp.CallsScanned++
@@ -193,12 +242,7 @@ func (controller *Controller) analyzeTalkgroupToneHistory(systemId, talkgroupId 
 			resp.CallsWithCandidates++
 
 			stackedCall := len(candidates) > 1
-			transcriptText := ""
-			if call.reviewedTranscript != "" {
-				transcriptText = strings.ToUpper(call.reviewedTranscript)
-			} else if call.transcript != "" {
-				transcriptText = strings.ToUpper(call.transcript)
-			}
+			transcriptText := controller.toneHistoryResolveVoice(call, chronological)
 
 			for _, cand := range candidates {
 				if toneSetExistsOnTalkgroup(talkgroup.ToneSets, cand, cfg.FrequencyToleranceHz) {
@@ -442,6 +486,23 @@ func (controller *Controller) buildToneHistorySuggestions(sys *System, talkgroup
 			callIds[i] = r.CallId
 		}
 
+		// Attach a few representative transcripts so the operator can sanity-check
+		// what dispatch said on the calls that produced this tone set.
+		const maxSamples = 5
+		samples := make([]ToneHistorySampleCall, 0, maxSamples)
+		seenText := make(map[string]bool)
+		for _, r := range agg.records {
+			text := strings.TrimSpace(r.Transcript)
+			if text == "" || seenText[text] {
+				continue
+			}
+			seenText[text] = true
+			samples = append(samples, ToneHistorySampleCall{CallId: r.CallId, Transcript: text})
+			if len(samples) >= maxSamples {
+				break
+			}
+		}
+
 		resp.Suggestions = append(resp.Suggestions, ToneHistorySuggestion{
 			PatternType: string(agg.cand.PatternType),
 			PatternDesc: toneLearnPatternDescription(agg.cand),
@@ -449,6 +510,7 @@ func (controller *Controller) buildToneHistorySuggestions(sys *System, talkgroup
 			CallIds:     callIds,
 			Label:       label,
 			ToneSet:     toneSet,
+			Samples:     samples,
 		})
 	}
 }

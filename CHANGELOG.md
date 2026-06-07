@@ -1,5 +1,34 @@
 # Change log
 
+## Version 26.06.10 - Released June 7, 2026
+
+### Added
+
+- **Admin — Analyze tone history shows dispatch transcripts**
+  - Each suggested tone set now lists the dispatch voice from the calls that produced it, so you can sanity-check what was actually said before adding the set.
+  - Transcript selection reuses the live tone-alerting voice attachment: if the tone call carries voice it is used directly; otherwise the next voice call on the talkgroup within the pending-tone window is borrowed (the call the tones would have attached to in real time).
+
+### Changed
+
+- **Server — Auto-learn label uses the post-tone dispatch voice**
+  - The OpenAI labeling request now receives the resolved post-tone voice (not the tone-region hallucination) and a stronger prompt: all transcripts belong to one station/unit, so it locks onto the single identifier consistent across them and ignores one-off addresses, patient details, names, and times.
+
+- **Server — Auto-learn frequency tolerance default 10 → 20 Hz**
+  - A learned candidate within 20 Hz of an existing tone set is treated as the same set and skipped. Existing saved configs keep their explicit value.
+
+- **Server — Auto-learn minimum A/B separation 90 → 40 Hz**
+  - Tight but legitimate two-tone pairs (e.g. 1251.4 / 1184.5 Hz, 66.9 Hz apart) can now be auto-learned. Detection/alerting of already-stored tone sets was never affected by this guard.
+
+- **Admin — Tone set editor cleanup**
+  - Removed the unused "Sequence Min Duration" field, moved field descriptors below each input, reduced input height, widened the tone-sets block to full width, and corrected the tolerance hint text.
+
+### Fixed
+
+- **Admin — Unit edit could not be saved**
+  - Editing a unit's label/ID now enables Save immediately. Previously the detached edit form only committed (and marked the config dirty) when the row was collapsed, so Save stayed disabled if you edited and saved directly. Edits also commit on paging/search instead of being dropped.
+
+---
+
 ## Version 26.06.09 - Released June 8, 2026
 
 ### Fixed

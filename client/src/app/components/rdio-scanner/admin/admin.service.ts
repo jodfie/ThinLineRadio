@@ -423,6 +423,11 @@ export interface ToneImportResponse {
     warnings?: string[];
 }
 
+export interface ToneHistorySampleCall {
+    callId: number;
+    transcript: string;
+}
+
 export interface ToneHistorySuggestion {
     patternType: string;
     patternDesc: string;
@@ -430,6 +435,7 @@ export interface ToneHistorySuggestion {
     callIds: number[];
     label: string;
     toneSet: RdioScannerToneSet;
+    samples?: ToneHistorySampleCall[];
 }
 
 export interface ToneHistoryPartialPattern {
@@ -1498,7 +1504,7 @@ export class RdioScannerAdminService implements OnDestroy {
                 longToneMinDuration: this.ngFormBuilder.control(options?.autoLearnToneSetConfig?.longToneMinDuration ?? 6, [Validators.min(1)]),
                 longToneMaxDuration: this.ngFormBuilder.control(options?.autoLearnToneSetConfig?.longToneMaxDuration ?? 0, [Validators.min(0)]),
                 callsRequired: this.ngFormBuilder.control(options?.autoLearnToneSetConfig?.callsRequired ?? 3, [Validators.min(2)]),
-                frequencyToleranceHz: this.ngFormBuilder.control(options?.autoLearnToneSetConfig?.frequencyToleranceHz ?? 10, [Validators.min(1)]),
+                frequencyToleranceHz: this.ngFormBuilder.control(options?.autoLearnToneSetConfig?.frequencyToleranceHz ?? 20, [Validators.min(1)]),
             }),
         });
     }
@@ -1579,7 +1585,6 @@ export class RdioScannerAdminService implements OnDestroy {
                     longToneMinDuration: this.ngFormBuilder.control(toneSet.longTone?.minDuration || null),
                     longToneMaxDuration: this.ngFormBuilder.control(toneSet.longTone?.maxDuration || null),
                     tolerance: this.ngFormBuilder.control(toneSet.tolerance || 10),
-                    minDuration: this.ngFormBuilder.control(toneSet.minDuration || null),
                     // TonesToActive downstream forwarding (per tone set)
                     downstreamEnabled: this.ngFormBuilder.control(toneSet.downstreamEnabled || false),
                     downstreamURL: this.ngFormBuilder.control(toneSet.downstreamURL || ''),

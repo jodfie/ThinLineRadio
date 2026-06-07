@@ -15,11 +15,23 @@
     }
 }
 
+// ─── Tone Sets row: stack label over a full-width container (no right-shift) ──
+.tone-sets-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+
+    > p {
+        padding-right: 0 !important;
+        margin-bottom: 6px;
+    }
+}
+
 // ─── Tone Sets Container ──────────────────────────────────────────────────────
 .tone-sets-container {
     display: flex;
     flex-direction: column;
     gap: 0;
+    width: 100%;
 }
 
 // ─── Individual Tone Set Card ─────────────────────────────────────────────────
@@ -28,7 +40,7 @@
     border: 1px solid #2e2e2e;
     border-left: 4px solid #cc0000;
     border-radius: 8px;
-    margin-bottom: 20px;
+    margin-bottom: 14px;
     overflow: visible;
 }
 
@@ -49,17 +61,17 @@
 
 // ─── Tone Set Body ────────────────────────────────────────────────────────────
 .tone-set-content {
-    padding: 14px 16px 6px;
+    padding: 10px 14px 4px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
 }
 
 // ─── A/B/Long Tone Rows ───────────────────────────────────────────────────────
 .tone-spec-section {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     padding-bottom: 4px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 
@@ -83,40 +95,55 @@
     gap: 8px;
     align-items: flex-start;
 
-    mat-form-field {
+    // Each field: input on top, descriptor caption underneath.
+    .tone-field {
+        display: flex;
+        flex-direction: column;
         flex: 1;
         min-width: 120px;
+
+        mat-form-field {
+            width: 100%;
+        }
     }
 }
 
-// ─── Tolerance & Min Duration ─────────────────────────────────────────────────
-// Extra bottom padding so mat-hint text is never clipped by the next element
+// ─── Tolerance ────────────────────────────────────────────────────────────────
 .tone-tolerance-section {
-    padding-bottom: 24px !important;
-
-    mat-form-field {
-        width: 100%;
-        max-width: 320px;
-    }
-}
-
-.tone-set-advanced {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
     padding-bottom: 8px;
 
-    strong {
-        font-size: 11px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        color: #777;
-    }
-
     mat-form-field {
         width: 100%;
-        max-width: 320px;
+    }
+}
+
+// Field hint rendered under the input (not in the mat-form-field subscript) so it
+// reads like the Frequency / Min / Max columns and never gets clipped.
+.tone-field-hint {
+    display: block;
+    margin-top: 5px;
+    font-size: 11px;
+    line-height: 1.3;
+    color: #888;
+}
+
+// These numeric fields have no validators, so drop Material's reserved subscript
+// space and shrink the box height (Material reserves 56px by default, which is
+// far taller than these single-line numeric inputs need).
+.tone-field,
+.tone-tolerance-section {
+    ::ng-deep .mat-mdc-form-field-subscript-wrapper {
+        display: none;
+    }
+
+    ::ng-deep .mat-mdc-text-field-wrapper {
+        background: transparent;
+    }
+
+    ::ng-deep .mat-mdc-form-field-infix {
+        min-height: 40px;
+        padding-top: 8px;
+        padding-bottom: 8px;
     }
 }
 

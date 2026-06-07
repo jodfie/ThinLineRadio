@@ -19,8 +19,9 @@
  */
 
 import { CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
-import { Component, EventEmitter, Input, Output, ChangeDetectionStrategy, ChangeDetectorRef, OnInit, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, EventEmitter, Input, Output, ChangeDetectionStrategy, ChangeDetectorRef, OnInit, OnChanges, OnDestroy, SimpleChanges } from '@angular/core';
 import { FormArray, FormControl, FormGroup } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { RdioScannerAdminService, Group, Tag } from '../../../admin.service';
 
 @Component({
@@ -29,7 +30,7 @@ import { RdioScannerAdminService, Group, Tag } from '../../../admin.service';
     styleUrls: ['./system.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class RdioScannerAdminSystemComponent implements OnInit, OnChanges {
+export class RdioScannerAdminSystemComponent implements OnInit, OnChanges, OnDestroy {
     @Input() form = new FormGroup({});
     @Input() groups: Group[] = [];
     @Input() tags: Tag[] = [];
@@ -47,6 +48,7 @@ export class RdioScannerAdminSystemComponent implements OnInit, OnChanges {
     rawUnits:         any[]          = [];
     expandedRawUnit:  any | null     = null;
     expandedUnitForm: FormGroup|null = null;
+    private expandedUnitFormSub: Subscription | null = null;
 
     // ─── Column definitions ────────────────────────────────────────────────────
     talkgroupDisplayedColumns = ['select', 'drag', 'talkgroupRef', 'label', 'name', 'groups', 'tag', 'alertsEnabled', 'actions'];
@@ -86,6 +88,8 @@ export class RdioScannerAdminSystemComponent implements OnInit, OnChanges {
             this.rawUnits = this.systemData?.units ? [...this.systemData.units] : [];
             this.unitCurrentPage = 0;
             this.unitsSearchTerm = '';
+            this.expandedUnitFormSub?.unsubscribe();
+            this.expandedUnitFormSub = null;
             this.expandedRawUnit = null;
             this.expandedUnitForm = null;
         }
@@ -329,24 +333,21 @@ export class RdioScannerAdminSystemComponent implements OnInit, OnChanges {
     nextUnitPage(): void {
         if (this.unitCurrentPage < this.unitTotalPages - 1) {
             this.unitCurrentPage++;
-            this.expandedRawUnit = null;
-            this.expandedUnitForm = null;
+            this._closeExpandedUnit();
         }
     }
 
     prevUnitPage(): void {
         if (this.unitCurrentPage > 0) {
             this.unitCurrentPage--;
-            this.expandedRawUnit = null;
-            this.expandedUnitForm = null;
+            this._closeExpandedUnit();
         }
     }
 
     onUnitsSearchChange(term: string): void {
         this.unitsSearchTerm = term;
         this.unitCurrentPage = 0;
-        this.expandedRawUnit = null;
-        this.expandedUnitForm = null;
+        this._closeExpandedUnit();
     }
 
     // ─── Expand / collapse rows ────────────────────────────────────────────────
@@ -361,15 +362,31 @@ export class RdioScannerAdminSystemComponent implements OnInit, OnChanges {
 
     toggleUnitExpand(unit: any): void {
         if (this.expandedRawUnit === unit) {
-            this._commitUnitEdit();
-            this.expandedRawUnit = null;
-            this.expandedUnitForm = null;
+            this._closeExpandedUnit();
         } else {
-            this._commitUnitEdit();
-            this.expandedRawUnit = unit;
-            this.expandedUnitForm = this.adminService.newUnitForm(unit);
+            this._openExpandedUnit(unit);
         }
         this.cdr.markForCheck();
+    }
+
+    // Open a unit for editing and commit edits live (every keystroke) so the
+    // Save button enables immediately — not only when the row is collapsed.
+    private _openExpandedUnit(unit: any): void {
+        this._closeExpandedUnit();
+        this.expandedRawUnit = unit;
+        this.expandedUnitForm = this.adminService.newUnitForm(unit);
+        this.expandedUnitFormSub = this.expandedUnitForm.valueChanges.subscribe(() => {
+            this._commitUnitEdit();
+            this.cdr.markForCheck();
+        });
+    }
+
+    private _closeExpandedUnit(): void {
+        this._commitUnitEdit();
+        this.expandedUnitFormSub?.unsubscribe();
+        this.expandedUnitFormSub = null;
+        this.expandedRawUnit = null;
+        this.expandedUnitForm = null;
     }
 
     private _commitUnitEdit(): void {
@@ -380,6 +397,10 @@ export class RdioScannerAdminSystemComponent implements OnInit, OnChanges {
             if (this.systemData) this.systemData.units = this.rawUnits;
             this.form.markAsDirty();
         }
+    }
+
+    ngOnDestroy(): void {
+        this.expandedUnitFormSub?.unsubscribe();
     }
 
     // ─── Helper: look up labels ────────────────────────────────────────────────
@@ -564,12 +585,10 @@ export class RdioScannerAdminSystemComponent implements OnInit, OnChanges {
     }
 
     addUnit(): void {
-        this._commitUnitEdit();
         const newUnit = { id: null, label: '', order: 0, unitRef: null, unitFrom: null, unitTo: null };
         this.rawUnits = [newUnit, ...this.rawUnits];
         if (this.systemData) this.systemData.units = this.rawUnits;
-        this.expandedRawUnit = newUnit;
-        this.expandedUnitForm = this.adminService.newUnitForm();
+        this._openExpandedUnit(newUnit);
         this.form.markAsDirty();
         this.cdr.markForCheck();
     }
@@ -602,6 +621,8 @@ export class RdioScannerAdminSystemComponent implements OnInit, OnChanges {
 
     removeUnit(unit: any): void {
         if (this.expandedRawUnit === unit) {
+            this.expandedUnitFormSub?.unsubscribe();
+            this.expandedUnitFormSub = null;
             this.expandedRawUnit = null;
             this.expandedUnitForm = null;
         }

@@ -39,9 +39,18 @@ func DefaultAutoLearnToneSetConfig() AutoLearnToneSetConfig {
 		LongToneMinDuration:  6.0,
 		LongToneMaxDuration:  0,
 		CallsRequired:        3,
-		FrequencyToleranceHz: 10,
+		FrequencyToleranceHz: 20,
 	}
 }
+
+// toneLearnMaxABStartGap: real A→B paging follows immediately; stacked dept pages are later.
+const toneLearnMaxABStartGap = 3.5
+
+// toneLearnMinABFrequencySepHz: reject harmonics paired as false A+B.
+const toneLearnMinABFrequencySepHz = 40.0
+
+// toneLearnABOverlapSlop allows B to start slightly before A ends (merged FFT windows).
+const toneLearnABOverlapSlop = 0.25
 
 func (c *AutoLearnToneSetConfig) normalize() {
 	def := DefaultAutoLearnToneSetConfig()
@@ -166,6 +175,39 @@ func freqWithinTol(a, b, tol float64) bool {
 	return math.Abs(a-b) <= tol
 }
 
+func tonesTimeOverlap(a, b Tone, slop float64) bool {
+	return a.StartTime <= b.EndTime+slop && a.EndTime >= b.StartTime-slop
+}
+
+func isIntegerHarmonicRatio(high, low, n float64) bool {
+	if low <= 0 {
+		return false
+	}
+	return math.Abs(high/low-n) <= 0.07*n
+}
+
+// isHarmonicPagingA skips a candidate A that is a same-onset harmonic of a lower overlapping tone
+// (e.g. false 1223 Hz while 407 Hz fundamental is sounding).
+func isHarmonicPagingA(tones []Tone, candidate Tone) bool {
+	for _, other := range tones {
+		if other.Frequency >= candidate.Frequency-5 {
+			continue
+		}
+		if !tonesTimeOverlap(candidate, other, 0.15) {
+			continue
+		}
+		if candidate.StartTime > other.StartTime+toneDetectHarmonicOnsetSec {
+			continue
+		}
+		for _, n := range []float64{2, 3, 4} {
+			if isIntegerHarmonicRatio(candidate.Frequency, other.Frequency, n) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func extractToneLearnCandidates(tones []Tone, cfg AutoLearnToneSetConfig, systemId, talkgroupId uint64) []toneLearnCandidate {
 	sort.Slice(tones, func(i, j int) bool {
 		return tones[i].StartTime < tones[j].StartTime
@@ -174,25 +216,35 @@ func extractToneLearnCandidates(tones []Tone, cfg AutoLearnToneSetConfig, system
 	var out []toneLearnCandidate
 	used := make(map[int]bool)
 
-	// One A+B pair per call: earliest valid A, then the longest valid B that follows it.
+	// One A+B pair per call: earliest valid A, then the first valid B after it (not a later stacked page).
 	for i, a := range tones {
 		if a.Duration < cfg.AToneMinDuration || a.Duration > cfg.AToneMaxDuration {
 			continue
 		}
+		if isHarmonicPagingA(tones, a) {
+			continue
+		}
 		bestJ := -1
-		var bestBDur float64
+		var bestBStart float64
 		for j, b := range tones {
-			if j <= i {
-				continue
-			}
-			if b.StartTime < a.EndTime-0.1 {
+			if i == j {
 				continue
 			}
 			if b.Duration < cfg.BToneMinDuration || b.Duration > cfg.BToneMaxDuration {
 				continue
 			}
-			if b.Duration > bestBDur {
-				bestBDur = b.Duration
+			if b.StartTime < a.EndTime-toneLearnABOverlapSlop {
+				continue
+			}
+			gap := b.StartTime - a.EndTime
+			if gap > toneLearnMaxABStartGap {
+				continue
+			}
+			if math.Abs(a.Frequency-b.Frequency) < toneLearnMinABFrequencySepHz {
+				continue
+			}
+			if bestJ < 0 || b.StartTime < bestBStart {
+				bestBStart = b.StartTime
 				bestJ = j
 			}
 		}

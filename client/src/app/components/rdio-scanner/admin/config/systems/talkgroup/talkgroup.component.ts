@@ -106,7 +106,6 @@ export class RdioScannerAdminTalkgroupComponent {
             longToneMinDuration: [toneSet?.longTone?.minDuration ?? null],
             longToneMaxDuration: [toneSet?.longTone?.maxDuration ?? null],
             tolerance: [toneSet?.tolerance ?? 10],
-            minDuration: [toneSet?.minDuration ?? null],
             // TonesToActive downstream forwarding (per tone set)
             downstreamEnabled: [(toneSet as any)?.downstreamEnabled ?? false],
             downstreamURL: [(toneSet as any)?.downstreamURL ?? ''],

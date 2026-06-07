@@ -38,11 +38,11 @@ import (
 
 // Tone represents a detected tone with frequency and timing information
 type Tone struct {
-	Frequency float64 `json:"frequency"`        // Hz
-	StartTime float64 `json:"startTime"`        // seconds from start of audio
-	EndTime   float64 `json:"endTime"`          // seconds from start of audio
-	Duration  float64 `json:"duration"`         // seconds
-	ToneType  string  `json:"toneType"`         // Type of tone: "A", "B", "Long", or "" if matched multiple/none
+	Frequency float64 `json:"frequency"` // Hz
+	StartTime float64 `json:"startTime"` // seconds from start of audio
+	EndTime   float64 `json:"endTime"`   // seconds from start of audio
+	Duration  float64 `json:"duration"`  // seconds
+	ToneType  string  `json:"toneType"`  // Type of tone: "A", "B", "Long", or "" if matched multiple/none
 	Magnitude float64 `json:"magnitude,omitempty"` // FFT peak magnitude (internal scoring; not persisted)
 }
 
@@ -118,7 +118,7 @@ func NewToneDetector() *ToneDetector {
 	return &ToneDetector{
 		SampleRate:      16000, // 16kHz sample rate (can capture up to 8kHz via Nyquist, enough for 0-5000 Hz)
 		WindowSize:      2048,  // FFT window size
-		MinToneDuration: 0.6,   // Minimum 600ms to be considered a tone
+		MinToneDuration: 0.4,   // Minimum 400ms (Lordstown A-tones on compressed dispatch MP3)
 		FrequencyRange: struct {
 			Min float64
 			Max float64
@@ -135,23 +135,16 @@ func (detector *ToneDetector) Detect(audio []byte, audioMime string, toneSets []
 		return &ToneSequence{Tones: []Tone{}, HasTones: false}, nil
 	}
 
-	samples, sampleRate, err := detector.decodeAudioForProductionDetect(audio)
+	samples, sampleRate, err := detector.decodeAudioForDetect(audio)
 	if err != nil {
 		return nil, err
 	}
+
 	if len(samples) < 100 {
 		return &ToneSequence{Tones: []Tone{}, HasTones: false}, nil
 	}
 
-	// Production ingest: dynaudnorm path (deployed) plus bandpass lead-in path (quiet paging before voice).
-	detectedTones := detector.analyzeFrequenciesExt(samples, sampleRate, toneSets, false, 0, 0)
-	if alt, altRate, err := detector.decodeAudioForToneAnalysis(audio); err == nil && len(alt) >= 100 {
-		if altRate <= 0 {
-			altRate = sampleRate
-		}
-		altTones := detector.analyzeFrequenciesExt(alt, altRate, toneSets, false, 0, tonePeakReferenceSeconds)
-		detectedTones = mergeDetectedToneLists(detectedTones, altTones)
-	}
+	detectedTones := detector.analyzeFrequencies(samples, sampleRate, toneSets, false)
 
 	// Log tone detection analysis
 	fmt.Printf("tone detection: analyzed %d samples at %d Hz, found %d potential tone detections\n", len(samples), sampleRate, len(detectedTones))
@@ -167,8 +160,10 @@ func (detector *ToneDetector) Detect(audio []byte, audioMime string, toneSets []
 		Duration: float64(len(samples)) / float64(sampleRate),
 	}
 
-	// Identify ATone, BTone, LongTone based on what they matched in the tone sets
-	// Use the ToneType field that was set during matching
+	// Identify ATone, BTone, LongTone from tone-set match or sequential order.
+	sort.Slice(detectedTones, func(i, j int) bool {
+		return detectedTones[i].StartTime < detectedTones[j].StartTime
+	})
 	for i := range detectedTones {
 		tone := &detectedTones[i]
 		switch tone.ToneType {
@@ -186,31 +181,166 @@ func (detector *ToneDetector) Detect(audio []byte, audioMime string, toneSets []
 			}
 		}
 	}
+	if sequence.ATone == nil && len(detectedTones) > 0 {
+		sequence.ATone = &detectedTones[0]
+	}
+	if sequence.BTone == nil && len(detectedTones) > 1 {
+		sequence.BTone = &detectedTones[1]
+	}
 
 	return sequence, nil
 }
 
-// toneAnalysisMaxSeconds caps FFT analysis — stacked pages can span 12–18s on the same clip.
+// toneAnalysisMaxSeconds caps FFT analysis for auto-learn on long stacked-page clips.
 const toneAnalysisMaxSeconds = 20.0
 
-// tonePeakReferenceSeconds derives the silence gate from early paging audio only so later
-// dispatch voice on the same recording does not raise the gate and hide quiet lead-in tones.
+// tonePeakReferenceSeconds: silence gate uses early paging audio only so later dispatch
+// voice on the same clip does not hide quiet lead-in tones.
 const tonePeakReferenceSeconds = 3.0
 
-// tonePagingMatchMaxStart rejects AB matches whose A-tone begins after dispatch voice.
-const tonePagingMatchMaxStart = 18.0
+// Shared detection gates for production Detect and auto-learn Discover.
+// The STFT engine parameters (window, hop, force-split, tolerance) live in tone_stft.go.
+const (
+	toneDetectMinDurationSec     = 0.4
+	toneDetectSilenceBelowGlobal = -42.0
+	toneDetectSNRAboveNoise      = 3.0
+	toneDetectMagnitudeThreshold = 0.008
+	toneDetectPagingPadSec       = 0.2
+	toneDetectPagingGateDB       = -38.0
+	toneDetectHarmonicOnsetSec   = 0.2 // same-onset window for harmonic artifact rejection
+)
 
-// toneMatchMinMagnitude is the minimum FFT peak magnitude for a matched A/B tone (production).
-const toneMatchMinMagnitude = 0.012
+// cropSamplesToPagingRegion trims leading/trailing silence using a short-hop energy envelope.
+func cropSamplesToPagingRegion(samples []float64, sampleRate int) []float64 {
+	const envWindow = 512
+	const envHop = 128
+	if len(samples) < envWindow*2 {
+		return samples
+	}
 
-// decodeAudioForToneAnalysis decodes call audio to mono PCM for tone FFT analysis.
-// Bandpass only — dynaudnorm crushes steady paging tones when louder voice follows in the same clip.
-func (detector *ToneDetector) decodeAudioForToneAnalysis(audio []byte) ([]float64, int, error) {
+	type envFrame struct {
+		start int
+		rms   float64
+	}
+	var frames []envFrame
+	global := 0.0
+	for start := 0; start+envWindow <= len(samples); start += envHop {
+		var sum float64
+		for i := start; i < start+envWindow; i++ {
+			v := samples[i]
+			sum += v * v
+		}
+		rms := math.Sqrt(sum / float64(envWindow))
+		if rms > global {
+			global = rms
+		}
+		frames = append(frames, envFrame{start: start, rms: rms})
+	}
+	if global < 1e-20 || len(frames) == 0 {
+		return samples
+	}
+
+	threshold := global * math.Pow(10, toneDetectPagingGateDB/20.0)
+	first, last := -1, -1
+	for i, f := range frames {
+		if f.rms >= threshold {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+	}
+	if first < 0 {
+		return samples
+	}
+
+	startSample := frames[first].start
+	endSample := frames[last].start + envWindow
+	pad := int(toneDetectPagingPadSec * float64(sampleRate))
+	startSample -= pad
+	endSample += pad
+	if startSample < 0 {
+		startSample = 0
+	}
+	if endSample > len(samples) {
+		endSample = len(samples)
+	}
+	if endSample <= startSample {
+		return samples
+	}
+	return samples[startSample:endSample]
+}
+
+type toneFreqDetection struct {
+	frequency float64
+	startTime float64
+	endTime   float64
+	magnitude float64
+}
+
+type mergedDetection struct {
+	frequency   float64
+	startTime   float64
+	endTime     float64
+	magnitude   float64
+	count       int
+	freqHistory []float64
+}
+
+func pruneHarmonicMergedDetections(merged []mergedDetection) []mergedDetection {
+	if len(merged) < 2 {
+		return merged
+	}
+	drop := make([]bool, len(merged))
+	for i := range merged {
+		for j := range merged {
+			if i == j || drop[j] {
+				continue
+			}
+			loFreq, hiFreq := merged[i].frequency, merged[j].frequency
+			lo, hi := merged[i], merged[j]
+			idxHi := j
+			if loFreq > hiFreq {
+				lo, hi = merged[j], merged[i]
+				idxHi = i
+			}
+			if hi.frequency <= lo.frequency+5 {
+				continue
+			}
+			if math.Abs(hi.startTime-lo.startTime) > toneDetectHarmonicOnsetSec {
+				continue
+			}
+			if !tonesTimeOverlap(
+				Tone{StartTime: lo.startTime, EndTime: lo.endTime},
+				Tone{StartTime: hi.startTime, EndTime: hi.endTime},
+				0.1,
+			) {
+				continue
+			}
+			for _, n := range []float64{2, 3, 4} {
+				if isIntegerHarmonicRatio(hi.frequency, lo.frequency, n) && hi.magnitude <= lo.magnitude*1.15 {
+					drop[idxHi] = true
+					break
+				}
+			}
+		}
+	}
+	out := make([]mergedDetection, 0, len(merged))
+	for i, md := range merged {
+		if !drop[i] {
+			out = append(out, md)
+		}
+	}
+	return out
+}
+
+// decodeAudioForDetect decodes call audio to mono PCM for production Detect and auto-learn Discover.
+func (detector *ToneDetector) decodeAudioForDetect(audio []byte) ([]float64, int, error) {
 	ffArgs := []string{
 		"-i", "pipe:0",
 		"-ar", "16000",
 		"-ac", "1",
-		"-af", "highpass=f=100,lowpass=f=4000",
+		"-af", "highpass=f=200,lowpass=f=3000,dynaudnorm",
 		"-f", "wav",
 		"-loglevel", "error",
 		"pipe:1",
@@ -244,68 +374,7 @@ func (detector *ToneDetector) decodeAudioForToneAnalysis(audio []byte) ([]float6
 		return nil, 0, fmt.Errorf("ffmpeg produced no output")
 	}
 
-	samples, sampleRate, err := detector.parseWAV(wavData.Bytes())
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to parse WAV: %v", err)
-	}
-
-	return samples, sampleRate, nil
-}
-
-// decodeAudioForProductionDetect uses the deployed ingest filter chain (dynaudnorm).
-func (detector *ToneDetector) decodeAudioForProductionDetect(audio []byte) ([]float64, int, error) {
-	return detector.decodeAudioForToneAnalysisWithFilter(audio, "highpass=f=200,lowpass=f=3000,dynaudnorm")
-}
-
-// decodeAudioForToneAnalysisWithFilter decodes with a custom ffmpeg -af chain (probe / regression tests).
-func (detector *ToneDetector) decodeAudioForToneAnalysisWithFilter(audio []byte, afFilter string) ([]float64, int, error) {
-	if afFilter == "" {
-		return detector.decodeAudioForToneAnalysis(audio)
-	}
-	ffArgs := []string{
-		"-i", "pipe:0",
-		"-ar", "16000",
-		"-ac", "1",
-		"-af", afFilter,
-		"-f", "wav",
-		"-loglevel", "error",
-		"pipe:1",
-	}
-
-	ffCmd := exec.Command("ffmpeg", ffArgs...)
-	stdin, err := ffCmd.StdinPipe()
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to create stdin pipe: %v", err)
-	}
-
-	var wavData bytes.Buffer
-	var ffErr bytes.Buffer
-	ffCmd.Stdout = &wavData
-	ffCmd.Stderr = &ffErr
-
-	if err := ffCmd.Start(); err != nil {
-		return nil, 0, fmt.Errorf("failed to start ffmpeg: %v", err)
-	}
-
-	go func() {
-		defer stdin.Close()
-		stdin.Write(audio)
-	}()
-
-	if err := ffCmd.Wait(); err != nil {
-		return nil, 0, fmt.Errorf("ffmpeg conversion failed: %v, stderr: %s", err, ffErr.String())
-	}
-
-	if wavData.Len() == 0 {
-		return nil, 0, fmt.Errorf("ffmpeg produced no output")
-	}
-
-	samples, sampleRate, err := detector.parseWAV(wavData.Bytes())
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to parse WAV: %v", err)
-	}
-
-	return samples, sampleRate, nil
+	return detector.parseWAV(wavData.Bytes())
 }
 
 // Discover analyzes audio and returns all sustained tones (matched or not) for auto-learn.
@@ -314,7 +383,7 @@ func (detector *ToneDetector) Discover(audio []byte, audioMime string) ([]Tone, 
 		return []Tone{}, nil
 	}
 
-	samples, sampleRate, err := detector.decodeAudioForToneAnalysis(audio)
+	samples, sampleRate, err := detector.decodeAudioForDetect(audio)
 	if err != nil {
 		return nil, err
 	}
@@ -322,6 +391,7 @@ func (detector *ToneDetector) Discover(audio []byte, audioMime string) ([]Tone, 
 		return []Tone{}, nil
 	}
 
+	// Same decode and FFT analysis as production Detect; includeUnmatched returns tones without a tone-set match.
 	return detector.analyzeFrequencies(samples, sampleRate, nil, true), nil
 }
 
@@ -393,388 +463,35 @@ func parabolicInterpolate(yMinus, y0, yPlus float64) float64 {
 	return 0.5 * (yMinus - yPlus) / denom
 }
 
-func mergeDetectedToneLists(a, b []Tone) []Tone {
-	if len(a) == 0 {
-		return b
-	}
-	if len(b) == 0 {
-		return a
-	}
-	out := append([]Tone{}, a...)
-	for _, t := range b {
-		dup := false
-		for i := range out {
-			if math.Abs(out[i].Frequency-t.Frequency) <= 15 &&
-				t.StartTime <= out[i].EndTime+0.15 && t.EndTime >= out[i].StartTime-0.15 {
-				if t.Duration > out[i].Duration || t.Magnitude > out[i].Magnitude {
-					out[i] = t
-				}
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			out = append(out, t)
-		}
-	}
-	return out
-}
-
-// analyzeFrequencies performs FFT analysis to detect sustained tones
-// Enhanced with dynamic noise floor estimation, parabolic interpolation, and force-split detection
-// Techniques inspired by icad_tone_detection (thegreatcodeholio) for improved analog channel detection
+// analyzeFrequencies detects sustained paging tones via the single STFT engine
+// (analyzeSTFTTones) and optionally matches them against configured tone sets.
 func (detector *ToneDetector) analyzeFrequencies(samples []float64, sampleRate int, toneSets []ToneSet, includeUnmatched bool) []Tone {
-	return detector.analyzeFrequenciesExt(samples, sampleRate, toneSets, includeUnmatched, 0, tonePeakReferenceSeconds)
-}
-
-// analyzeFrequenciesExt supports probe overrides: minToneDurationOverride<=0 uses defaults;
-// peakRefLimitSeconds<=0 uses full-clip global peak; >0 caps peak reference to first N seconds.
-func (detector *ToneDetector) analyzeFrequenciesExt(samples []float64, sampleRate int, toneSets []ToneSet, includeUnmatched bool, minToneDurationOverride float64, peakRefLimitSeconds float64) []Tone {
 	maxSamples := int(toneAnalysisMaxSeconds * float64(sampleRate))
 	if maxSamples > 0 && len(samples) > maxSamples {
 		samples = samples[:maxSamples]
 	}
 
-	windowSize := 2048     // FFT window size
-	hopSize := 512         // Slide window by this much
-	minToneDuration := minToneDurationOverride
-	if minToneDuration <= 0 {
-		minToneDuration = 0.6 // Minimum 600ms to be considered a tone
-		if includeUnmatched {
-			minToneDuration = 0.4 // auto-learn: allow shorter A-tones on compressed dispatch audio
-		}
-	}
-	toneRange := detector.FrequencyRange
-
-	if toneRange.Min == 0 {
-		toneRange.Min = 0.0 // Can detect from 0 Hz
-	}
-	if toneRange.Max == 0 {
-		toneRange.Max = 5000.0 // Up to 5000 Hz
-	}
-
-	// Track detected frequencies over time
-	type freqDetection struct {
-		frequency float64
-		startTime float64
-		endTime   float64
-		magnitude float64
-	}
-
-	detections := make(map[int][]freqDetection) // frequency bin -> detections
-
-	// For dynamic noise floor estimation
-	var framePeaks []float64
-
-	// First pass: collect frame peaks for noise floor estimation
-	numWindows := (len(samples) - windowSize) / hopSize
-	for win := 0; win < numWindows; win++ {
-		start := win * hopSize
-		end := start + windowSize
-		if end > len(samples) {
-			break
-		}
-
-		window := samples[start:end]
-
-		// Apply window function (Hann window) to reduce spectral leakage
-		windowed := make([]float64, len(window))
-		for i := range window {
-			hann := 0.5 * (1.0 - math.Cos(2.0*math.Pi*float64(i)/float64(len(window)-1)))
-			windowed[i] = window[i] * hann
-		}
-
-		// Perform DFT (Discrete Fourier Transform)
-		magnitudes := detector.dft(windowed, sampleRate)
-
-		// Find peak magnitude in tone range for this frame
-		var framePeak float64
-		for bin, mag := range magnitudes {
-			freq := float64(bin) * float64(sampleRate) / float64(windowSize)
-			if freq >= toneRange.Min && freq <= toneRange.Max && mag > framePeak {
-				framePeak = mag
-			}
-		}
-		framePeaks = append(framePeaks, framePeak)
-	}
-
-	// Calculate dynamic noise floor (20th percentile method from icad_tone_detection)
-	if len(framePeaks) == 0 {
+	minToneDuration := toneDetectMinDurationSec
+	gates := detector.computeToneAnalysisGates(samples, sampleRate)
+	if gates.globalPeak < 1e-20 {
 		return []Tone{}
 	}
+	fmt.Printf("tone detection: global peak=%.4f, noise floor=%.1f dB, q20=%.1f dB\n", gates.globalPeak, gates.noiseFloorDB, gates.q20)
 
-	// Derive silence gate from early audio only when peakRefLimitSeconds>0 (full clip when <=0).
-	globalPeak := 0.0
-	peakFrames := len(framePeaks)
-	if peakRefLimitSeconds > 0 {
-		refFrames := int(peakRefLimitSeconds * float64(sampleRate) / float64(hopSize))
-		if refFrames > 0 && refFrames < peakFrames {
-			peakFrames = refFrames
-		}
-	}
-	for i := 0; i < peakFrames; i++ {
-		if framePeaks[i] > globalPeak {
-			globalPeak = framePeaks[i]
-		}
-	}
+	work := cropSamplesToPagingRegion(samples, sampleRate)
+	mergedDetections := detector.analyzeSTFTTones(work, sampleRate, gates)
+	mergedDetections = pruneHarmonicMergedDetections(mergedDetections)
 
-	if globalPeak < 1e-20 {
-		return []Tone{}
-	}
-
-	// Calculate relative dB for each frame
-	relativeDB := make([]float64, len(framePeaks))
-	for i, peak := range framePeaks {
-		relativeDB[i] = 20.0 * math.Log10(math.Max(peak, 1e-20)/globalPeak)
-	}
-
-	// Sort to find 20th percentile
-	sortedDB := make([]float64, len(relativeDB))
-	copy(sortedDB, relativeDB)
-	sort.Float64s(sortedDB)
-	q20Index := int(float64(len(sortedDB)) * 0.20)
-	q20 := sortedDB[q20Index]
-
-	// Calculate noise floor as median of values below q20
-	var belowQ20 []float64
-	for _, db := range relativeDB {
-		if db <= q20 {
-			belowQ20 = append(belowQ20, db)
-		}
-	}
-
-	noiseFloorDB := -60.0
-	if len(belowQ20) > 0 {
-		sort.Float64s(belowQ20)
-		noiseFloorDB = belowQ20[len(belowQ20)/2]
-	}
-
-	// Silence gating thresholds (from icad_tone_detection defaults)
-	silenceBelowGlobalDB := -40.0 // production: lead-in peak + relaxed gate for tone-then-voice MP3
-	if includeUnmatched {
-		silenceBelowGlobalDB = -42.0 // auto-learn: allow quieter tones on compressed dispatch MP3
-	}
-	snrAboveNoiseDB := 4.0 // Frame must be N dB above noise floor
-	magnitudeThreshold := 0.01
-	if includeUnmatched {
-		snrAboveNoiseDB = 3.0
-		magnitudeThreshold = 0.008
-	}
-
-	fmt.Printf("tone detection: global peak=%.4f, noise floor=%.1f dB, q20=%.1f dB\n", globalPeak, noiseFloorDB, q20)
-
-	// Second pass: analyze in sliding windows with noise gating
-	for win := 0; win < numWindows; win++ {
-		start := win * hopSize
-		end := start + windowSize
-		if end > len(samples) {
-			break
-		}
-
-		window := samples[start:end]
-		windowStartTime := float64(start) / float64(sampleRate)
-		windowEndTime := float64(end) / float64(sampleRate) // Actual end time of window
-
-		// Check if this frame passes noise gate
-		frameDB := relativeDB[win]
-		isSilent := frameDB < silenceBelowGlobalDB || frameDB < (noiseFloorDB+snrAboveNoiseDB)
-		if isSilent {
-			continue // Skip silent frames
-		}
-
-		// Apply window function (Hann window) to reduce spectral leakage
-		windowed := make([]float64, len(window))
-		for i := range window {
-			hann := 0.5 * (1.0 - math.Cos(2.0*math.Pi*float64(i)/float64(len(window)-1)))
-			windowed[i] = window[i] * hann
-		}
-
-		// Perform DFT (Discrete Fourier Transform)
-		magnitudes := detector.dft(windowed, sampleRate)
-
-		// Find peaks in tone range with parabolic interpolation
-		// Use peak detection to only capture local maxima (avoids detecting every bin above threshold)
-		for bin, mag := range magnitudes {
-			freq := float64(bin) * float64(sampleRate) / float64(windowSize)
-
-			// Basic magnitude check (much lower threshold now that we have noise gating)
-			if freq >= toneRange.Min && freq <= toneRange.Max && mag > magnitudeThreshold {
-				// Check if this is a local maximum (peak detection)
-				// A bin is a peak if it's larger than its neighbors
-				isLocalMax := true
-				if bin > 0 && magnitudes[bin-1] >= mag {
-					isLocalMax = false
-				}
-				if bin < len(magnitudes)-1 && magnitudes[bin+1] > mag {
-					isLocalMax = false
-				}
-
-				// Only process local maxima to avoid detecting noise/harmonics
-				if !isLocalMax {
-					continue
-				}
-
-				// Parabolic interpolation for sub-bin accuracy
-				binMinus := bin - 1
-				binPlus := bin + 1
-				if binMinus >= 0 && binPlus < len(magnitudes) {
-					magMinus := magnitudes[binMinus]
-					magPlus := magnitudes[binPlus]
-					delta := parabolicInterpolate(magMinus, mag, magPlus)
-					delta = math.Max(-0.5, math.Min(0.5, delta)) // Clamp to [-0.5, 0.5]
-					// Apply sub-bin correction
-					binWidth := float64(sampleRate) / float64(windowSize)
-					freq += delta * binWidth
-				}
-				// Check if this frequency is close to any existing detection (within ±15 Hz) and overlaps in time
-				// This prevents creating separate detections for the same tone detected at slightly different frequencies
-				found := false
-				for freqBin, detectionList := range detections {
-					binFreq := float64(freqBin * 10) // Approximate frequency for this bin
-					if math.Abs(freq-binFreq) <= 15.0 {
-						// Check if any detection in this bin overlaps with current window
-						for i := range detectionList {
-							// Check if windows overlap (current window overlaps with detection time range)
-							if windowStartTime <= detectionList[i].endTime && windowEndTime >= detectionList[i].startTime {
-								// Same tone detected - extend the detection
-								if windowEndTime > detectionList[i].endTime {
-									detectionList[i].endTime = windowEndTime
-								}
-								if windowStartTime < detectionList[i].startTime {
-									detectionList[i].startTime = windowStartTime
-								}
-								if mag > detectionList[i].magnitude {
-									detectionList[i].magnitude = mag
-									detectionList[i].frequency = freq // Update to closer frequency
-								}
-								found = true
-								break
-							}
-						}
-						if found {
-							break
-						}
-					}
-				}
-
-				if !found {
-					// Create new detection - use frequency bin but track actual frequency
-					freqBin := int(freq / 10.0)
-					if detections[freqBin] == nil {
-						detections[freqBin] = []freqDetection{}
-					}
-
-					detections[freqBin] = append(detections[freqBin], freqDetection{
-						frequency: freq,
-						startTime: windowStartTime,
-						endTime:   windowEndTime, // Use actual window end time
-						magnitude: mag,
-					})
-				}
-			}
-		}
-	}
-
-	// Merge nearby frequency detections to avoid duplicate detections of the same tone
-	// Group detections by similar frequency and time overlap
-	type mergedDetection struct {
-		frequency   float64   // Average frequency
-		startTime   float64   // Earliest start
-		endTime     float64   // Latest end
-		magnitude   float64   // Highest magnitude
-		count       int       // Number of detections merged
-		freqHistory []float64 // Track frequency progression for force-split detection
-	}
-
-	mergedDetections := []mergedDetection{}
-
-	// Force-split parameters (from icad_tone_detection)
-	forceSplitStepHz := 18.0 // Force split if frequency jumps > 18 Hz between consecutive detections
-	splitLookahead := 2      // Number of frames to look ahead to confirm split
-
-	for _, detectionList := range detections {
-		for _, det := range detectionList {
-			duration := det.endTime - det.startTime
-
-			if duration >= minToneDuration {
-				// Try to merge with existing merged detection
-				merged := false
-				for i := range mergedDetections {
-					md := &mergedDetections[i]
-					freqDiff := math.Abs(det.frequency - md.frequency)
-
-					// Check for force-split condition: large frequency jump indicates different tone
-					forceSplit := false
-					if len(md.freqHistory) >= splitLookahead {
-						// Calculate recent median frequency
-						recentFreqs := md.freqHistory[len(md.freqHistory)-splitLookahead:]
-						sort.Float64s(recentFreqs)
-						recentMedian := recentFreqs[len(recentFreqs)/2]
-
-						// If frequency jumps too much from recent median, force split
-						if math.Abs(det.frequency-recentMedian) > forceSplitStepHz {
-							forceSplit = true
-						}
-					}
-
-					// Only merge if frequencies are within ±20 Hz (increased for analog drift) AND times overlap AND no force-split
-					// Increased from ±15 Hz to ±20 Hz to handle analog channel frequency drift
-					// For A-tones: typically 300-600 Hz range, ±20 Hz covers drift + Doppler
-					// For B-tones: typically 1000-1200 Hz range, ±20 Hz covers drift + Doppler
-					// We use a small tolerance (0.1s) to handle cases where one tone ends exactly when another starts
-					// (could be the same tone with a tiny gap), but we don't merge tones that are clearly separate
-					timeOverlap := (det.startTime <= md.endTime+0.1 && det.endTime >= md.startTime-0.1)
-
-					// Only merge if frequencies are close AND times overlap AND no force-split
-					// This prevents merging separate tone sets in stacked tone scenarios
-					if freqDiff <= 20.0 && timeOverlap && !forceSplit {
-						// Merge: use weighted average frequency, extend time range, use max magnitude
-						oldFreq := md.frequency
-						totalCount := md.count + 1
-						md.frequency = (md.frequency*float64(md.count) + det.frequency) / float64(totalCount)
-						if det.startTime < md.startTime {
-							md.startTime = det.startTime
-						}
-						if det.endTime > md.endTime {
-							md.endTime = det.endTime
-						}
-						if det.magnitude > md.magnitude {
-							md.magnitude = det.magnitude
-						}
-						md.count = totalCount
-						md.freqHistory = append(md.freqHistory, det.frequency)
-						fmt.Printf("merged tone %.1f Hz (%.2fs) with existing %.1f Hz -> %.1f Hz (merged %d detections, time: %.2f-%.2fs)\n",
-							det.frequency, det.endTime-det.startTime, oldFreq, md.frequency, totalCount, md.startTime, md.endTime)
-						merged = true
-						break
-					}
-				}
-
-				if !merged {
-					// Create new merged detection
-					mergedDetections = append(mergedDetections, mergedDetection{
-						frequency:   det.frequency,
-						startTime:   det.startTime,
-						endTime:     det.endTime,
-						magnitude:   det.magnitude,
-						count:       1,
-						freqHistory: []float64{det.frequency},
-					})
-				}
-			}
-		}
-	}
-
-	// Convert merged detections to tones (filter by duration and match against tone sets)
 	var tones []Tone
-	var allDetections []freqDetection // For logging all detected frequencies (before merging)
-
-	// Log all raw detections for debugging
-	for _, detectionList := range detections {
-		for _, det := range detectionList {
-			if det.endTime-det.startTime >= minToneDuration {
-				allDetections = append(allDetections, det)
-			}
+	var allDetections []toneFreqDetection
+	for _, md := range mergedDetections {
+		if md.endTime-md.startTime >= minToneDuration {
+			allDetections = append(allDetections, toneFreqDetection{
+				frequency: md.frequency,
+				startTime: md.startTime,
+				endTime:   md.endTime,
+				magnitude: md.magnitude,
+			})
 		}
 	}
 
@@ -882,12 +599,19 @@ func (detector *ToneDetector) analyzeFrequenciesExt(samples []float64, sampleRat
 				Magnitude: md.magnitude,
 			})
 		} else if includeUnmatched {
+			seqType := ""
+			switch len(tones) {
+			case 0:
+				seqType = "A"
+			case 1:
+				seqType = "B"
+			}
 			tones = append(tones, Tone{
 				Frequency: md.frequency,
 				StartTime: md.startTime,
 				EndTime:   md.endTime,
 				Duration:  duration,
-				ToneType:  "",
+				ToneType:  seqType,
 				Magnitude: md.magnitude,
 			})
 		} else {
@@ -996,7 +720,7 @@ func (detector *ToneDetector) MatchToneSet(detected *ToneSequence, configured []
 }
 
 // MatchToneSets matches detected tones against configured tone sets and returns ALL matches
-// in configured order (first match wins for MatchedToneSet — matches production ingest).
+// This is used for stacked tones where multiple tone sequences may be detected across calls
 func (detector *ToneDetector) MatchToneSets(detected *ToneSequence, configured []ToneSet) []*ToneSet {
 	if detected == nil || !detected.HasTones || len(configured) == 0 {
 		return nil
@@ -1006,142 +730,199 @@ func (detector *ToneDetector) MatchToneSets(detected *ToneSequence, configured [
 	for i := range configured {
 		toneSet := configured[i]
 		if detector.matchesToneSet(detected, toneSet) {
-			matched = append(matched, &configured[i])
+			matched = append(matched, &toneSet)
 		}
 	}
+
 	return matched
 }
 
-func toneSetToleranceHz(toneSet ToneSet) float64 {
-	if toneSet.Tolerance < 1.0 {
-		return toneSet.Tolerance * 500.0
-	}
-	return toneSet.Tolerance
-}
-
-// matchesToneSet checks if detected tones match a configured tone set.
+// matchesToneSet checks if detected tones match a configured tone set
+// Requires that A-tone and B-tone come from the same sequence (A-tone before B-tone)
 func (detector *ToneDetector) matchesToneSet(detected *ToneSequence, toneSet ToneSet) bool {
-	_, ok := detector.scoreToneSetMatch(detected, toneSet)
-	return ok
-}
+	baseTolerance := toneSet.Tolerance
 
-func abPairValidGap(a, b Tone) (float64, bool) {
-	if b.StartTime < a.StartTime {
-		return 0, false
-	}
-	gap := b.StartTime - a.EndTime
-	maxNegativeGap := -a.Duration
-	if gap < maxNegativeGap || gap > 0.5 {
-		return gap, false
-	}
-	return gap, true
-}
-
-func toneMeetsMatchStrength(t Tone) bool {
-	return true
-}
-
-// scoreToneSetMatch returns a higher score for better frequency fit and later stacked pages.
-func (detector *ToneDetector) scoreToneSetMatch(detected *ToneSequence, toneSet ToneSet) (float64, bool) {
-	actualTolerance := toneSetToleranceHz(toneSet)
-
+	// If tone set only has a long tone (no A/B tones), only check for long tone
 	if toneSet.LongTone != nil && toneSet.ATone == nil && toneSet.BTone == nil {
-		var bestScore float64
-		var found bool
+		actualTolerance := baseTolerance
+		if baseTolerance < 1.0 {
+			actualTolerance = baseTolerance * 500.0
+		}
+
 		for _, tone := range detected.Tones {
-			if !detector.frequencyMatches(tone.Frequency, toneSet.LongTone.Frequency, actualTolerance) {
-				continue
-			}
-			if tone.Duration < toneSet.LongTone.MinDuration {
-				continue
-			}
-			if toneSet.LongTone.MaxDuration > 0 && tone.Duration > toneSet.LongTone.MaxDuration {
-				continue
-			}
-			if tone.StartTime > tonePagingMatchMaxStart {
-				continue
-			}
-			if !toneMeetsMatchStrength(tone) {
-				continue
-			}
-			freqErr := math.Abs(tone.Frequency - toneSet.LongTone.Frequency)
-			score := 10000.0 - freqErr*10.0 + tone.Duration*5.0
-			if !found || score > bestScore {
-				bestScore = score
-				found = true
+			if detector.frequencyMatches(tone.Frequency, toneSet.LongTone.Frequency, actualTolerance) {
+				if tone.Duration >= toneSet.LongTone.MinDuration {
+					if toneSet.LongTone.MaxDuration == 0 || tone.Duration <= toneSet.LongTone.MaxDuration {
+						// Found matching long tone
+						return true
+					}
+				}
 			}
 		}
-		return bestScore, found
+		// No matching long tone found
+		return false
 	}
 
-	var aCandidates, bCandidates []Tone
+	// Find matching A-tone(s) and B-tone(s) with timing
+	type matchingTone struct {
+		tone      Tone
+		matchedAs string // "A" or "B"
+	}
+
+	var aTones []matchingTone
+	var bTones []matchingTone
+
+	// Find all matching A-tones (only if tone set has A-tone configured)
 	if toneSet.ATone != nil {
+		actualTolerance := baseTolerance
+		if baseTolerance < 1.0 {
+			actualTolerance = baseTolerance * 500.0
+		}
+
 		for _, tone := range detected.Tones {
-			if !detector.frequencyMatches(tone.Frequency, toneSet.ATone.Frequency, actualTolerance) {
-				continue
+			if detector.frequencyMatches(tone.Frequency, toneSet.ATone.Frequency, actualTolerance) {
+				if tone.Duration >= toneSet.ATone.MinDuration {
+					if toneSet.ATone.MaxDuration == 0 || tone.Duration <= toneSet.ATone.MaxDuration {
+						aTones = append(aTones, matchingTone{tone: tone, matchedAs: "A"})
+					}
+				}
 			}
-			if tone.Duration < toneSet.ATone.MinDuration {
-				continue
-			}
-			if toneSet.ATone.MaxDuration > 0 && tone.Duration > toneSet.ATone.MaxDuration {
-				continue
-			}
-			aCandidates = append(aCandidates, tone)
 		}
 	}
+
+	// Find all matching B-tones (only if tone set has B-tone configured)
 	if toneSet.BTone != nil {
+		actualTolerance := baseTolerance
+		if baseTolerance < 1.0 {
+			actualTolerance = baseTolerance * 500.0
+		}
+
 		for _, tone := range detected.Tones {
-			if !detector.frequencyMatches(tone.Frequency, toneSet.BTone.Frequency, actualTolerance) {
-				continue
+			if detector.frequencyMatches(tone.Frequency, toneSet.BTone.Frequency, actualTolerance) {
+				if tone.Duration >= toneSet.BTone.MinDuration {
+					if toneSet.BTone.MaxDuration == 0 || tone.Duration <= toneSet.BTone.MaxDuration {
+						bTones = append(bTones, matchingTone{tone: tone, matchedAs: "B"})
+					}
+				}
 			}
-			if tone.Duration < toneSet.BTone.MinDuration {
-				continue
-			}
-			if toneSet.BTone.MaxDuration > 0 && tone.Duration > toneSet.BTone.MaxDuration {
-				continue
-			}
-			bCandidates = append(bCandidates, tone)
 		}
 	}
 
-	if toneSet.ATone != nil && len(aCandidates) == 0 {
-		return 0, false
-	}
-	if toneSet.BTone != nil && len(bCandidates) == 0 {
-		return 0, false
+	// Require A-tone if configured
+	if toneSet.ATone != nil && len(aTones) == 0 {
+		fmt.Printf("DEBUG: Tone set '%s' requires A-tone but none found\n", toneSet.Label)
+		return false
 	}
 
+	// Require B-tone if configured
+	if toneSet.BTone != nil && len(bTones) == 0 {
+		fmt.Printf("DEBUG: Tone set '%s' requires B-tone but none found\n", toneSet.Label)
+		return false
+	}
+
+	// Note: If tone set has A/B tones, we do NOT check for long tones
+	// Long tones are only checked if the tone set has NO A/B tones (handled by early return above)
+
+	// If both A-tone and B-tone are required, they must form a valid sequence
+	// Each A-tone must be paired with its closest following B-tone (within 0.5s)
+	// This prevents false matches where an A-tone pairs with a B-tone from a different tone sequence
 	if toneSet.ATone != nil && toneSet.BTone != nil {
-		var bestScore float64
-		var found bool
-		for _, a := range aCandidates {
-			if a.StartTime > tonePagingMatchMaxStart {
-				continue
+		fmt.Printf("DEBUG: Checking sequence for tone set '%s' - found %d A-tones and %d B-tones\n", toneSet.Label, len(aTones), len(bTones))
+
+		// Sort A-tones by start time to process them in sequence
+		aTonesSorted := make([]matchingTone, len(aTones))
+		copy(aTonesSorted, aTones)
+		sort.Slice(aTonesSorted, func(i, j int) bool {
+			return aTonesSorted[i].tone.StartTime < aTonesSorted[j].tone.StartTime
+		})
+
+		// Check each A-tone against the tone set's B-tone
+		// Each A-tone must find its closest following B-tone that matches this tone set
+		for _, aMatch := range aTonesSorted {
+			fmt.Printf("DEBUG: A-tone %.1f Hz: start=%.2fs, end=%.2fs, duration=%.2fs\n",
+				aMatch.tone.Frequency, aMatch.tone.StartTime, aMatch.tone.EndTime, aMatch.tone.Duration)
+
+			// Find the closest following B-tone within 0.5s gap
+			// "Closest" means the smallest gap (either negative for overlap, or positive for sequential)
+			var closestB *matchingTone
+			var closestGap float64
+			hasClosest := false
+
+			for i := range bTones {
+				bMatch := &bTones[i]
+
+				fmt.Printf("DEBUG:   Checking B-tone %.1f Hz: start=%.2fs, end=%.2fs, duration=%.2fs\n",
+					bMatch.tone.Frequency, bMatch.tone.StartTime, bMatch.tone.EndTime, bMatch.tone.Duration)
+
+				// B-tone must START after A-tone starts (allows overlapping tones)
+				// This supports both sequential (A then B) and overlapping (A+B simultaneously) two-tone paging
+				if bMatch.tone.StartTime < aMatch.tone.StartTime {
+					fmt.Printf("DEBUG:     REJECTED: B-tone starts (%.2fs) before A-tone starts (%.2fs)\n",
+						bMatch.tone.StartTime, aMatch.tone.StartTime)
+					continue // B starts before A starts, not a valid sequence
+				}
+
+				// Calculate gap (B start time - A end time)
+				// Negative = overlapping (B starts before A ends) - this is OK now!
+				// Positive = sequential (B starts after A ends)
+				gap := bMatch.tone.StartTime - aMatch.tone.EndTime
+				fmt.Printf("DEBUG:     Gap: %.2fs (B start %.2fs - A end %.2fs)\n",
+					gap, bMatch.tone.StartTime, aMatch.tone.EndTime)
+
+				// Allow overlap up to full duration of A-tone, or sequential up to 0.5s gap
+				// This handles overlapping two-tone paging (gap will be negative)
+				maxNegativeGap := -aMatch.tone.Duration // Allow B to start anytime after A starts
+				if gap >= maxNegativeGap && gap <= 0.5 {
+					// Check if this is closer than previous closest
+					if !hasClosest {
+						closestB = bMatch
+						closestGap = gap
+						hasClosest = true
+						fmt.Printf("DEBUG:     ACCEPTED as closest (gap=%.2fs)\n", gap)
+					} else {
+						// Compare absolute gaps - want the one closest to 0
+						if math.Abs(gap) < math.Abs(closestGap) {
+							closestB = bMatch
+							closestGap = gap
+							fmt.Printf("DEBUG:     ACCEPTED as new closest (gap=%.2fs, prev=%.2fs)\n", gap, closestGap)
+						} else {
+							fmt.Printf("DEBUG:     Not closer than current closest (gap=%.2fs vs %.2fs)\n", gap, closestGap)
+						}
+					}
+				} else {
+					fmt.Printf("DEBUG:     REJECTED: Gap %.2fs outside of -0.5s to +0.5s range\n", gap)
+				}
 			}
-			if !toneMeetsMatchStrength(a) {
-				continue
-			}
-			for _, b := range bCandidates {
-				gap, ok := abPairValidGap(a, b)
-				if !ok {
-					continue
+
+			// If we found a closest B-tone, check if it matches this tone set's B-tone frequency
+			if closestB != nil {
+				fmt.Printf("DEBUG:   Found closest B-tone: %.1f Hz with gap=%.2fs\n", closestB.tone.Frequency, closestGap)
+				// Check if the closest B-tone matches the tone set's B-tone frequency
+				actualTolerance := baseTolerance
+				if baseTolerance < 1.0 {
+					actualTolerance = baseTolerance * 500.0
 				}
-				if !toneMeetsMatchStrength(b) {
-					continue
+
+				if detector.frequencyMatches(closestB.tone.Frequency, toneSet.BTone.Frequency, actualTolerance) {
+					// Found a valid A-B pair where A-tone pairs with its closest B-tone
+					// and that closest B-tone matches this tone set's B-tone
+					fmt.Printf("DEBUG: MATCH! Tone set '%s' matched with A-B sequence\n", toneSet.Label)
+					return true
+				} else {
+					fmt.Printf("DEBUG:   B-tone frequency %.1f Hz does NOT match expected %.1f Hz (tol: ±%.1f Hz)\n",
+						closestB.tone.Frequency, toneSet.BTone.Frequency, actualTolerance)
 				}
-				aErr := math.Abs(a.Frequency - toneSet.ATone.Frequency)
-				bErr := math.Abs(b.Frequency - toneSet.BTone.Frequency)
-				score := 10000.0 - aErr*10.0 - bErr*10.0 - math.Abs(gap)*50.0 + b.Duration*3.0
-				if !found || score > bestScore {
-					bestScore = score
-					found = true
-				}
+			} else {
+				fmt.Printf("DEBUG:   No valid B-tone found within 0.5s of this A-tone\n")
 			}
 		}
-		return bestScore, found
+
+		fmt.Printf("DEBUG: No valid A-B sequence found for tone set '%s'\n", toneSet.Label)
+		// No valid A-B pair found where A pairs with closest B-tone that matches this tone set
+		return false
 	}
 
-	return 10000.0, true
+	return true
 }
 
 // frequencyMatches checks if a detected frequency matches an expected frequency within tolerance

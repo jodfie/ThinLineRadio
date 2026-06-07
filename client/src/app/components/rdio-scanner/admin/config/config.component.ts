@@ -507,11 +507,7 @@ export class RdioScannerAdminConfigComponent implements OnDestroy, OnInit {
                                     label: toneSet.label,
                                     tolerance: toneSet.tolerance || 10,
                                 };
-                                
-                                if (toneSet.minDuration) {
-                                    converted.minDuration = toneSet.minDuration;
-                                }
-                                
+
                                 if (toneSet.aToneFrequency || toneSet.aToneMinDuration) {
                                     converted.aTone = {
                                         frequency: toneSet.aToneFrequency,

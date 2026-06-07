@@ -254,6 +254,13 @@
                      style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 12px;">
                     <div style="font-weight: 600; margin-bottom: 4px;">{{ suggestion.label }}</div>
                     <div class="mat-caption" style="color: #aaa; margin-bottom: 8px;">{{ suggestion.patternDesc }} · {{ suggestion.callCount }} calls</div>
+                    <div *ngIf="suggestion.samples?.length" style="margin-bottom: 8px;">
+                        <div class="mat-caption" style="color: #888; margin-bottom: 4px;">Transcripts from matching calls:</div>
+                        <div *ngFor="let sample of suggestion.samples" class="mat-caption"
+                             style="color: #bbb; margin-bottom: 4px; padding: 4px 8px; background: rgba(255,255,255,0.03); border-left: 2px solid rgba(255,255,255,0.15); border-radius: 2px;">
+                            "{{ sample.transcript }}"
+                        </div>
+                    </div>
                     <button type="button" mat-stroked-button color="primary" (click)="addSuggestedToneSet(suggestion)">
                         <mat-icon>add</mat-icon>
                         Add tone set
@@ -380,7 +387,7 @@
         </div>
     </div>
 
-    <div class="row" *ngIf="form.get('toneDetectionEnabled')?.value">
+    <div class="row tone-sets-row" *ngIf="form.get('toneDetectionEnabled')?.value">
         <p>
             <span class="mat-body">Tone Sets</span><br>
             <span class="mat-caption">Configure tone sets for this talkgroup. Each tone set can define A-tone, B-tone, and long tone specifications.</span>
@@ -413,45 +420,72 @@
                     <div class="tone-spec-section">
                         <strong>A-Tone:</strong>
                         <div class="tone-spec-row">
-                            <mat-form-field floatLabel="auto">
-                                <input type="number" matInput formControlName="aToneFrequency" placeholder="Frequency (Hz)" min="0" step="0.1" autocomplete="off">
-                            </mat-form-field>
-                            <mat-form-field floatLabel="auto">
-                                <input type="number" matInput formControlName="aToneMinDuration" placeholder="Min Duration (s)" min="0" step="0.01" autocomplete="off">
-                            </mat-form-field>
-                            <mat-form-field floatLabel="auto">
-                                <input type="number" matInput formControlName="aToneMaxDuration" placeholder="Max Duration (s)" min="0" step="0.01" autocomplete="off">
-                            </mat-form-field>
+                            <div class="tone-field">
+                                <mat-form-field floatLabel="auto">
+                                    <input type="number" matInput formControlName="aToneFrequency" min="0" step="0.1" autocomplete="off">
+                                </mat-form-field>
+                                <span class="tone-field-hint">Frequency (Hz)</span>
+                            </div>
+                            <div class="tone-field">
+                                <mat-form-field floatLabel="auto">
+                                    <input type="number" matInput formControlName="aToneMinDuration" min="0" step="0.01" autocomplete="off">
+                                </mat-form-field>
+                                <span class="tone-field-hint">Min Duration (s)</span>
+                            </div>
+                            <div class="tone-field">
+                                <mat-form-field floatLabel="auto">
+                                    <input type="number" matInput formControlName="aToneMaxDuration" min="0" step="0.01" autocomplete="off">
+                                </mat-form-field>
+                                <span class="tone-field-hint">Max Duration (s)</span>
+                            </div>
                         </div>
                     </div>
-                    
+
                     <div class="tone-spec-section">
                         <strong>B-Tone:</strong>
                         <div class="tone-spec-row">
-                            <mat-form-field floatLabel="auto">
-                                <input type="number" matInput formControlName="bToneFrequency" placeholder="Frequency (Hz)" min="0" step="0.1" autocomplete="off">
-                            </mat-form-field>
-                            <mat-form-field floatLabel="auto">
-                                <input type="number" matInput formControlName="bToneMinDuration" placeholder="Min Duration (s)" min="0" step="0.01" autocomplete="off">
-                            </mat-form-field>
-                            <mat-form-field floatLabel="auto">
-                                <input type="number" matInput formControlName="bToneMaxDuration" placeholder="Max Duration (s)" min="0" step="0.01" autocomplete="off">
-                            </mat-form-field>
+                            <div class="tone-field">
+                                <mat-form-field floatLabel="auto">
+                                    <input type="number" matInput formControlName="bToneFrequency" min="0" step="0.1" autocomplete="off">
+                                </mat-form-field>
+                                <span class="tone-field-hint">Frequency (Hz)</span>
+                            </div>
+                            <div class="tone-field">
+                                <mat-form-field floatLabel="auto">
+                                    <input type="number" matInput formControlName="bToneMinDuration" min="0" step="0.01" autocomplete="off">
+                                </mat-form-field>
+                                <span class="tone-field-hint">Min Duration (s)</span>
+                            </div>
+                            <div class="tone-field">
+                                <mat-form-field floatLabel="auto">
+                                    <input type="number" matInput formControlName="bToneMaxDuration" min="0" step="0.01" autocomplete="off">
+                                </mat-form-field>
+                                <span class="tone-field-hint">Max Duration (s)</span>
+                            </div>
                         </div>
                     </div>
-                    
+
                     <div class="tone-spec-section">
                         <strong>Long Tone:</strong>
                         <div class="tone-spec-row">
-                            <mat-form-field floatLabel="auto">
-                                <input type="number" matInput formControlName="longToneFrequency" placeholder="Frequency (Hz)" min="0" step="0.1" autocomplete="off">
-                            </mat-form-field>
-                            <mat-form-field floatLabel="auto">
-                                <input type="number" matInput formControlName="longToneMinDuration" placeholder="Min Duration (s)" min="0" step="0.01" autocomplete="off">
-                            </mat-form-field>
-                            <mat-form-field floatLabel="auto">
-                                <input type="number" matInput formControlName="longToneMaxDuration" placeholder="Max Duration (s)" min="0" step="0.01" autocomplete="off">
-                            </mat-form-field>
+                            <div class="tone-field">
+                                <mat-form-field floatLabel="auto">
+                                    <input type="number" matInput formControlName="longToneFrequency" min="0" step="0.1" autocomplete="off">
+                                </mat-form-field>
+                                <span class="tone-field-hint">Frequency (Hz)</span>
+                            </div>
+                            <div class="tone-field">
+                                <mat-form-field floatLabel="auto">
+                                    <input type="number" matInput formControlName="longToneMinDuration" min="0" step="0.01" autocomplete="off">
+                                </mat-form-field>
+                                <span class="tone-field-hint">Min Duration (s)</span>
+                            </div>
+                            <div class="tone-field">
+                                <mat-form-field floatLabel="auto">
+                                    <input type="number" matInput formControlName="longToneMaxDuration" min="0" step="0.01" autocomplete="off">
+                                </mat-form-field>
+                                <span class="tone-field-hint">Max Duration (s)</span>
+                            </div>
                         </div>
                     </div>
                     
@@ -459,15 +493,8 @@
                         <strong>Tone Tolerance:</strong>
                         <mat-form-field floatLabel="auto">
                             <input type="number" matInput formControlName="tolerance" placeholder="Ratio (e.g., 0.03) or absolute Hz" min="0" step="0.01" autocomplete="off">
-                            <mat-hint>Use 0.03 for ±3% or enter absolute Hz. Default: 10 Hz</mat-hint>
                         </mat-form-field>
-                    </div>
-
-                    <div class="tone-set-advanced">
-                        <strong>Sequence Min Duration:</strong>
-                        <mat-form-field floatLabel="auto">
-                            <input type="number" matInput formControlName="minDuration" placeholder="Minimum Duration (s)" min="0" step="0.01" autocomplete="off">
-                        </mat-form-field>
+                        <span class="tone-field-hint">Ratio &times; 500 = Hz window &mdash; 0.03 = &plusmn;15 Hz, 0.02 = &plusmn;10 Hz (default). Or enter an absolute value &ge; 1 Hz.</span>
                     </div>
 
                     <!-- TonesToActive downstream forwarding (per tone set) -->

@@ -2,7 +2,10 @@
 
 package main
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestMigrateLegacyAutoLearnToneDurations(t *testing.T) {
 	cfg := AutoLearnToneSetConfig{
@@ -54,5 +57,39 @@ func TestExtractToneLearnCandidates_LFDPaging(t *testing.T) {
 	}
 	if c[0].AFrequency != 1257.29 || c[0].BDuration != 3.104 {
 		t.Fatalf("unexpected pair: A=%.1f/%.2fs B=%.1f/%.2fs", c[0].AFrequency, c[0].ADuration, c[0].BFrequency, c[0].BDuration)
+	}
+}
+
+func TestExtractToneLearnCandidates_StackedPageEarliestB(t *testing.T) {
+	tones := []Tone{
+		{Frequency: 688.0, Duration: 1.12, StartTime: 1.95, EndTime: 3.07, Magnitude: 0.039},
+		{Frequency: 1247.8, Duration: 3.04, StartTime: 3.04, EndTime: 6.08, Magnitude: 0.024},
+		{Frequency: 1311.5, Duration: 3.07, StartTime: 8.03, EndTime: 11.10, Magnitude: 0.030},
+	}
+	cfg := DefaultAutoLearnToneSetConfig()
+	cfg.normalize()
+	c := extractToneLearnCandidates(tones, cfg, 44, 2764)
+	if len(c) != 1 {
+		t.Fatalf("want 1 candidate, got %d", len(c))
+	}
+	if c[0].BFrequency != 1247.8 {
+		t.Fatalf("want earliest B 1247.8 Hz, got %.1f", c[0].BFrequency)
+	}
+}
+
+func TestExtractToneLearnCandidates_NewtonFallsHarmonic(t *testing.T) {
+	tones := []Tone{
+		{Frequency: 407.3, Duration: 1.15, StartTime: 1.50, EndTime: 2.65, Magnitude: 0.27},
+		{Frequency: 1101.9, Duration: 2.94, StartTime: 2.50, EndTime: 5.44, Magnitude: 0.13},
+		{Frequency: 1223.0, Duration: 1.12, StartTime: 1.50, EndTime: 2.62, Magnitude: 0.04},
+	}
+	cfg := DefaultAutoLearnToneSetConfig()
+	cfg.normalize()
+	c := extractToneLearnCandidates(tones, cfg, 44, 2762)
+	if len(c) != 1 {
+		t.Fatalf("want 1 candidate, got %d", len(c))
+	}
+	if math.Abs(c[0].AFrequency-407.3) > 5 || math.Abs(c[0].BFrequency-1101.9) > 5 {
+		t.Fatalf("want ~407/1102 Newton Falls, got A=%.1f B=%.1f", c[0].AFrequency, c[0].BFrequency)
 	}
 }
