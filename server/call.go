@@ -1299,6 +1299,16 @@ func (calls *Calls) Search(searchOptions *CallsSearchOptions, client *Client) (*
 }
 
 func (calls *Calls) WriteCall(call *Call, db *Database) (uint64, error) {
+	var id uint64
+	err := withPostgresIndexHeal(db, func() error {
+		var writeErr error
+		id, writeErr = calls.writeCall(call, db)
+		return writeErr
+	})
+	return id, err
+}
+
+func (calls *Calls) writeCall(call *Call, db *Database) (uint64, error) {
 	var (
 		err   error
 		query string

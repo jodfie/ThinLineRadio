@@ -1,5 +1,19 @@
 # Change log
 
+## Version 26.06.13 - Released June 10, 2026
+
+### Fixed
+
+- **Server — Log category backfill no longer blocks startup**
+  - Column migration stays synchronous; index build and row backfill now run after the server is ready in small throttled batches so call ingest and client connections are not starved for DB pool slots during startup.
+  - Backfill completion is tracked in `rdioScannerMeta` (fixes repeated full backfill on every restart when the legacy `migrations` table was missing).
+  - Progress messages write to stdout only (not re-inserted into the `logs` table during backfill).
+
+- **Server — Automatic PostgreSQL index corruption recovery**
+  - Detects B-tree index corruption (`SQLSTATE XX002`) during `WriteCall`, rebuilds the affected index (`REINDEX CONCURRENTLY` with blocking/drop-recreate fallbacks), and retries the insert once so call ingest self-heals without manual DBA intervention.
+
+---
+
 ## Version 26.06.12 - Released June 8, 2026
 
 ### Added

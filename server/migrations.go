@@ -24,6 +24,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // migrateAccesses - REMOVED: Access codes functionality has been removed
@@ -2869,12 +2871,43 @@ func migrateAutoLearnTagRollout(db *Database) error {
 }
 
 const (
-	logsCategoryMigrationID    = "20260608000000-logs-category"
+	logsCategoryMigrationID      = "20260608000000-logs-category"
 	logsAPIRecategorizeMigration = "20260608000001-logs-api-recategorize"
 )
 
-// migrateLogsCategory adds the category column and index synchronously, then backfills
-// existing rows in a background goroutine so startup is not blocked on large log tables.
+func logsMigrationDone(db *Database, name string) bool {
+	var count int
+	if err := db.Sql.QueryRow(`SELECT COUNT(*) FROM "rdioScannerMeta" WHERE "name" = $1`, name).Scan(&count); err != nil {
+		return false
+	}
+	return count > 0
+}
+
+func markLogsMigrationDone(db *Database, name string) {
+	if _, err := db.Sql.Exec(`INSERT INTO "rdioScannerMeta" ("name") VALUES ($1) ON CONFLICT ("name") DO NOTHING`, name); err != nil {
+		log.Printf("migration note (%s): %v", name, err)
+	}
+}
+
+func batchUpdateLogCategories(db *Database, logIDs []int64, categories []string) error {
+	if len(logIDs) == 0 {
+		return nil
+	}
+	_, err := db.Sql.Exec(`
+		UPDATE "logs" AS l
+		SET "category" = v.category
+		FROM (
+			SELECT unnest($1::bigint[]) AS "logId",
+			       unnest($2::text[]) AS category
+		) AS v
+		WHERE l."logId" = v."logId"
+	`, pq.Array(logIDs), pq.Array(categories))
+	return err
+}
+
+// migrateLogsCategory adds the category column during schema migration only.
+// Index build and row backfill are deferred to startLogsCategoryMaintenance so
+// startup, call ingest, and client serving are not blocked on large log tables.
 func migrateLogsCategory(db *Database) error {
 	log.Println("migrating logs category column...")
 
@@ -2882,30 +2915,55 @@ func migrateLogsCategory(db *Database) error {
 		return fmt.Errorf("migrateLogsCategory add column: %w", err)
 	}
 
-	if _, err := db.Sql.Exec(`CREATE INDEX IF NOT EXISTS "logs_category_timestamp_idx" ON "logs" ("category", "timestamp" DESC)`); err != nil {
-		log.Printf("migration note (logs category index): %v", err)
-	}
-
-	var count int
-	if err := db.Sql.QueryRow(`SELECT COUNT(*) FROM "migrations" WHERE "id" = $1`, logsCategoryMigrationID).Scan(&count); err == nil && count > 0 {
-		log.Println("logs category backfill already completed, skipping")
-		return nil
-	}
-
-	go backfillLogsCategory(db)
-	log.Println("logs category backfill started in background")
-	return migrateLogsAPIRecategorize(db)
+	return nil
 }
 
-// migrateLogsAPIRecategorize fixes rows where generic api: errors were stored as call ingestion.
-func migrateLogsAPIRecategorize(db *Database) error {
-	var count int
-	if err := db.Sql.QueryRow(`SELECT COUNT(*) FROM "migrations" WHERE "id" = $1`, logsAPIRecategorizeMigration).Scan(&count); err == nil && count > 0 {
-		return nil
+// startLogsCategoryMaintenance runs after the server is ready. It builds the
+// category index and backfills rows in small throttled batches so the shared
+// DB pool stays available for calls and live clients.
+func startLogsCategoryMaintenance(db *Database) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				writeLogStdout(fmt.Sprintf("logs category maintenance panic: %v", r))
+			}
+		}()
+
+		if !logsMigrationDone(db, logsCategoryMigrationID) {
+			writeLogStdout("logs category backfill started in background")
+			createLogsCategoryIndexBackground(db)
+			backfillLogsCategory(db)
+		}
+
+		if !logsMigrationDone(db, logsAPIRecategorizeMigration) {
+			writeLogStdout("logs api recategorize started in background")
+			backfillLogsAPIRecategorize(db)
+		}
+	}()
+}
+
+func createLogsCategoryIndexBackground(db *Database) {
+	var exists bool
+	checkQuery := `SELECT EXISTS (
+		SELECT 1 FROM pg_indexes
+		WHERE tablename = 'logs' AND indexname = 'logs_category_timestamp_idx'
+	)`
+	if err := db.Sql.QueryRow(checkQuery).Scan(&exists); err != nil {
+		log.Printf("migration note (logs category index check): %v", err)
+		if _, err2 := db.Sql.Exec(`CREATE INDEX IF NOT EXISTS "logs_category_timestamp_idx" ON "logs" ("category", "timestamp" DESC)`); err2 != nil {
+			log.Printf("migration note (logs category index): %v", err2)
+		}
+		return
 	}
-	go backfillLogsAPIRecategorize(db)
-	log.Println("logs api recategorize started in background")
-	return nil
+
+	if exists {
+		return
+	}
+
+	writeLogStdout("building logs_category_timestamp_idx concurrently in background...")
+	if _, err := db.Sql.Exec(`CREATE INDEX CONCURRENTLY "logs_category_timestamp_idx" ON "logs" ("category", "timestamp" DESC)`); err != nil {
+		writeLogStdout(fmt.Sprintf("migration note (logs category index): %v", err))
+	}
 }
 
 func backfillLogsAPIRecategorize(db *Database) {
@@ -2915,7 +2973,8 @@ func backfillLogsAPIRecategorize(db *Database) {
 		}
 	}()
 
-	const batchSize = 5000
+	const batchSize = 200
+	const batchPause = 500 * time.Millisecond
 	var lastID int64
 	updated := 0
 
@@ -2930,10 +2989,12 @@ func backfillLogsAPIRecategorize(db *Database) {
 			LIMIT $2
 		`, lastID, batchSize)
 		if err != nil {
-			log.Printf("logs api recategorize query failed: %v", err)
+			writeLogStdout(fmt.Sprintf("logs api recategorize query failed: %v", err))
 			return
 		}
 
+		logIDs := make([]int64, 0, batchSize)
+		categories := make([]string, 0, batchSize)
 		batchCount := 0
 		for rows.Next() {
 			var logID int64
@@ -2947,39 +3008,37 @@ func backfillLogsAPIRecategorize(db *Database) {
 			if category == LogCategoryCalls {
 				continue
 			}
-			if _, err := db.Sql.Exec(`UPDATE "logs" SET "category" = $1 WHERE "logId" = $2`, category, logID); err != nil {
-				rows.Close()
-				log.Printf("logs api recategorize update logId %d failed: %v", logID, err)
-				return
-			}
-			updated++
+			logIDs = append(logIDs, logID)
+			categories = append(categories, category)
 		}
 		rows.Close()
+
+		if len(logIDs) > 0 {
+			if err := batchUpdateLogCategories(db, logIDs, categories); err != nil {
+				writeLogStdout(fmt.Sprintf("logs api recategorize batch update failed: %v", err))
+				return
+			}
+			updated += len(logIDs)
+		}
 
 		if batchCount < batchSize {
 			break
 		}
+		time.Sleep(batchPause)
 	}
 
-	if _, err := db.Sql.Exec(`INSERT INTO "migrations" ("id") VALUES ($1)`, logsAPIRecategorizeMigration); err != nil {
-		log.Printf("migration note (logs api recategorize marker): %v", err)
-	}
+	markLogsMigrationDone(db, logsAPIRecategorizeMigration)
 
 	if updated > 0 {
-		log.Printf("logs api recategorize completed (%d rows updated)", updated)
+		writeLogStdout(fmt.Sprintf("logs api recategorize completed (%d rows updated)", updated))
 	} else {
-		log.Println("logs api recategorize completed (no rows needed updating)")
+		writeLogStdout("logs api recategorize completed (no rows needed updating)")
 	}
 }
 
 func backfillLogsCategory(db *Database) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("logs category backfill panic: %v", r)
-		}
-	}()
-
-	const batchSize = 5000
+	const batchSize = 200
+	const batchPause = 500 * time.Millisecond
 	var lastID int64
 	updated := 0
 
@@ -2988,14 +3047,17 @@ func backfillLogsCategory(db *Database) {
 			SELECT "logId", "message"
 			FROM "logs"
 			WHERE "logId" > $1
+			  AND "category" = 'system'
 			ORDER BY "logId"
 			LIMIT $2
 		`, lastID, batchSize)
 		if err != nil {
-			log.Printf("logs category backfill query failed: %v", err)
+			writeLogStdout(fmt.Sprintf("logs category backfill query failed: %v", err))
 			return
 		}
 
+		logIDs := make([]int64, 0, batchSize)
+		categories := make([]string, 0, batchSize)
 		batchCount := 0
 		for rows.Next() {
 			var logID int64
@@ -3005,27 +3067,28 @@ func backfillLogsCategory(db *Database) {
 			}
 			lastID = logID
 			batchCount++
-			category := CategorizeLogMessage(msg)
-			if _, err := db.Sql.Exec(`UPDATE "logs" SET "category" = $1 WHERE "logId" = $2`, category, logID); err != nil {
-				rows.Close()
-				log.Printf("logs category backfill update logId %d failed: %v", logID, err)
-				return
-			}
-			updated++
+			logIDs = append(logIDs, logID)
+			categories = append(categories, CategorizeLogMessage(msg))
 		}
 		rows.Close()
+
+		if len(logIDs) > 0 {
+			if err := batchUpdateLogCategories(db, logIDs, categories); err != nil {
+				writeLogStdout(fmt.Sprintf("logs category backfill batch update failed: %v", err))
+				return
+			}
+			updated += len(logIDs)
+		}
 
 		if batchCount < batchSize {
 			break
 		}
-		if updated%50000 == 0 {
-			log.Printf("logs category backfill: %d rows updated...", updated)
+		if updated%10000 == 0 {
+			writeLogStdout(fmt.Sprintf("logs category backfill: %d rows updated...", updated))
 		}
+		time.Sleep(batchPause)
 	}
 
-	if _, err := db.Sql.Exec(`INSERT INTO "migrations" ("id") VALUES ($1)`, logsCategoryMigrationID); err != nil {
-		log.Printf("migration note (logs category marker): %v", err)
-	}
-
-	log.Printf("logs category backfill completed (%d rows categorized)", updated)
+	markLogsMigrationDone(db, logsCategoryMigrationID)
+	writeLogStdout(fmt.Sprintf("logs category backfill completed (%d rows categorized)", updated))
 }

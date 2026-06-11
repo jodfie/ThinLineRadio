@@ -3264,6 +3264,10 @@ func (controller *Controller) Start() error {
 	// Runs once in the background at startup; deletes in small batches to avoid locking.
 	go controller.purgeLegacyDuplicates()
 
+	// Categorize historical log rows after the server is ready so call ingest and
+	// client connections are not starved for DB pool slots during startup.
+	startLogsCategoryMaintenance(controller.Database)
+
 	if err = controller.Admin.Start(); err != nil {
 		return err
 	}
