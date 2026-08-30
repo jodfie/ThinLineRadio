@@ -100,8 +100,12 @@ func parseMapTilePath(path string) (mapTileRequest, bool) {
 
 func validMapTileCoords(style string, z, x, y int) bool {
 	maxZoom := 18
-	if style == "satellite" {
+	switch style {
+	case "satellite", "voyager":
 		maxZoom = 19
+	case "dark":
+		// ESRI Dark Gray Canvas only publishes tiles through zoom 16.
+		maxZoom = 16
 	}
 	if z < 0 || z > maxZoom {
 		return false
@@ -113,9 +117,9 @@ func validMapTileCoords(style string, z, x, y int) bool {
 func mapTileUpstreamURL(req mapTileRequest) (string, bool) {
 	switch req.Style {
 	case "voyager":
-		return fmt.Sprintf("https://a.basemaps.cartocdn.com/rastertiles/voyager/%d/%d/%d.png", req.Z, req.X, req.Y), true
+		return fmt.Sprintf("https://tile.openstreetmap.org/%d/%d/%d.png", req.Z, req.X, req.Y), true
 	case "dark":
-		return fmt.Sprintf("https://a.basemaps.cartocdn.com/dark_all/%d/%d/%d.png", req.Z, req.X, req.Y), true
+		return fmt.Sprintf("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/%d/%d/%d", req.Z, req.Y, req.X), true
 	case "satellite":
 		return fmt.Sprintf("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/%d/%d/%d", req.Z, req.Y, req.X), true
 	case "radar":

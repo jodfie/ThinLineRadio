@@ -297,15 +297,10 @@ interface SelectedStateData {
               </mat-radio-group>
             </div>
             <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e0e0e0;">
-              <mat-checkbox formControlName="notifyOnOffline" class="full-width">
-                Notify me via email when this server goes offline
-              </mat-checkbox>
-              @if (apiKeyForm.get('notifyOnOffline')?.value) {
-                <p class="private-server-hint">
-                  <mat-icon>info</mat-icon>
-                  You will receive up to 5 email notifications if your server goes offline. Notifications will stop once your server comes back online.
-                </p>
-              }
+              <p class="private-server-hint">
+                <mat-icon>info</mat-icon>
+                If this public server stays offline we email the contact address daily. After 30 days we remove it from the directory, revoke the API key, and cancel Stripe billing on that key. Coming back online resets the clock.
+              </p>
             </div>
             @if (errorMessage) {
               <div class="error-message">

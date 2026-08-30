@@ -144,6 +144,32 @@ func (controller *Controller) setNominatimStatus(status string, periodEnd time.T
 	controller.NominatimSubscriptionStatus = status
 	controller.NominatimCurrentPeriodEnd = periodEnd
 	controller.NominatimMu.Unlock()
+	// Cache the last-known-good status so a restart while the relay is
+	// unreachable doesn't disable geocoding until the next poll succeeds. Only
+	// access-granting statuses are cached; the live 2-minute poll (and the
+	// gateway's own per-key allow-list) still correct a genuinely lapsed sub.
+	if NominatimStatusGrantsAccess(status) {
+		controller.Options.mutex.Lock()
+		changed := controller.Options.NominatimSubscriptionStatus != status
+		controller.Options.NominatimSubscriptionStatus = status
+		controller.Options.mutex.Unlock()
+		if changed {
+			if err := controller.Options.Write(controller.Database); err != nil {
+				log.Printf("relay account: failed to persist nominatim status: %v", err)
+			}
+		}
+	}
+}
+
+// NominatimStatusGrantsAccess mirrors relay-side storage.NominatimAccessAllowed —
+// only "active"/"trialing" grant geocoding access.
+func NominatimStatusGrantsAccess(status string) bool {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "active", "trialing":
+		return true
+	default:
+		return false
+	}
 }
 
 // NominatimGatewayURLSnapshot returns the last gateway_url reported by the
@@ -156,8 +182,43 @@ func (controller *Controller) NominatimGatewayURLSnapshot() string {
 }
 
 func (controller *Controller) setNominatimGatewayURL(url string) {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return
+	}
 	controller.NominatimMu.Lock()
+	changed := controller.NominatimGatewayURL != url
 	controller.NominatimGatewayURL = url
+	controller.NominatimMu.Unlock()
+	// Cache the last-known-good URL so a restart while the relay is briefly
+	// misconfigured/unreachable doesn't leave geocoding disabled until the
+	// next successful poll (see loadPersistedNominatimGatewayURL).
+	if changed {
+		controller.Options.mutex.Lock()
+		controller.Options.NominatimGatewayURL = url
+		controller.Options.mutex.Unlock()
+		if err := controller.Options.Write(controller.Database); err != nil {
+			log.Printf("relay account: failed to persist nominatim gateway url: %v", err)
+		}
+	}
+}
+
+// loadPersistedNominatimGatewayURL seeds the in-memory gateway URL and
+// subscription status from the last-known-good values saved to Options, so
+// geocoding can resume immediately on restart even before the first
+// /api/geocode/status poll succeeds.
+func (controller *Controller) loadPersistedNominatimGatewayURL() {
+	controller.Options.mutex.Lock()
+	url := strings.TrimSpace(controller.Options.NominatimGatewayURL)
+	status := strings.TrimSpace(controller.Options.NominatimSubscriptionStatus)
+	controller.Options.mutex.Unlock()
+	controller.NominatimMu.Lock()
+	if url != "" && controller.NominatimGatewayURL == "" {
+		controller.NominatimGatewayURL = url
+	}
+	if NominatimStatusGrantsAccess(status) && controller.NominatimSubscriptionStatus == "" {
+		controller.NominatimSubscriptionStatus = status
+	}
 	controller.NominatimMu.Unlock()
 }
 
@@ -377,6 +438,7 @@ func (controller *Controller) pollNominatimStatusOnce() {
 // refreshed every 10) and periodically re-checks the Nominatim subscription
 // so a cancellation/renewal on Stripe is picked up without a TLR restart.
 func (controller *Controller) startRelayAccountRefreshLoop() {
+	controller.loadPersistedNominatimGatewayURL()
 	controller.refreshRelayAccessTokenOnce()
 	controller.pollNominatimStatusOnce()
 	accessTicker := time.NewTicker(10 * time.Minute)

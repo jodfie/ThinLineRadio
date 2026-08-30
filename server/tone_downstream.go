@@ -25,6 +25,15 @@ import (
 	"time"
 )
 
+const (
+	// toneDownstreamAttempts / toneDownstreamBackoff bound how hard we retry a
+	// failed tone alert. The delay is linear (2s, then 4s) so a receiver
+	// recovering from a database failover gets a second and third chance while
+	// the page is still timely.
+	toneDownstreamAttempts = 3
+	toneDownstreamBackoff  = 2 * time.Second
+)
+
 // ToneAlertMetadata is the JSON payload sent in the "metadata" form field
 // alongside the audio file when forwarding a tone alert downstream.
 type ToneAlertMetadata struct {
@@ -127,27 +136,51 @@ func sendToneAlertDownstream(controller *Controller, destination string, apiKey 
 	}
 
 	// ── HTTP POST ────────────────────────────────────────────────────────────
-	req, err := http.NewRequest(http.MethodPost, destination, &buf)
-	if err != nil {
-		return fmt.Errorf("tone_downstream: build request: %w", err)
-	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	if apiKey != "" {
-		req.Header.Set("X-API-Key", apiKey)
-	}
-
+	// A tone alert is a page: there is no second chance to deliver it, so a
+	// network blip or a 5xx from the receiver is retried rather than dropped.
+	// 4xx responses are not retried — those are our fault and will not improve.
+	body := buf.Bytes()
+	contentType := mw.FormDataContentType()
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("tone_downstream: POST to %s: %w", destination, err)
-	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("tone_downstream: server %s returned status %s", destination, resp.Status)
+	var lastErr error
+	for attempt := 1; attempt <= toneDownstreamAttempts; attempt++ {
+		if attempt > 1 {
+			time.Sleep(toneDownstreamBackoff * time.Duration(attempt-1))
+		}
+
+		req, err := http.NewRequest(http.MethodPost, destination, bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("tone_downstream: build request: %w", err)
+		}
+		req.Header.Set("Content-Type", contentType)
+		if apiKey != "" {
+			req.Header.Set("X-API-Key", apiKey)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("tone_downstream: POST to %s: %w", destination, err)
+			continue
+		}
+		status := resp.StatusCode
+		resp.Body.Close()
+
+		if status >= 200 && status < 300 {
+			if attempt > 1 && controller != nil {
+				controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf(
+					"tone_downstream: %s succeeded on attempt %d/%d", destination, attempt, toneDownstreamAttempts))
+			}
+			return nil
+		}
+
+		lastErr = fmt.Errorf("tone_downstream: server %s returned status %s", destination, resp.Status)
+		if status < 500 && status != http.StatusTooManyRequests {
+			return lastErr
+		}
 	}
 
-	return nil
+	return fmt.Errorf("%w (gave up after %d attempts)", lastErr, toneDownstreamAttempts)
 }
 
 // syncToneSetsToDownstreams collects every tone set that has a downstream URL

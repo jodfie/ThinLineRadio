@@ -20,6 +20,11 @@ import { TagColorService } from '../tag-color.service';
 import { IncidentMapBridgeService } from './incident-map-bridge.service';
 import { IncidentsService } from './incidents.service';
 import { NwsLayerToggles, NwsService } from '../weather/nws.service';
+import packageInfo from '../../../../../package.json';
+
+// Bump automatically per release; forces browsers to drop tiles cached from a
+// previous basemap provider instead of serving stale (e.g. watermarked) images.
+const TILE_CACHE_BUST = packageInfo.version;
 
 export type IncidentMapStyle = 'voyager' | 'dark' | 'satellite';
 
@@ -1029,12 +1034,24 @@ export class RdioScannerIncidentMapComponent implements OnInit, OnDestroy, After
 
     private createTileLayer(style: IncidentMapStyle): L.TileLayer {
         const perf = this.tilePerfOptions();
-        const url = `/api/map/tiles/${style}/{z}/{x}/{y}.png`;
-        const attribution = style === 'satellite'
-            ? '&copy; Esri'
-            : '&copy; OpenStreetMap &copy; CARTO';
-        const maxZoom = style === 'satellite' ? 19 : 18;
-        const maxNativeZoom = style === 'satellite' ? 19 : 18;
+        const url = `/api/map/tiles/${style}/{z}/{x}/{y}.png?v=${TILE_CACHE_BUST}`;
+        let attribution: string;
+        let maxNativeZoom: number;
+        switch (style) {
+            case 'satellite':
+                attribution = 'Tiles &copy; Esri';
+                maxNativeZoom = 19;
+                break;
+            case 'dark':
+                attribution = 'Tiles &copy; Esri';
+                maxNativeZoom = 16;
+                break;
+            default:
+                attribution = '&copy; OpenStreetMap contributors';
+                maxNativeZoom = 19;
+                break;
+        }
+        const maxZoom = 19;
         return L.tileLayer(url, {
             ...perf,
             maxZoom,

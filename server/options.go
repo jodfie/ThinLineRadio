@@ -235,6 +235,15 @@ type Options struct {
 	// refresh token, which is what re-authenticates silently after restart.
 	RelayAccountUsername     string `json:"relayAccountUsername"`
 	RelayAccountRefreshToken string `json:"relayAccountRefreshToken"`
+	// NominatimGatewayURL caches the last-known-good gateway URL learned from
+	// the relay's /api/geocode/status poll. Persisted so a restart while the
+	// relay is briefly misconfigured/unreachable doesn't silently disable
+	// geocoding (a blank gateway URL is never written over a good one).
+	NominatimGatewayURL string `json:"nominatimGatewayURL"`
+	// NominatimSubscriptionStatus caches the last-known access-granting status
+	// (active/trialing) for the same restart-resilience reason. The live poll
+	// and the gateway's per-key allow-list still correct a lapsed subscription.
+	NominatimSubscriptionStatus string `json:"nominatimSubscriptionStatus"`
 	adminPassword             string
 	adminPasswordNeedChange   bool
 	mutex                     sync.Mutex
@@ -810,6 +819,20 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		options.RelayAccountRefreshToken = v
 	default:
 		options.RelayAccountRefreshToken = ""
+	}
+
+	switch v := m["nominatimGatewayURL"].(type) {
+	case string:
+		options.NominatimGatewayURL = v
+	default:
+		options.NominatimGatewayURL = ""
+	}
+
+	switch v := m["nominatimSubscriptionStatus"].(type) {
+	case string:
+		options.NominatimSubscriptionStatus = v
+	default:
+		options.NominatimSubscriptionStatus = ""
 	}
 
 	switch v := m["relayListenerEmailsInitialSyncDone"].(type) {
@@ -1952,6 +1975,20 @@ func (options *Options) Read(db *Database) error {
 					options.RelayAccountRefreshToken = v
 				}
 			}
+		case "nominatimGatewayURL":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case string:
+					options.NominatimGatewayURL = v
+				}
+			}
+		case "nominatimSubscriptionStatus":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case string:
+					options.NominatimSubscriptionStatus = v
+				}
+			}
 		case "relayListenerEmailsInitialSyncDone":
 			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
 				switch v := f.(type) {
@@ -2247,6 +2284,8 @@ func (options *Options) Write(db *Database) error {
 	set("relayServerAPIKey", options.RelayServerAPIKey)
 	set("relayAccountUsername", options.RelayAccountUsername)
 	set("relayAccountRefreshToken", options.RelayAccountRefreshToken)
+	set("nominatimGatewayURL", options.NominatimGatewayURL)
+	set("nominatimSubscriptionStatus", options.NominatimSubscriptionStatus)
 	set("relayListenerEmailsInitialSyncDone", options.RelayListenerEmailsInitialSyncDone)
 	set("relayOwnerUnlockedPublicClient", options.RelayOwnerUnlockedPublicClient)
 	set("audioEncryptionEnabled", options.AudioEncryptionEnabled)

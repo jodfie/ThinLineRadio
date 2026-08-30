@@ -4,6 +4,22 @@
 
 ---
 
+## Version 26.08.30 - Released August 29, 2026
+
+### Fixed
+
+- **Incident map — geocoding silently disabled by a blank relay gateway URL**
+  - The server only geocodes when the relay's `/api/geocode/status` poll returns both an active subscription **and** a gateway URL. When the relay briefly returned an active status with an empty `gateway_url` (e.g. a missing `nominatim_gateway_*` config on a relay node), the server stopped attempting geocodes entirely — no attempts, no errors — so maps stopped gaining pins fleet-wide.
+  - The server now caches the last-known-good gateway URL and access-granting subscription status and seeds them at startup, so a transient relay misconfiguration or restart no longer disables geocoding. A blank gateway URL is never written over a good one; the live 2-minute poll and the gateway's own per-key allow-list still correct a genuinely lapsed subscription.
+
+### Changed
+
+- **Incident map — keyless basemaps**
+  - Light basemap now uses OpenStreetMap and dark uses ESRI World Dark Gray after CARTO began requiring an API key (which produced watermarked tiles). Client attribution and per-style zoom limits updated accordingly.
+  - Map tile URLs carry a version-based `?v=` cache-bust so browsers drop tiles cached from the previous provider.
+
+---
+
 ## Version 26.08.21 - Released August 21, 2026
 
 ### Added

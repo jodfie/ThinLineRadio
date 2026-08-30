@@ -10,10 +10,10 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
@@ -42,9 +42,17 @@ func triggerRestart() {
 // When systemd IS managing the process it will also restart it after SIGTERM;
 // whichever instance loses the port race exits immediately — no double-server.
 func spawnNewProcess(exePath string) error {
-	// "sleep 5 && exec <path>" — the shell waits 5 s then replaces itself with
-	// the new binary (exec-in-place, no extra process left behind).
-	script := fmt.Sprintf("sleep 5 && exec '%s'", exePath)
+	// Preserve the original CLI args (-base_dir, -config, etc.) so a detached
+	// restart keeps the same runtime configuration as the dying process.
+	// Quote each arg safely for the shell.
+	quoted := make([]string, 0, 1+len(os.Args[1:]))
+	quoted = append(quoted, "'"+strings.ReplaceAll(exePath, "'", "'\\''")+"'")
+	for _, a := range os.Args[1:] {
+		quoted = append(quoted, "'"+strings.ReplaceAll(a, "'", "'\\''")+"'")
+	}
+	// "sleep 5 && exec <path> <args…>" — wait for the old process to release
+	// the listen port, then replace the shell with the new binary.
+	script := "sleep 5 && exec " + strings.Join(quoted, " ")
 	cmd := exec.Command("sh", "-c", script)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setsid: true, // new session — detached from parent's terminal
