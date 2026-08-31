@@ -3061,6 +3061,11 @@ func (controller *Controller) ProcessMessageCommandLivefeedMap(client *Client, m
 	wasAllOff := client.Livefeed.IsAllOff()
 
 	client.Livefeed.FromMap(message.Payload)
+	// Drop unauthorized / out-of-scope channels so stale LFM keys cannot play
+	// traffic for systems/talkgroups outside the user's group plan.
+	if client.SystemsMap != nil {
+		client.Livefeed.ScrubToScopedSystems(client.SystemsMap)
+	}
 	msg := &Message{Command: MessageCommandLivefeedMap, Payload: !client.Livefeed.IsAllOff()}
 	select {
 	case client.Send <- msg:
@@ -3715,6 +3720,10 @@ func (controller *Controller) readAllData() error {
 	// Check for duplicate emails and log them
 	controller.checkDuplicateEmails()
 
+	// Issue #283: with auto-enable off (default), freeze All/"*" grants so newly
+	// created systems/talkgroups are not silently included in existing groups.
+	controller.freezeUserGroupWildcards()
+
 	// Update reconnection manager settings from options
 	if controller.ReconnectionMgr != nil {
 		controller.ReconnectionMgr.HoldDuration = time.Duration(controller.Options.ReconnectionGracePeriod) * time.Second
@@ -3727,6 +3736,34 @@ func (controller *Controller) readAllData() error {
 	}
 
 	return nil
+}
+
+// freezeUserGroupWildcards expands talkgroups:"*" to explicit TG lists for
+// usergroups with autoEnableNewTalkgroups=false. Does not rewrite empty All
+// (that would incorrectly grant every existing system); admins freeze All by
+// saving the group with the toggle off.
+func (controller *Controller) freezeUserGroupWildcards() {
+	if controller == nil || controller.UserGroups == nil || controller.Systems == nil || controller.Database == nil {
+		return
+	}
+	for _, group := range controller.UserGroups.GetAll() {
+		if group == nil || group.AutoEnableNewTalkgroups {
+			continue
+		}
+		before := group.SystemAccess
+		group.ExpandStarTalkgroups(controller.Systems)
+		if group.SystemAccess == before {
+			continue
+		}
+		if err := controller.UserGroups.Update(group, controller.Database); err != nil {
+			log.Printf("freezeUserGroupWildcards: failed to update group %d (%s): %v", group.Id, group.Name, err)
+			continue
+		}
+		controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf(
+			"usergroup %d (%s): expanded talkgroup wildcards so new talkgroups are not auto-granted",
+			group.Id, group.Name,
+		))
+	}
 }
 
 // Helper method to check if user has access to a call (uses group settings if available)

@@ -236,6 +236,8 @@ export interface UserGroup {
     delay?: number;
     maxUsers?: number;
     allowAddExistingUsers?: boolean;
+    /** When true, new systems/talkgroups are auto-granted (wildcards) and clients default them on. */
+    autoEnableNewTalkgroups?: boolean;
     isPublicRegistration?: boolean;
     billingEnabled?: boolean;
     billingMode?: string;
@@ -2090,6 +2092,7 @@ export class RdioScannerAdminService implements OnDestroy {
             delay: this.ngFormBuilder.control(userGroup?.delay),
             maxUsers: this.ngFormBuilder.control(userGroup?.maxUsers),
             allowAddExistingUsers: this.ngFormBuilder.control(userGroup?.allowAddExistingUsers),
+            autoEnableNewTalkgroups: this.ngFormBuilder.control(userGroup?.autoEnableNewTalkgroups ?? false),
             isPublicRegistration: this.ngFormBuilder.control(userGroup?.isPublicRegistration),
             billingEnabled: this.ngFormBuilder.control(userGroup?.billingEnabled),
             billingMode: this.ngFormBuilder.control(userGroup?.billingMode || ''),

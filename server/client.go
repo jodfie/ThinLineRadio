@@ -309,18 +309,20 @@ func (client *Client) SendConfig(groups *Groups, options *Options, systems *Syst
 	client.GroupsMap = groups.GetGroupsMap(&client.SystemsMap)
 	client.TagsData = tags.GetTagsData(&client.SystemsMap)
 	client.TagsMap = tags.GetTagsMap(&client.SystemsMap)
+	client.Livefeed.ScrubToScopedSystems(client.SystemsMap)
 
 	// Get the user's group pricing options if user is authenticated and has a group
 	var pricingOptions []PricingOption
-	if client.User != nil {
+	autoEnableNewTalkgroups := false
+	if client.User != nil && client.Controller != nil {
+		for _, userGroup := range client.Controller.userGroups(client.User) {
+			if userGroup != nil && userGroup.AutoEnableNewTalkgroups {
+				autoEnableNewTalkgroups = true
+			}
+		}
 		if client.User.UserGroupId > 0 {
-			if client.Controller != nil {
-				userGroup := client.Controller.UserGroups.Get(client.User.UserGroupId)
-				if userGroup != nil {
-					if userGroup.BillingEnabled {
-						pricingOptions = userGroup.GetPricingOptions()
-					}
-				}
+			if userGroup := client.Controller.UserGroups.Get(client.User.UserGroupId); userGroup != nil && userGroup.BillingEnabled {
+				pricingOptions = userGroup.GetPricingOptions()
 			}
 		}
 	}
@@ -347,9 +349,10 @@ func (client *Client) SendConfig(groups *Groups, options *Options, systems *Syst
 			// Audio encryption: clients need the relay URL and client token to
 			// perform their own ECDH key exchange. The raw AES key is never sent here.
 			// The client token is auto-fetched from the relay using the server's API key.
-			"audioEncryptionEnabled": options.AudioEncryptionEnabled,
-			"relayServerURL":         getRelayServerURL(),
-			"audioClientToken":       client.Controller.AudioClientToken,
+			"audioEncryptionEnabled":    options.AudioEncryptionEnabled,
+			"relayServerURL":            getRelayServerURL(),
+			"audioClientToken":          client.Controller.AudioClientToken,
+			"autoEnableNewTalkgroups":   autoEnableNewTalkgroups,
 		},
 		"playbackGoesLive":   options.PlaybackGoesLive,
 		"showListenersCount": options.ShowListenersCount,

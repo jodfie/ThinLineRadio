@@ -48,6 +48,15 @@
               Choose Systems
             </button>
           </div>
+          <mat-checkbox formControlName="autoEnableNewTalkgroups" class="auto-enable-toggle">
+            Auto-enable new systems / talkgroups
+          </mat-checkbox>
+          <p class="mat-caption">
+            When off (recommended), saving freezes All / &quot;*&quot; access to the systems and
+            talkgroups that exist today. Later additions stay out of this group until you
+            grant them, and listeners default them off in Channel Select.
+            When on, wildcards include future channels and clients may turn them on by default.
+          </p>
         </div>
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Default Delay (minutes)</mat-label>

@@ -2001,9 +2001,12 @@ func (admin *Admin) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 						existingGroup.StripeTaxRateId = getStringFromMap(groupMap, "stripeTaxRateId")
 						existingGroup.IsPublicRegistration = getBoolFromMap(groupMap, "isPublicRegistration", false)
 						existingGroup.AllowAddExistingUsers = getBoolFromMap(groupMap, "allowAddExistingUsers", false)
+						existingGroup.AutoEnableNewTalkgroups = getBoolFromMap(groupMap, "autoEnableNewTalkgroups", false)
 						if createdAt, ok := groupMap["createdAt"].(float64); ok {
 							existingGroup.CreatedAt = int64(createdAt)
 						}
+
+						existingGroup.NormalizeSystemAccess(admin.Controller.Systems)
 
 						if err := admin.Controller.UserGroups.Update(existingGroup, admin.Controller.Database); err != nil {
 							logError(fmt.Errorf("failed to update imported user group %s: %v", name, err))
@@ -2016,29 +2019,32 @@ func (admin *Admin) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 					} else {
 						// Create new group
 						group := &UserGroup{
-							Name:                  name,
-							Description:           getStringFromMap(groupMap, "description"),
-							SystemAccess:          getStringFromMap(groupMap, "systemAccess"),
-							Delay:                 int(getFloat64FromMap(groupMap, "delay")),
-							SystemDelays:          getStringFromMap(groupMap, "systemDelays"),
-							TalkgroupDelays:       getStringFromMap(groupMap, "talkgroupDelays"),
-							ConnectionLimit:       uint(getFloat64FromMap(groupMap, "connectionLimit")),
-							MaxUsers:              uint(getFloat64FromMap(groupMap, "maxUsers")),
-							BillingEnabled:        getBoolFromMap(groupMap, "billingEnabled", false),
-							StripePriceId:         getStringFromMap(groupMap, "stripePriceId"),
-							PricingOptions:        getStringFromMap(groupMap, "pricingOptions"),
-							BillingMode:           getStringFromMap(groupMap, "billingMode"),
-							CollectSalesTax:       getBoolFromMap(groupMap, "collectSalesTax", false),
-							TaxMode:               getStringFromMap(groupMap, "taxMode"),
-							StripeTaxRateId:       getStringFromMap(groupMap, "stripeTaxRateId"),
-							IsPublicRegistration:  getBoolFromMap(groupMap, "isPublicRegistration", false),
-							AllowAddExistingUsers: getBoolFromMap(groupMap, "allowAddExistingUsers", false),
+							Name:                    name,
+							Description:             getStringFromMap(groupMap, "description"),
+							SystemAccess:            getStringFromMap(groupMap, "systemAccess"),
+							Delay:                   int(getFloat64FromMap(groupMap, "delay")),
+							SystemDelays:            getStringFromMap(groupMap, "systemDelays"),
+							TalkgroupDelays:         getStringFromMap(groupMap, "talkgroupDelays"),
+							ConnectionLimit:         uint(getFloat64FromMap(groupMap, "connectionLimit")),
+							MaxUsers:                uint(getFloat64FromMap(groupMap, "maxUsers")),
+							BillingEnabled:          getBoolFromMap(groupMap, "billingEnabled", false),
+							StripePriceId:           getStringFromMap(groupMap, "stripePriceId"),
+							PricingOptions:          getStringFromMap(groupMap, "pricingOptions"),
+							BillingMode:             getStringFromMap(groupMap, "billingMode"),
+							CollectSalesTax:         getBoolFromMap(groupMap, "collectSalesTax", false),
+							TaxMode:                 getStringFromMap(groupMap, "taxMode"),
+							StripeTaxRateId:         getStringFromMap(groupMap, "stripeTaxRateId"),
+							IsPublicRegistration:    getBoolFromMap(groupMap, "isPublicRegistration", false),
+							AllowAddExistingUsers:   getBoolFromMap(groupMap, "allowAddExistingUsers", false),
+							AutoEnableNewTalkgroups: getBoolFromMap(groupMap, "autoEnableNewTalkgroups", false),
 						}
 						if createdAt, ok := groupMap["createdAt"].(float64); ok {
 							group.CreatedAt = int64(createdAt)
 						} else {
 							group.CreatedAt = time.Now().Unix()
 						}
+
+						group.NormalizeSystemAccess(admin.Controller.Systems)
 
 						if err := admin.Controller.UserGroups.Add(group, admin.Controller.Database); err != nil {
 							logError(fmt.Errorf("failed to import user group %s: %v", name, err))
@@ -3345,25 +3351,26 @@ func (admin *Admin) GetConfig() map[string]any {
 	userGroupList := make([]map[string]any, 0, len(userGroups))
 	for _, group := range userGroups {
 		userGroupList = append(userGroupList, map[string]any{
-			"id":                    group.Id,
-			"name":                  group.Name,
-			"description":           group.Description,
-			"systemAccess":          group.SystemAccess,
-			"delay":                 group.Delay,
-			"systemDelays":          group.SystemDelays,
-			"talkgroupDelays":       group.TalkgroupDelays,
-			"connectionLimit":       group.ConnectionLimit,
-			"maxUsers":              group.MaxUsers,
-			"billingEnabled":        group.BillingEnabled,
-			"stripePriceId":         group.StripePriceId,
-			"pricingOptions":        group.PricingOptions,
-			"billingMode":           group.BillingMode,
-			"collectSalesTax":       group.CollectSalesTax,
-			"taxMode":               group.TaxMode,
-			"stripeTaxRateId":       group.StripeTaxRateId,
-			"isPublicRegistration":  group.IsPublicRegistration,
-			"allowAddExistingUsers": group.AllowAddExistingUsers,
-			"createdAt":             group.CreatedAt,
+			"id":                      group.Id,
+			"name":                    group.Name,
+			"description":             group.Description,
+			"systemAccess":            group.SystemAccess,
+			"delay":                   group.Delay,
+			"systemDelays":            group.SystemDelays,
+			"talkgroupDelays":         group.TalkgroupDelays,
+			"connectionLimit":         group.ConnectionLimit,
+			"maxUsers":                group.MaxUsers,
+			"billingEnabled":          group.BillingEnabled,
+			"stripePriceId":           group.StripePriceId,
+			"pricingOptions":          group.PricingOptions,
+			"billingMode":             group.BillingMode,
+			"collectSalesTax":         group.CollectSalesTax,
+			"taxMode":                 group.TaxMode,
+			"stripeTaxRateId":         group.StripeTaxRateId,
+			"isPublicRegistration":    group.IsPublicRegistration,
+			"allowAddExistingUsers":   group.AllowAddExistingUsers,
+			"autoEnableNewTalkgroups": group.AutoEnableNewTalkgroups,
+			"createdAt":               group.CreatedAt,
 		})
 	}
 

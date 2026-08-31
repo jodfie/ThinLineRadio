@@ -108,3 +108,61 @@ func (livefeed *Livefeed) IsEnabled(call *Call) bool {
 
 	return false
 }
+
+// ScrubToScopedSystems turns off any livefeed entries that are outside the
+// client's currently scoped systems map (group/user ACL). Prevents hearing
+// traffic for talkgroups that are no longer (or never were) in the plan.
+func (livefeed *Livefeed) ScrubToScopedSystems(systemsMap SystemsMap) {
+	livefeed.mutex.Lock()
+	defer livefeed.mutex.Unlock()
+
+	allowed := make(map[uint]map[uint]struct{}, len(systemsMap))
+	for _, sys := range systemsMap {
+		var sysId uint
+		switch v := sys["id"].(type) {
+		case uint:
+			sysId = v
+		case uint64:
+			sysId = uint(v)
+		case int:
+			sysId = uint(v)
+		case float64:
+			sysId = uint(v)
+		default:
+			continue
+		}
+		tgSet := make(map[uint]struct{})
+		switch tgs := sys["talkgroups"].(type) {
+		case TalkgroupsMap:
+			for _, tg := range tgs {
+				switch id := tg["id"].(type) {
+				case uint:
+					tgSet[id] = struct{}{}
+				case uint64:
+					tgSet[uint(id)] = struct{}{}
+				case int:
+					tgSet[uint(id)] = struct{}{}
+				case float64:
+					tgSet[uint(id)] = struct{}{}
+				}
+			}
+		}
+		allowed[sysId] = tgSet
+	}
+
+	for sysId, tgs := range livefeed.Matrix {
+		allowedTgs, sysOk := allowed[sysId]
+		for tgId, on := range tgs {
+			if !on {
+				continue
+			}
+			if !sysOk {
+				livefeed.Matrix[sysId][tgId] = false
+				continue
+			}
+			if _, ok := allowedTgs[tgId]; !ok {
+				livefeed.Matrix[sysId][tgId] = false
+			}
+		}
+	}
+}

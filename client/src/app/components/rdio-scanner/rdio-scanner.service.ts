@@ -129,6 +129,9 @@ export class RdioScannerService implements OnDestroy {
     private livefeedMap = {} as RdioScannerLivefeedMap;
     private livefeedMapPriorToHoldSystem: RdioScannerLivefeedMap | undefined;
     private livefeedMapPriorToHoldTalkgroup: RdioScannerLivefeedMap | undefined;
+    /** Keys (`sysId:tgId`) from the last CFG rebuild; used to detect newly scoped channels. */
+    private previousScopedLivefeedKeys = new Set<string>();
+    private hasScopedLivefeedBaseline = false;
     private livefeedMode = RdioScannerLivefeedMode.Offline;
     private livefeedModePriorToPlayback: RdioScannerLivefeedMode | undefined;
     private livefeedPaused = false;
@@ -1810,28 +1813,38 @@ export class RdioScannerService implements OnDestroy {
     }
 
     private rebuildLivefeedMap(): void {
+        const autoEnable = !!this.config?.options?.autoEnableNewTalkgroups;
+        const currentKeys = new Set<string>();
+
         const lfm = this.config.systems.reduce((sysMap, sys) => {
             sysMap[sys.id] = sys.talkgroups.reduce((tgMap, tg) => {
                 const group = this.categories.find((cat) => tg.groups.includes(cat.label));
                 const tag = this.categories.find((cat) => cat.label === tg.tag);
+                const key = `${sys.id}:${tg.id}`;
+                currentKeys.add(key);
 
                 // Check if this talkgroup exists in the saved livefeed map
                 // Use explicit undefined check to handle falsy values correctly
-                const existsInSavedMap = this.livefeedMap[sys.id] !== undefined && 
+                const existsInSavedMap = this.livefeedMap[sys.id] !== undefined &&
                                         this.livefeedMap[sys.id][tg.id] !== undefined;
+                // Re-entering scope (e.g. system re-added to a usergroup) must honor the
+                // group toggle instead of stale localStorage active:true.
+                const newlyInScope = this.hasScopedLivefeedBaseline &&
+                    !this.previousScopedLivefeedKeys.has(key);
 
-                tgMap[tg.id] = existsInSavedMap
+                tgMap[tg.id] = existsInSavedMap && !newlyInScope
                     ? this.livefeedMap[sys.id][tg.id]
                     : {
-                        // NEW FIX: Default to inactive (false) for new talkgroups/systems
-                        // Users must manually enable them in Channel Select
-                        active: false,
+                        active: autoEnable,
                     } as RdioScannerLivefeed;
 
                 return tgMap;
             }, sysMap[sys.id] || {} as { [key: number]: RdioScannerLivefeed });
             return sysMap;
         }, {} as RdioScannerLivefeedMap);
+
+        this.previousScopedLivefeedKeys = currentKeys;
+        this.hasScopedLivefeedBaseline = true;
 
         if (this.livefeedMapPriorToHoldSystem != null) {
             this.livefeedMapPriorToHoldSystem = lfm;

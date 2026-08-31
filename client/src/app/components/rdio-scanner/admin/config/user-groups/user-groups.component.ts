@@ -51,6 +51,7 @@ interface UserGroup {
   stripeTaxRateId?: string;
   isPublicRegistration: boolean;
   allowAddExistingUsers: boolean;
+  autoEnableNewTalkgroups: boolean;
   createdAt: number;
 }
 
@@ -179,6 +180,7 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
       stripeTaxRateId: [''],
       isPublicRegistration: [false],
       allowAddExistingUsers: [false],
+      autoEnableNewTalkgroups: [false],
       groupAdminUserId: [0],
       newGroupAdminEmail: [''],
       newGroupAdminPassword: [''],
@@ -244,6 +246,7 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
         stripeTaxRateId: group.stripeTaxRateId || '',
         isPublicRegistration: group.isPublicRegistration || false,
         allowAddExistingUsers: group.allowAddExistingUsers || false,
+        autoEnableNewTalkgroups: group.autoEnableNewTalkgroups || false,
         createdAt: group.createdAt || 0
       }));
       this.cdr.detectChanges();
@@ -519,6 +522,8 @@ export class RdioScannerAdminUserGroupsComponent implements OnInit, OnChanges {
       maxUsers: 0,
       billingEnabled: false,
       isPublicRegistration: false,
+      allowAddExistingUsers: false,
+      autoEnableNewTalkgroups: false,
       groupAdminUserId: 0,
       newGroupAdminEmail: '',
       newGroupAdminPassword: '',

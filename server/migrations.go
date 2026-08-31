@@ -3320,3 +3320,14 @@ func migrateKeywordAlertUnique(db *Database) error {
 	}
 	return nil
 }
+
+// migrateAutoEnableNewTalkgroups adds a per-usergroup toggle controlling whether
+// newly created systems/talkgroups are auto-granted (when access uses wildcards)
+// and whether clients default those channels on in the livefeed map. Default false.
+func migrateAutoEnableNewTalkgroups(db *Database) error {
+	q := `ALTER TABLE "userGroups" ADD COLUMN IF NOT EXISTS "autoEnableNewTalkgroups" boolean NOT NULL DEFAULT false`
+	if _, err := db.Sql.Exec(q); err != nil {
+		return fmt.Errorf("migrateAutoEnableNewTalkgroups: %w", err)
+	}
+	return nil
+}

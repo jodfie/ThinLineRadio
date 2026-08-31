@@ -257,6 +257,8 @@ export interface RdioScannerConfig {
         transcriptionEnabled?: boolean;
         /** When false, the console Map tab is hidden. */
         incidentMappingEnabled?: boolean;
+        /** From the user's usergroup(s): default-on for newly scoped channels. */
+        autoEnableNewTalkgroups?: boolean;
     };
     playbackGoesLive: boolean;
     showListenersCount: boolean;

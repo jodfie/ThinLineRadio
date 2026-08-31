@@ -362,6 +362,7 @@ var PostgresqlSchema = []string{
     "stripeTaxRateId" text NOT NULL DEFAULT '',
     "isPublicRegistration" boolean NOT NULL DEFAULT false,
     "allowAddExistingUsers" boolean NOT NULL DEFAULT false,
+    "autoEnableNewTalkgroups" boolean NOT NULL DEFAULT false,
     "createdAt" bigint NOT NULL DEFAULT 0
   );`,
 

@@ -4,6 +4,23 @@
 
 ---
 
+## Version 26.08.31 - Released August 31, 2026
+
+### Fixed
+
+- **New systems/talkgroups enabled by default / out-of-plan traffic (#283)**
+  - User groups now have an **Auto-enable new systems / talkgroups** toggle (default off). When off, saving freezes All / `*` access to the systems and talkgroups that exist today so later additions stay out of the group until granted.
+  - On startup, existing `talkgroups: "*"` grants are expanded to explicit talkgroup lists when auto-enable is off (empty All is left alone so private systems are not auto-added).
+  - Livefeed maps are scrubbed against the client's scoped systems so stale enabled keys cannot play traffic outside the usergroup plan.
+  - Web and mobile default newly scoped channels off unless the usergroup toggle is on; re-adding a system no longer restores stale `active: true` from local storage.
+
+### Added
+
+- **User Groups — Auto-enable new systems / talkgroups**
+  - Admin checkbox on create/edit group. When on, wildcards keep including future channels and clients may turn them on by default.
+
+---
+
 ## Version 26.08.30 - Released August 29, 2026
 
 ### Fixed

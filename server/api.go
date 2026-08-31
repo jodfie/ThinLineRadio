@@ -7150,25 +7150,26 @@ func (api *Api) AdminGroupsHandler(w http.ResponseWriter, r *http.Request) {
 	groupList := []map[string]interface{}{}
 	for _, group := range groups {
 		groupList = append(groupList, map[string]interface{}{
-			"id":                    group.Id,
-			"name":                  group.Name,
-			"description":           group.Description,
-			"systemAccess":          group.SystemAccess,
-			"delay":                 group.Delay,
-			"systemDelays":          group.SystemDelays,
-			"talkgroupDelays":       group.TalkgroupDelays,
-			"connectionLimit":       group.ConnectionLimit,
-			"maxUsers":              group.MaxUsers,
-			"billingEnabled":        group.BillingEnabled,
-			"stripePriceId":         group.StripePriceId,
-			"pricingOptions":        group.GetPricingOptions(),
-			"billingMode":           group.BillingMode,
-			"collectSalesTax":       group.CollectSalesTax,
-			"taxMode":               group.TaxMode,
-			"stripeTaxRateId":       group.StripeTaxRateId,
-			"isPublicRegistration":  group.IsPublicRegistration,
-			"allowAddExistingUsers": group.AllowAddExistingUsers,
-			"createdAt":             group.CreatedAt,
+			"id":                      group.Id,
+			"name":                    group.Name,
+			"description":             group.Description,
+			"systemAccess":            group.SystemAccess,
+			"delay":                   group.Delay,
+			"systemDelays":            group.SystemDelays,
+			"talkgroupDelays":         group.TalkgroupDelays,
+			"connectionLimit":         group.ConnectionLimit,
+			"maxUsers":                group.MaxUsers,
+			"billingEnabled":          group.BillingEnabled,
+			"stripePriceId":           group.StripePriceId,
+			"pricingOptions":          group.GetPricingOptions(),
+			"billingMode":             group.BillingMode,
+			"collectSalesTax":         group.CollectSalesTax,
+			"taxMode":                 group.TaxMode,
+			"stripeTaxRateId":         group.StripeTaxRateId,
+			"isPublicRegistration":    group.IsPublicRegistration,
+			"allowAddExistingUsers":   group.AllowAddExistingUsers,
+			"autoEnableNewTalkgroups": group.AutoEnableNewTalkgroups,
+			"createdAt":               group.CreatedAt,
 		})
 	}
 
@@ -7197,23 +7198,24 @@ func (api *Api) AdminCreateGroupHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var request struct {
-		Name                  string          `json:"name"`
-		Description           string          `json:"description"`
-		SystemAccess          string          `json:"systemAccess"`
-		Delay                 int             `json:"delay"`
-		SystemDelays          string          `json:"systemDelays"`
-		TalkgroupDelays       string          `json:"talkgroupDelays"`
-		ConnectionLimit       uint            `json:"connectionLimit"`
-		MaxUsers              uint            `json:"maxUsers"`
-		BillingEnabled        bool            `json:"billingEnabled"`
-		StripePriceId         string          `json:"stripePriceId"`
-		PricingOptions        []PricingOption `json:"pricingOptions"`
-		BillingMode           string          `json:"billingMode"`
-		CollectSalesTax       bool            `json:"collectSalesTax"`
-		TaxMode               string          `json:"taxMode"`
-		StripeTaxRateId       string          `json:"stripeTaxRateId"`
-		IsPublicRegistration  bool            `json:"isPublicRegistration"`
-		AllowAddExistingUsers bool            `json:"allowAddExistingUsers"`
+		Name                    string          `json:"name"`
+		Description             string          `json:"description"`
+		SystemAccess            string          `json:"systemAccess"`
+		Delay                   int             `json:"delay"`
+		SystemDelays            string          `json:"systemDelays"`
+		TalkgroupDelays         string          `json:"talkgroupDelays"`
+		ConnectionLimit         uint            `json:"connectionLimit"`
+		MaxUsers                uint            `json:"maxUsers"`
+		BillingEnabled          bool            `json:"billingEnabled"`
+		StripePriceId           string          `json:"stripePriceId"`
+		PricingOptions          []PricingOption `json:"pricingOptions"`
+		BillingMode             string          `json:"billingMode"`
+		CollectSalesTax         bool            `json:"collectSalesTax"`
+		TaxMode                 string          `json:"taxMode"`
+		StripeTaxRateId         string          `json:"stripeTaxRateId"`
+		IsPublicRegistration    bool            `json:"isPublicRegistration"`
+		AllowAddExistingUsers   bool            `json:"allowAddExistingUsers"`
+		AutoEnableNewTalkgroups bool            `json:"autoEnableNewTalkgroups"`
 		// Group admin assignment
 		AssignExistingUserAsAdmin bool   `json:"assignExistingUserAsAdmin"`
 		GroupAdminUserId          uint64 `json:"groupAdminUserId"`
@@ -7271,25 +7273,27 @@ func (api *Api) AdminCreateGroupHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	group := &UserGroup{
-		Name:                  request.Name,
-		Description:           request.Description,
-		SystemAccess:          request.SystemAccess,
-		Delay:                 request.Delay,
-		SystemDelays:          request.SystemDelays,
-		TalkgroupDelays:       request.TalkgroupDelays,
-		ConnectionLimit:       request.ConnectionLimit,
-		MaxUsers:              request.MaxUsers,
-		BillingEnabled:        request.BillingEnabled,
-		StripePriceId:         request.StripePriceId,
-		PricingOptions:        pricingOptionsJSON,
-		BillingMode:           billingMode,
-		CollectSalesTax:       request.CollectSalesTax,
-		TaxMode:               request.TaxMode,
-		StripeTaxRateId:       request.StripeTaxRateId,
-		IsPublicRegistration:  request.IsPublicRegistration,
-		AllowAddExistingUsers: request.AllowAddExistingUsers,
-		CreatedAt:             time.Now().Unix(),
+		Name:                    request.Name,
+		Description:             request.Description,
+		SystemAccess:            request.SystemAccess,
+		Delay:                   request.Delay,
+		SystemDelays:            request.SystemDelays,
+		TalkgroupDelays:         request.TalkgroupDelays,
+		ConnectionLimit:         request.ConnectionLimit,
+		MaxUsers:                request.MaxUsers,
+		BillingEnabled:          request.BillingEnabled,
+		StripePriceId:           request.StripePriceId,
+		PricingOptions:          pricingOptionsJSON,
+		BillingMode:             billingMode,
+		CollectSalesTax:         request.CollectSalesTax,
+		TaxMode:                 request.TaxMode,
+		StripeTaxRateId:         request.StripeTaxRateId,
+		IsPublicRegistration:    request.IsPublicRegistration,
+		AllowAddExistingUsers:   request.AllowAddExistingUsers,
+		AutoEnableNewTalkgroups: request.AutoEnableNewTalkgroups,
+		CreatedAt:               time.Now().Unix(),
 	}
+	group.NormalizeSystemAccess(api.Controller.Systems)
 
 	if err := api.Controller.UserGroups.Add(group, api.Controller.Database); err != nil {
 		api.exitWithError(w, http.StatusInternalServerError, "Failed to create group")
@@ -7506,24 +7510,25 @@ func (api *Api) AdminUpdateGroupHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var request struct {
-		Id                    uint64          `json:"id"`
-		Name                  string          `json:"name"`
-		Description           string          `json:"description"`
-		SystemAccess          string          `json:"systemAccess"`
-		Delay                 int             `json:"delay"`
-		SystemDelays          string          `json:"systemDelays"`
-		TalkgroupDelays       string          `json:"talkgroupDelays"`
-		ConnectionLimit       uint            `json:"connectionLimit"`
-		MaxUsers              uint            `json:"maxUsers"`
-		BillingEnabled        bool            `json:"billingEnabled"`
-		StripePriceId         string          `json:"stripePriceId"`
-		PricingOptions        []PricingOption `json:"pricingOptions"`
-		BillingMode           string          `json:"billingMode"`
-		CollectSalesTax       bool            `json:"collectSalesTax"`
-		TaxMode               string          `json:"taxMode"`
-		StripeTaxRateId       string          `json:"stripeTaxRateId"`
-		IsPublicRegistration  bool            `json:"isPublicRegistration"`
-		AllowAddExistingUsers bool            `json:"allowAddExistingUsers"`
+		Id                      uint64          `json:"id"`
+		Name                    string          `json:"name"`
+		Description             string          `json:"description"`
+		SystemAccess            string          `json:"systemAccess"`
+		Delay                   int             `json:"delay"`
+		SystemDelays            string          `json:"systemDelays"`
+		TalkgroupDelays         string          `json:"talkgroupDelays"`
+		ConnectionLimit         uint            `json:"connectionLimit"`
+		MaxUsers                uint            `json:"maxUsers"`
+		BillingEnabled          bool            `json:"billingEnabled"`
+		StripePriceId           string          `json:"stripePriceId"`
+		PricingOptions          []PricingOption `json:"pricingOptions"`
+		BillingMode             string          `json:"billingMode"`
+		CollectSalesTax         bool            `json:"collectSalesTax"`
+		TaxMode                 string          `json:"taxMode"`
+		StripeTaxRateId         string          `json:"stripeTaxRateId"`
+		IsPublicRegistration    bool            `json:"isPublicRegistration"`
+		AllowAddExistingUsers   bool            `json:"allowAddExistingUsers"`
+		AutoEnableNewTalkgroups bool            `json:"autoEnableNewTalkgroups"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -7587,6 +7592,8 @@ func (api *Api) AdminUpdateGroupHandler(w http.ResponseWriter, r *http.Request) 
 	group.StripeTaxRateId = request.StripeTaxRateId
 	group.IsPublicRegistration = request.IsPublicRegistration
 	group.AllowAddExistingUsers = request.AllowAddExistingUsers
+	group.AutoEnableNewTalkgroups = request.AutoEnableNewTalkgroups
+	group.NormalizeSystemAccess(api.Controller.Systems)
 
 	if err := api.Controller.UserGroups.Update(group, api.Controller.Database); err != nil {
 		api.exitWithError(w, http.StatusInternalServerError, "Failed to update group")
