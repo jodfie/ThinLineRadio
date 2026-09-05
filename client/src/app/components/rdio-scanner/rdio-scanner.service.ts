@@ -1296,7 +1296,7 @@ export class RdioScannerService implements OnDestroy {
 
         // Always use the root endpoint for WebSocket, regardless of current page URL
         // This ensures the WebSocket connects to the correct endpoint even if user is on /verify or other pages.
-        // On ng serve (:4200), connect straight to the Go API so the Angular live-reload
+        // On ng serve (:4200–4299), connect straight to the Go API so the Angular live-reload
         // socket is not proxied/contended and the CFG watchdog does not reconnect every ~7s.
         const websocketUrl = this.getWebsocketUrl();
 
@@ -1876,7 +1876,7 @@ export class RdioScannerService implements OnDestroy {
     /** WebSocket URL for the Go server (bypasses ng-serve proxy in development). */
     private getWebsocketUrl(): string {
         const { protocol, hostname, port, origin } = window.location;
-        if (port === '4200') {
+        if (/^42\d{2}$/.test(port)) {
             const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
             return `${wsProtocol}//${hostname}:3000`;
         }

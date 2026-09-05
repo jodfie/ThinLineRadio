@@ -60,6 +60,7 @@ interface TransferRequest {
     selector: 'rdio-scanner-group-admin',
     templateUrl: './group-admin.component.html',
     styleUrls: ['./group-admin.component.scss'],
+    host: { class: 'thinline-skin' },
     changeDetection: ChangeDetectionStrategy.Eager,
     standalone: false
 })

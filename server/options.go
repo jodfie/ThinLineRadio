@@ -94,8 +94,9 @@ type Options struct {
 	Branding                    string `json:"branding"`
 	DefaultSystemDelay          uint   `json:"defaultSystemDelay"`
 	DisableDuplicateDetection   bool   `json:"disableDuplicateDetection"`
-	DuplicateDetectionTimeFrame uint   `json:"duplicateDetectionTimeFrame"` // in-memory cache TTL (ms)
-	DuplicateTimestampWindow    uint   `json:"duplicateTimestampWindow"`    // ±ms window for timestamp fallback (default 800)
+	DuplicateDetectionTimeFrame   uint `json:"duplicateDetectionTimeFrame"`   // in-memory arrival-cache retention TTL (ms)
+	DuplicateTimestampWindow      uint `json:"duplicateTimestampWindow"`      // server-arrival match window (ms); JSON key kept for compatibility
+	DuplicateRadioTimestampWindow uint `json:"duplicateRadioTimestampWindow"` // radio/P25 timestamp match window (ms); last-pass dedup; 0 = disabled
 	Email                       string `json:"email"`
 	KeypadBeeps                 string `json:"keypadBeeps"`
 	MaxClients                  uint   `json:"maxClients"`
@@ -418,6 +419,22 @@ func (options *Options) FromMap(m map[string]any) *Options {
 		}
 	default:
 		options.DuplicateTimestampWindow = defaults.options.duplicateTimestampWindow
+	}
+
+	switch v := m["duplicateRadioTimestampWindow"].(type) {
+	case float64:
+		u := uint(v)
+		if u == 0 {
+			options.DuplicateRadioTimestampWindow = 0 // explicitly disabled
+		} else if u < 100 {
+			options.DuplicateRadioTimestampWindow = defaults.options.duplicateRadioTimestampWindow
+		} else if u > 30000 {
+			options.DuplicateRadioTimestampWindow = 30000
+		} else {
+			options.DuplicateRadioTimestampWindow = u
+		}
+	default:
+		options.DuplicateRadioTimestampWindow = defaults.options.duplicateRadioTimestampWindow
 	}
 
 	switch v := m["email"].(type) {
@@ -1313,6 +1330,7 @@ func (options *Options) Read(db *Database) error {
 	options.DisableDuplicateDetection = defaults.options.disableDuplicateDetection
 	options.DuplicateDetectionTimeFrame = defaults.options.duplicateDetectionTimeFrame
 	options.DuplicateTimestampWindow = defaults.options.duplicateTimestampWindow
+	options.DuplicateRadioTimestampWindow = defaults.options.duplicateRadioTimestampWindow
 	options.Email = defaults.options.email
 	options.KeypadBeeps = defaults.options.keypadBeeps
 	options.MaxClients = defaults.options.maxClients
@@ -1443,6 +1461,23 @@ func (options *Options) Read(db *Database) error {
 						u = 30000
 					}
 					options.DuplicateTimestampWindow = u
+				}
+			}
+		case "duplicateRadioTimestampWindow":
+			if err = json.Unmarshal([]byte(value.String), &f); err == nil {
+				switch v := f.(type) {
+				case float64:
+					u := uint(v)
+					if u == 0 {
+						options.DuplicateRadioTimestampWindow = 0
+						break
+					}
+					if u < 100 {
+						u = defaults.options.duplicateRadioTimestampWindow
+					} else if u > 30000 {
+						u = 30000
+					}
+					options.DuplicateRadioTimestampWindow = u
 				}
 			}
 		case "email":
@@ -2213,6 +2248,7 @@ func (options *Options) Write(db *Database) error {
 	set("disableDuplicateDetection", options.DisableDuplicateDetection)
 	set("duplicateDetectionTimeFrame", options.DuplicateDetectionTimeFrame)
 	set("duplicateTimestampWindow", options.DuplicateTimestampWindow)
+	set("duplicateRadioTimestampWindow", options.DuplicateRadioTimestampWindow)
 	set("email", options.Email)
 	set("keypadBeeps", options.KeypadBeeps)
 	set("maxClients", options.MaxClients)

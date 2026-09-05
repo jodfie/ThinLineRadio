@@ -160,7 +160,7 @@
           <label class="field-label">Duplicate detection</label>
           <mat-slide-toggle color="primary" formControlName="duplicateDetectionEnabled"></mat-slide-toggle>
         </div>
-        <span class="field-hint">When enabled (and global duplicate detection is on), suppress duplicate calls on this system.</span>
+        <span class="field-hint">When enabled (and global duplicate detection is on), suppress near-simultaneous same-talkgroup uploads by server arrival time. Soft exception: known different radio/unit IDs are kept (trunking); missing IDs still match on arrival (analog).</span>
       </div>
       }
 

@@ -28,6 +28,7 @@ type DisconnectedClientState struct {
 	LastSeen      time.Time
 	MissedCalls   []*Call
 	Livefeed      *Livefeed
+	EmitDedupe    EmitDedupe
 	MaxBufferSize int
 }
 
@@ -82,6 +83,7 @@ func (rm *ReconnectionManager) SaveDisconnectedState(client *Client) {
 		LastSeen:      time.Now(),
 		MissedCalls:   make([]*Call, 0, rm.MaxBufferSize),
 		Livefeed:      livefeedCopy,
+		EmitDedupe:    client.EmitDedupe,
 		MaxBufferSize: rm.MaxBufferSize,
 	}
 
@@ -105,24 +107,22 @@ func (rm *ReconnectionManager) BufferCallForDisconnected(call *Call) {
 			continue
 		}
 
-		// Check if user's filters would allow this call
-		if !state.Livefeed.IsEnabled(call) {
+		// Check if user's filters would allow this call — present as one TG
+		// when patches are involved, and skip cross-talkgroup copies already buffered.
+		presented := rm.controller.presentCallForClient(call, state.Livefeed, state.User)
+		if presented == nil {
 			continue
 		}
-
-		// Check access permissions
-		if rm.controller.requiresUserAuth() {
-			if !rm.controller.userHasAccess(state.User, call) {
-				continue
-			}
+		if state.EmitDedupe.ShouldSkip(presented) {
+			continue
 		}
 
 		// Add to buffer if not full
 		if len(state.MissedCalls) < state.MaxBufferSize {
-			state.MissedCalls = append(state.MissedCalls, call)
+			state.MissedCalls = append(state.MissedCalls, presented)
 		} else {
 			// Buffer full - remove oldest call and add new one (FIFO)
-			state.MissedCalls = append(state.MissedCalls[1:], call)
+			state.MissedCalls = append(state.MissedCalls[1:], presented)
 		}
 	}
 }
@@ -158,6 +158,7 @@ func (rm *ReconnectionManager) RestoreClientState(client *Client) bool {
 	
 	// Restore livefeed state
 	client.Livefeed = state.Livefeed
+	client.EmitDedupe = state.EmitDedupe
 
 	// Clean up saved state
 	delete(rm.States, userKey)

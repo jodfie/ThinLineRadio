@@ -29,11 +29,19 @@ import { TranscriptAnnotation, renderAnnotatedTranscript } from '../transcript-u
 import { RdioScannerAdminService } from '../admin/admin.service';
 import { TranscriptReviewService } from '../transcript-review/transcript-review.service';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { TagColorService } from '../tag-color.service';
 
 /** Main board hosts separate tabs; each instance uses one mode. */
 export type RdioScannerAlertsPanelMode = 'alertsAndPreferences' | 'transcripts' | 'stats';
 
 export type RdioScannerAlertsViewMode = 'mine' | 'system' | 'all';
+
+type AlertGroup = {
+    key: string;
+    alerts: RdioScannerAlert[];
+    latestTimestamp: number;
+    groupType: 'tone' | 'channel';
+};
 
 interface IncidentSubcategory {
     label: string;
@@ -118,7 +126,8 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
     availableTalkgroups: Array<{id: number, label: string, systemId: number}> = [];
     
     // Cached grouped alerts to avoid recalculation on every change detection
-    allAlertGroups: Array<{key: string, alerts: RdioScannerAlert[], latestTimestamp: number, groupType: 'tone' | 'channel'}> = [];
+    allAlertGroups: AlertGroup[] = [];
+    selectedChannelKey: string | null = null;
 
     private searchSubject = new Subject<string>();
     private searchSubscription?: Subscription;
@@ -142,6 +151,7 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
     collectorLoading = false;
     collectorConnecting = false;
     collectorStats: { submissions: number; formatted: string; hours: number; minutes: number; seconds: number } | null = null;
+    collectorPublicUrl = 'https://transcripts.thinlineds.com';
 
     globalTrainingProgress: {
         goalHours: number;
@@ -166,6 +176,7 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
         private adminService: RdioScannerAdminService,
         private reviewService: TranscriptReviewService,
         private snackBar: MatSnackBar,
+        private tagColorService: TagColorService,
     ) {
         // Get PIN from localStorage using the service method
         this.pin = this.rdioScannerService.readPin();
@@ -182,7 +193,7 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
 
         // Refresh PIN from localStorage
         this.pin = this.rdioScannerService.readPin();
-
+        this.tagColorService.getTagColors().subscribe();
 
         // For the embed rail, paint cached alerts immediately (synchronously) so the
         // LCP element (p.transcript-text) is visible on the very first frame instead
@@ -535,6 +546,11 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
 
     // ── Transcript collector (global server config) ─────────────────────────────
 
+    get trainingDataDownloadUrl(): string {
+        const base = (this.collectorPublicUrl || 'https://transcripts.thinlineds.com').replace(/\/+$/, '');
+        return `${base}/api/public/export.zip?hours=all`;
+    }
+
     async loadCollectorSettings(): Promise<void> {
         if (!this.adminAuthenticated) {
             return;
@@ -550,6 +566,11 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
             this.collectorHasApiKey = !!settings?.hasApiKey;
             this.collectorConnected = !!settings?.connected;
             this.collectorServerName = settings?.serverName || '';
+            if (settings?.collectorURL) {
+                this.collectorPublicUrl = settings.collectorURL;
+            } else if (settings?.defaultCollectorURL) {
+                this.collectorPublicUrl = settings.defaultCollectorURL;
+            }
             if (this.collectorHasApiKey && this.collectorConnected) {
                 try {
                     const stats = await this.reviewService.getCollectorStats();
@@ -865,7 +886,7 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
         return !!this.alertSearch.trim();
     }
 
-    get filteredAlertGroups(): Array<{ key: string; alerts: RdioScannerAlert[]; latestTimestamp: number; groupType: 'tone' | 'channel' }> {
+    get filteredAlertGroups(): AlertGroup[] {
         const q = this.alertSearch.trim().toLowerCase();
         if (!q) {
             return this.allAlertGroups;
@@ -899,6 +920,41 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
 
     clearAlertSearch(): void {
         this.alertSearch = '';
+    }
+
+    selectChannel(key: string | null): void {
+        this.selectedChannelKey = key;
+    }
+
+    get selectedAlertGroup(): AlertGroup | null {
+        if (!this.selectedChannelKey) {
+            return null;
+        }
+        return this.filteredAlertGroups.find((group) => group.key === this.selectedChannelKey) ?? null;
+    }
+
+    get feedAlerts(): RdioScannerAlert[] {
+        const group = this.selectedAlertGroup;
+        const alerts = group
+            ? group.alerts
+            : this.filteredAlertGroups.flatMap((item) => item.alerts);
+        return [...alerts].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    }
+
+    get totalAlertCount(): number {
+        return this.filteredAlertGroups.reduce((sum, group) => sum + group.alerts.length, 0);
+    }
+
+    channelLabel(item: {
+        systemLabel?: string;
+        systemId: number;
+        talkgroupLabel?: string;
+        talkgroupName?: string;
+        talkgroupId: number;
+    }): string {
+        const system = item.systemLabel || `System ${item.systemId}`;
+        const talkgroup = item.talkgroupLabel || item.talkgroupName || `TG ${item.talkgroupId}`;
+        return `${system} / ${talkgroup}`;
     }
 
     private alertMatchesSearch(alert: RdioScannerAlert, q: string): boolean {
@@ -1032,6 +1088,71 @@ export class RdioScannerAlertsComponent implements OnDestroy, OnInit {
             default:
                 return 'Alert';
         }
+    }
+
+    private static readonly KEYWORD_TONES: Record<string, string> = {
+        armed: 'kw-rose', shots: 'kw-rose', gun: 'kw-rose', weapon: 'kw-rose',
+        stabbing: 'kw-rose', shooting: 'kw-rose', knife: 'kw-rose', assault: 'kw-rose',
+        suspect: 'kw-ember', wanted: 'kw-ember', fleeing: 'kw-ember', robbery: 'kw-ember',
+        theft: 'kw-ember', burglary: 'kw-ember', crash: 'kw-ember',
+        backup: 'kw-ice', assist: 'kw-ice', help: 'kw-ice', pursuit: 'kw-ice',
+        chase: 'kw-ice', traffic: 'kw-ice',
+        rescue: 'kw-mint', medical: 'kw-mint', ems: 'kw-mint', injury: 'kw-mint',
+        overdose: 'kw-mint', ambulance: 'kw-mint',
+        fire: 'kw-amber', structure: 'kw-amber', smoke: 'kw-amber', alarm: 'kw-amber',
+        explosion: 'kw-amber',
+    };
+
+    private static readonly KEYWORD_PALETTE = ['kw-rose', 'kw-ember', 'kw-ice', 'kw-mint', 'kw-amber', 'kw-violet'];
+
+    keywordToneClass(keyword: string): string {
+        const raw = (keyword || '').toLowerCase();
+        const compact = raw.replace(/[^a-z0-9]+/g, '');
+        const parts = raw.split(/[^a-z0-9]+/).filter(Boolean);
+        for (const part of [compact, ...parts]) {
+            const mapped = RdioScannerAlertsComponent.KEYWORD_TONES[part];
+            if (mapped) {
+                return mapped;
+            }
+        }
+        let hash = 0;
+        for (let i = 0; i < compact.length; i++) {
+            hash = (hash * 31 + compact.charCodeAt(i)) >>> 0;
+        }
+        return RdioScannerAlertsComponent.KEYWORD_PALETTE[hash % RdioScannerAlertsComponent.KEYWORD_PALETTE.length];
+    }
+
+    /** Talkgroup tag color (Law/Fire/EMS), not the keyword/alert tone. */
+    alertTagColor(item: { systemId: number; talkgroupId: number } | undefined): string {
+        const tag = this.alertTag(item);
+        return tag ? this.tagColorService.getTagColor(tag) : '';
+    }
+
+    private alertTag(item: { systemId: number; talkgroupId: number } | undefined): string | undefined {
+        if (!item) {
+            return undefined;
+        }
+        const systems = this.rdioScannerService.getConfig()?.systems || [];
+        const system = systems.find((s) =>
+            s.id === item.systemId ||
+            s.systemId === item.systemId ||
+            s.systemRef === item.systemId
+        );
+        const search = system ? [system] : systems;
+        for (const sys of search) {
+            const tg = (sys.talkgroups || []).find((t) =>
+                t.id === item.talkgroupId ||
+                t.talkgroupId === item.talkgroupId ||
+                t.talkgroupRef === item.talkgroupId
+            );
+            if (tg?.tag) {
+                return this.tagColorService.resolveTagLabel(tg.tag);
+            }
+            if (tg?.led) {
+                return tg.led;
+            }
+        }
+        return undefined;
     }
 
     getKeywordsMatched(alert: RdioScannerAlert): string[] {

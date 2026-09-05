@@ -104,7 +104,7 @@ mat-dialog-content {
 
   ::ng-deep .mat-mdc-checkbox-checked .mdc-checkbox__background,
   ::ng-deep .mdc-checkbox--selected .mdc-checkbox__background {
-    border-color: var(--tlr-primary, #39ff14) !important;
+    border-color: var(--tlr-primary, #ff5b2e) !important;
   }
 }
 
@@ -112,7 +112,7 @@ mat-dialog-content {
   font-size: 20px;
   width: 20px;
   height: 20px;
-  color: var(--tlr-primary, #39ff14);
+  color: var(--tlr-primary, #ff5b2e);
 }
 
 .picker-label {

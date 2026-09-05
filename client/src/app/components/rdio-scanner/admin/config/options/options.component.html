@@ -401,7 +401,7 @@
         <div class="row" style="margin-top: 8px;">
           <p>
             <span class="mat-body">Disable Duplicate Detection</span><br>
-            <span class="mat-caption">Turn off duplicate call detection. If disabled, all incoming audio will be processed even if identical calls already exist.</span>
+            <span class="mat-caption">Turn off duplicate call detection. When off (detection enabled), near-simultaneous same-system/talkgroup uploads are dropped by server arrival time (soft RID: known different unit IDs are kept), then by radio timestamp last pass (RID ignored for same-PTT multi-site copies). Feeder and API key are never checked.</span>
           </p>
           <div>
             <mat-slide-toggle color="primary" formControlName="disableDuplicateDetection"></mat-slide-toggle>
@@ -410,8 +410,8 @@
         @if (!form?.get('disableDuplicateDetection')?.value) {
           <div class="row">
             <p>
-              <span class="mat-body">Timestamp Match Window (milliseconds)</span><br>
-              <span class="mat-caption">Two calls on the same system and talkgroup are considered duplicates if their timestamps are within this many milliseconds of each other. Default: 800 ms. Increase to catch simulcast uploads that arrive slightly out of sync (e.g. set 1200 ms to catch calls 1 second apart).</span>
+              <span class="mat-body">Arrival Match Window (milliseconds)</span><br>
+              <span class="mat-caption">Two uploads on the same system and talkgroup are treated as duplicates when they arrive within this many milliseconds — unless both have known radio/unit IDs that differ (keeps distinct talkers that finish uploading together). Missing IDs still match on arrival time. Default: 800 ms. Increase for slower multi-site uploads (e.g. 1200–2000 ms).</span>
             </p>
             <mat-form-field>
               <input type="number" min="100" max="30000" step="100" matInput formControlName="duplicateTimestampWindow" placeholder="Milliseconds (default 800)" autocomplete="off">
@@ -426,12 +426,30 @@
               }
             </mat-form-field>
           </div>
+          <div class="row">
+            <p>
+              <span class="mat-body">Radio Timestamp Match Window (milliseconds)</span><br>
+              <span class="mat-caption">Last-pass check: after arrival matching, drop a same-system/talkgroup upload whose radio (P25) timestamp is within this many milliseconds of a prior call. Radio/unit ID is ignored here so multi-site copies of the same PTT still drop when RIDs disagree. Default: 1200 ms. Set to 0 to disable.</span>
+            </p>
+            <mat-form-field>
+              <input type="number" min="0" max="30000" step="100" matInput formControlName="duplicateRadioTimestampWindow" placeholder="Milliseconds (default 1200)" autocomplete="off">
+              @if (form?.get('duplicateRadioTimestampWindow')?.hasError('required')) {
+                <mat-error>Window is required</mat-error>
+              }
+              @if (form?.get('duplicateRadioTimestampWindow')?.hasError('min')) {
+                <mat-error>Minimum 0 ms</mat-error>
+              }
+              @if (form?.get('duplicateRadioTimestampWindow')?.hasError('max')) {
+                <mat-error>Maximum 30000 ms</mat-error>
+              }
+            </mat-form-field>
+          </div>
         }
         @if (!form?.get('disableDuplicateDetection')?.value) {
           <div class="row">
             <p>
               <span class="mat-body">Cache Retention (milliseconds)</span><br>
-              <span class="mat-caption">How long the in-memory duplicate cache retains call fingerprints. Increase if uploads are significantly delayed. Default: 30000 ms (30 seconds).</span>
+              <span class="mat-caption">How long the in-memory arrival cache keeps recent system/talkgroup uploads so near-simultaneous duplicates can be caught before either row is committed. Not an audio fingerprint store. Default: 30000 ms (30 seconds).</span>
             </p>
             <mat-form-field>
               <input type="number" min="1000" step="1000" matInput formControlName="duplicateDetectionTimeFrame" placeholder="Milliseconds (default 30000)" autocomplete="off">
@@ -448,7 +466,7 @@
           <div style="margin-top: 24px;">
             <p style="margin-bottom: 8px;">
               <span class="mat-body"><strong>Per-System Duplicate Detection</strong></span><br>
-              <span class="mat-caption">Disable duplicate suppression for individual systems while keeping it enabled globally. Matching still scopes to each system and talkgroup.</span>
+              <span class="mat-caption">Disable duplicate suppression for individual systems while keeping it enabled globally. Arrival matching uses a soft different-radio-ID exception; radio-timestamp last pass ignores RID.</span>
             </p>
             <table mat-table [dataSource]="systemsForm.controls" style="width: 100%;">
               <ng-container matColumnDef="label">

@@ -387,10 +387,10 @@
             @if (registrationSettingsLoaded) {
               <!-- Invite Only Notice -->
               @if (isInviteOnlyMode && !success) {
-                <div class="invite-only-notice" style="padding: 15px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; margin-bottom: 20px;">
-                  <div style="display: flex; align-items: center; gap: 10px;">
-                    <mat-icon style="color: #856404;">info</mat-icon>
-                    <strong style="color: #856404;">Registration is by invitation only - you need a valid invitation or registration code to create an account.</strong>
+                <div class="invite-only-notice signal-notice signal-notice--warn">
+                  <div class="signal-notice__row">
+                    <mat-icon>info</mat-icon>
+                    <strong>Registration is by invitation only — you need a valid invitation or registration code to create an account.</strong>
                   </div>
                 </div>
               }
@@ -421,10 +421,10 @@
               }
               <!-- Code Validated Success Message -->
               @if (isInviteOnlyMode && codeValidated && !success) {
-                <div class="code-validated-notice" style="padding: 15px; background-color: #d4edda; border: 1px solid #28a745; border-radius: 4px; margin-bottom: 20px;">
-                  <div style="display: flex; align-items: center; gap: 10px;">
-                    <mat-icon style="color: #155724;">check_circle</mat-icon>
-                    <strong style="color: #155724;">Invite Code Validated, Please Fill Out the Form</strong>
+                <div class="code-validated-notice signal-notice signal-notice--ok">
+                  <div class="signal-notice__row">
+                    <mat-icon>check_circle</mat-icon>
+                    <strong>Invite code validated — fill out the form</strong>
                   </div>
                 </div>
               }

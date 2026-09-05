@@ -92,7 +92,7 @@ const SETTINGS_INDEX: SearchResult[] = [
     { label: 'Config Sync', keywords: 'config sync filesystem backup gitops path', breadcrumb: 'Options → General → Config sync', icon: 'cloud_sync', configSection: 'options', optionPanel: 'general:sync' },
     // ── Audio Settings ────────────────────────────────────────────────────────
     { label: 'Audio Conversion', keywords: 'audio conversion enable convert format', breadcrumb: 'Options → Audio Settings', icon: 'graphic_eq', configSection: 'options', optionPanel: 'securityExpanded' },
-    { label: 'Duplicate Detection', keywords: 'duplicate detection call time window', breadcrumb: 'Options → Audio Settings', icon: 'content_copy', configSection: 'options', optionPanel: 'securityExpanded' },
+    { label: 'Duplicate Detection', keywords: 'duplicate detection arrival match window cache retention fingerprint timestamp', breadcrumb: 'Options → Audio Settings', icon: 'content_copy', configSection: 'options', optionPanel: 'securityExpanded' },
     { label: 'Audio Encryption', keywords: 'audio encryption key aes', breadcrumb: 'Options → Audio Settings', icon: 'enhanced_encryption', configSection: 'options', optionPanel: 'securityExpanded' },
     { label: 'Rate Limiting', keywords: 'rate limit download restrict', breadcrumb: 'Options → Audio Settings', icon: 'speed', configSection: 'options', optionPanel: 'securityExpanded' },
     { label: 'Reconnection Manager', keywords: 'reconnection manager grace period buffer', breadcrumb: 'Options → Audio Settings', icon: 'sync', configSection: 'options', optionPanel: 'securityExpanded' },

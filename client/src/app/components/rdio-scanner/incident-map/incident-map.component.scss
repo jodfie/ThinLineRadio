@@ -37,10 +37,10 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    background: rgba(255, 255, 255, 0.04);
+    padding: 10px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #0d1118;
     box-sizing: border-box;
 }
 
@@ -105,8 +105,8 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--tlr-accent, #7ec8e8);
-    box-shadow: 0 0 6px rgba(126, 200, 232, 0.6);
+    background: var(--tlr-accent, #ff5b2e);
+    box-shadow: 0 0 6px rgba(255, 91, 46, 0.6);
 }
 
 .toolbar-weather-toggles {
@@ -156,9 +156,9 @@
     cursor: pointer;
 
     &.active {
-        color: #7ec8e8;
-        border-color: rgba(126, 200, 232, 0.55);
-        background: rgba(126, 200, 232, 0.12);
+        color: #ff5b2e;
+        border-color: rgba(255, 91, 46, 0.55);
+        background: rgba(255, 91, 46, 0.12);
     }
 
     &:hover:not(.active) {
@@ -225,8 +225,8 @@
     appearance: none;
 
     &:focus {
-        border-color: #7ec8e8;
-        box-shadow: 0 0 0 1px rgba(126, 200, 232, 0.35);
+        border-color: #ff5b2e;
+        box-shadow: 0 0 0 1px rgba(255, 91, 46, 0.35);
     }
 
     &:disabled {
@@ -311,14 +311,14 @@ select.toolbar-control {
     font-weight: 700;
     letter-spacing: 0.03em;
     white-space: nowrap;
-    color: #7ec8e8;
-    background: rgba(126, 200, 232, 0.08);
-    border: 1px solid rgba(126, 200, 232, 0.35);
+    color: #ff5b2e;
+    background: rgba(255, 91, 46, 0.08);
+    border: 1px solid rgba(255, 91, 46, 0.35);
     border-radius: 4px;
     cursor: pointer;
 
     &:hover {
-        background: rgba(126, 200, 232, 0.16);
+        background: rgba(255, 91, 46, 0.16);
     }
 }
 
@@ -765,13 +765,13 @@ select.toolbar-control {
     cursor: pointer;
     border: 0;
     border-radius: 4px;
-    background: rgba(126, 200, 232, 0.85);
+    background: rgba(255, 91, 46, 0.85);
     color: #0a1218;
     font-weight: 600;
     font-size: 12px;
 
     &:hover {
-        background: #7ec8e8;
+        background: #ff5b2e;
     }
 }
 
@@ -797,15 +797,15 @@ select.toolbar-control {
         color: var(--tlr-text, rgba(255, 255, 255, 0.92));
 
         &:focus {
-            border-color: rgba(126, 200, 232, 0.55);
+            border-color: rgba(255, 91, 46, 0.55);
             outline: none;
         }
     }
 
     .toolbar-preset-btn.active {
-        color: var(--tlr-primary, #7ec8e8);
-        border-color: rgba(126, 200, 232, 0.55);
-        background: rgba(126, 200, 232, 0.12);
+        color: var(--tlr-primary, #ff5b2e);
+        border-color: rgba(255, 91, 46, 0.55);
+        background: rgba(255, 91, 46, 0.12);
     }
 
     .incident-map-layout__sidebar {

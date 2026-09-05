@@ -58,6 +58,24 @@ function normalizedDuplicateTimestampWindowMs(value: unknown): number {
     return r;
 }
 
+function normalizedDuplicateRadioTimestampWindowMs(value: unknown): number {
+    const n = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
+    if (!Number.isFinite(n)) {
+        return 1200;
+    }
+    const r = Math.round(n);
+    if (r === 0) {
+        return 0; // disabled
+    }
+    if (r < 100) {
+        return 1200;
+    }
+    if (r > 30000) {
+        return 30000;
+    }
+    return r;
+}
+
 function normalizedDuplicateDetectionTimeFrameMs(value: unknown): number {
     const n = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
     if (!Number.isFinite(n)) {
@@ -406,6 +424,7 @@ export interface Options {
 	disableDuplicateDetection?: boolean;
 	duplicateDetectionTimeFrame?: number;
 	duplicateTimestampWindow?: number;
+	duplicateRadioTimestampWindow?: number;
 	audioFingerprintEnabled?: boolean;
 	audioFingerprintThreshold?: number;
 	audioFingerprintTimeFrame?: number;
@@ -2158,6 +2177,10 @@ export class RdioScannerAdminService implements OnDestroy {
             duplicateTimestampWindow: this.ngFormBuilder.control(
                 normalizedDuplicateTimestampWindowMs(options?.duplicateTimestampWindow),
                 [Validators.required, Validators.min(100), Validators.max(30000)],
+            ),
+            duplicateRadioTimestampWindow: this.ngFormBuilder.control(
+                normalizedDuplicateRadioTimestampWindowMs(options?.duplicateRadioTimestampWindow),
+                [Validators.required, Validators.min(0), Validators.max(30000)],
             ),
             audioFingerprintEnabled: this.ngFormBuilder.control(options?.audioFingerprintEnabled ?? false),
             audioFingerprintThreshold: this.ngFormBuilder.control(options?.audioFingerprintThreshold ?? 0.25, [Validators.required, Validators.min(0), Validators.max(1)]),

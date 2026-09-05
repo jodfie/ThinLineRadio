@@ -37,6 +37,12 @@ $rdio-scanner-theme: mat.m2-define-light-theme(
 @include mat.all-component-themes($rdio-scanner-theme);
 @include mat.all-component-typographies($rdio-scanner-typography);
 
+// Material outline fields: the notch piece is the label gap only. If its left
+// border paints, you get a hairline just inside the field (next to the caret).
+.mdc-notched-outline__notch {
+  border-left: none !important;
+}
+
 // ── Dark theme scoped to the admin panel ──────────────────────────────────────
 // The global theme above is light (needed for the main scanner UI).
 // We define a separate dark theme and scope it to .admin-dark-theme so that
@@ -452,26 +458,10 @@ $admin-dark-theme: mat.m2-define-dark-theme((
   background: var(--tlr-lcd-gradient) !important;
   border: 1px solid var(--tlr-bezel-border) !important;
   border-radius: var(--tlr-bezel-radius) !important;
-  box-shadow: var(--tlr-bezel-shadow),
-              0 0 0 1px rgba(57, 255, 20, 0.06) inset !important;
+  box-shadow: var(--tlr-bezel-shadow) !important;
   overflow: hidden;
   position: relative;
 
-  /* Subtle scanline overlay — same treatment as the LCD live strip. */
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image: repeating-linear-gradient(
-      to bottom,
-      transparent 0,
-      transparent calc(var(--tlr-lcd-scanline-step) - 1px),
-      var(--tlr-lcd-scanline-color) calc(var(--tlr-lcd-scanline-step) - 1px),
-      var(--tlr-lcd-scanline-color) var(--tlr-lcd-scanline-step)
-    );
-    z-index: 0;
-  }
 
   .mat-mdc-menu-content {
     background: transparent !important;
@@ -482,17 +472,17 @@ $admin-dark-theme: mat.m2-define-dark-theme((
 
   .mat-mdc-menu-item {
     background: transparent;
-    color: var(--tlr-accent);
+    color: var(--tlr-text);
     font-family: var(--tlr-font-primary);
     font-size: 13px;
-    letter-spacing: 0.02em;
-    min-height: 32px;
+    letter-spacing: -0.01em;
+    min-height: 36px;
     padding: 0 14px;
-    transition: background 0.15s ease, color 0.15s ease, text-shadow 0.15s ease;
+    transition: background 0.15s var(--tlr-ease, ease), color 0.15s ease;
 
     .mdc-list-item__primary-text,
     .mat-mdc-menu-item-text {
-      color: var(--tlr-accent) !important;
+      color: var(--tlr-text) !important;
       font-family: inherit !important;
       font-size: inherit !important;
       letter-spacing: inherit !important;
@@ -500,20 +490,20 @@ $admin-dark-theme: mat.m2-define-dark-theme((
 
     mat-icon,
     .mat-icon {
-      color: var(--tlr-primary);
-      filter: drop-shadow(0 0 4px rgba(57, 255, 20, 0.4));
+      color: var(--tlr-accent);
+      filter: none;
     }
 
     &:hover:not([disabled]),
     &.cdk-program-focused,
     &.cdk-keyboard-focused {
-      background: rgba(57, 255, 20, 0.08) !important;
-      color: var(--tlr-primary) !important;
+      background: rgba(255, 91, 46, 0.10) !important;
+      color: var(--tlr-text) !important;
 
       .mdc-list-item__primary-text,
       .mat-mdc-menu-item-text {
-        color: var(--tlr-primary) !important;
-        text-shadow: 0 0 6px rgba(57, 255, 20, 0.55);
+        color: var(--tlr-text) !important;
+        text-shadow: none;
       }
     }
 
@@ -521,12 +511,11 @@ $admin-dark-theme: mat.m2-define-dark-theme((
       opacity: 0.45;
     }
 
-    /* Material's hover ripple — recolour to neon green */
     .mat-mdc-menu-ripple,
     .mat-mdc-focus-indicator,
     .mdc-list-item__ripple::before,
     .mdc-list-item__ripple::after {
-      background-color: rgba(57, 255, 20, 0.18) !important;
+      background-color: rgba(255, 91, 46, 0.16) !important;
     }
   }
 
@@ -540,15 +529,15 @@ $admin-dark-theme: mat.m2-define-dark-theme((
   /* Custom scrollbar so the dropdown still feels like an LCD readout */
   .mat-mdc-menu-content {
     scrollbar-width: thin;
-    scrollbar-color: rgba(57, 255, 20, 0.35) transparent;
+    scrollbar-color: rgba(255, 91, 46, 0.35) transparent;
 
     &::-webkit-scrollbar { width: 6px; }
     &::-webkit-scrollbar-track { background: transparent; }
     &::-webkit-scrollbar-thumb {
-      background: rgba(57, 255, 20, 0.35);
+      background: rgba(255, 91, 46, 0.35);
       border-radius: 3px;
     }
-    &::-webkit-scrollbar-thumb:hover { background: rgba(57, 255, 20, 0.55); }
+    &::-webkit-scrollbar-thumb:hover { background: rgba(255, 91, 46, 0.55); }
   }
 }
 
@@ -570,7 +559,7 @@ $admin-dark-theme: mat.m2-define-dark-theme((
     font-weight: 700;
     letter-spacing: 0.08em;
     color: var(--tlr-primary);
-    text-shadow: 0 0 8px rgba(57, 255, 20, 0.55);
+    text-shadow: none;
     margin-bottom: 8px;
   }
 
@@ -602,8 +591,8 @@ $admin-dark-theme: mat.m2-define-dark-theme((
     width: 32px;
     height: 22px;
     padding: 0;
-    background: rgba(57, 255, 20, 0.06);
-    border: 1px solid rgba(57, 255, 20, 0.25);
+    background: rgba(255, 91, 46, 0.06);
+    border: 1px solid rgba(255, 91, 46, 0.25);
     border-radius: 4px;
     color: var(--tlr-primary);
     cursor: pointer;
@@ -617,8 +606,8 @@ $admin-dark-theme: mat.m2-define-dark-theme((
     }
 
     &:hover {
-      background: rgba(57, 255, 20, 0.16);
-      border-color: rgba(57, 255, 20, 0.6);
+      background: rgba(255, 91, 46, 0.16);
+      border-color: rgba(255, 91, 46, 0.6);
     }
   }
 
@@ -677,12 +666,12 @@ $admin-dark-theme: mat.m2-define-dark-theme((
   }
 
   .tlr-time-action--primary {
-    background: rgba(57, 255, 20, 0.12);
-    border-color: rgba(57, 255, 20, 0.55);
+    background: rgba(255, 91, 46, 0.12);
+    border-color: rgba(255, 91, 46, 0.55);
     color: var(--tlr-primary);
 
     &:hover {
-      background: rgba(57, 255, 20, 0.22);
+      background: rgba(255, 91, 46, 0.22);
       border-color: var(--tlr-primary);
       color: var(--tlr-primary);
     }
@@ -852,8 +841,7 @@ $admin-dark-theme: mat.m2-define-dark-theme((
   color: var(--tlr-accent) !important;
   border: 1px solid var(--tlr-bezel-border) !important;
   border-radius: var(--tlr-bezel-radius) !important;
-  box-shadow: var(--tlr-bezel-shadow),
-              0 0 0 1px rgba(57, 255, 20, 0.06) inset !important;
+  box-shadow: var(--tlr-bezel-shadow) !important;
   font-family: var(--tlr-font-primary) !important;
   overflow: hidden;
 }
@@ -878,7 +866,7 @@ $admin-dark-theme: mat.m2-define-dark-theme((
   .mat-calendar-period-button:hover,
   .mat-calendar-previous-button:hover,
   .mat-calendar-next-button:hover {
-    background: rgba(57, 255, 20, 0.1) !important;
+    background: rgba(255, 91, 46, 0.1) !important;
   }
 
   .mat-calendar-arrow {
@@ -904,18 +892,18 @@ $admin-dark-theme: mat.m2-define-dark-theme((
 
   .mat-calendar-body-cell:not(.mat-calendar-body-disabled):hover
     .mat-calendar-body-cell-content:not(.mat-calendar-body-selected) {
-    background: rgba(57, 255, 20, 0.12) !important;
+    background: rgba(255, 91, 46, 0.12) !important;
     color: var(--tlr-primary) !important;
   }
 
   .mat-calendar-body-cell-content.mat-focus-indicator {
-    border-color: rgba(57, 255, 20, 0.4) !important;
+    border-color: rgba(255, 91, 46, 0.4) !important;
   }
 
   .mat-calendar-body-selected {
     background: var(--tlr-primary) !important;
-    color: #001a00 !important;
-    box-shadow: 0 0 12px rgba(57, 255, 20, 0.5);
+    color: #1a0a08 !important;
+    box-shadow: none;
   }
 
   .mat-calendar-body-today:not(.mat-calendar-body-selected) {
@@ -957,26 +945,10 @@ $admin-dark-theme: mat.m2-define-dark-theme((
   color: var(--tlr-accent) !important;
   border: 1px solid var(--tlr-bezel-border) !important;
   border-radius: var(--tlr-bezel-radius) !important;
-  box-shadow: var(--tlr-bezel-shadow),
-              0 0 0 1px rgba(57, 255, 20, 0.06) inset !important;
+  box-shadow: var(--tlr-bezel-shadow) !important;
   overflow: hidden;
   position: relative;
 
-  /* Subtle scanline overlay — same treatment as the LCD live strip. */
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image: repeating-linear-gradient(
-      to bottom,
-      transparent 0,
-      transparent calc(var(--tlr-lcd-scanline-step) - 1px),
-      var(--tlr-lcd-scanline-color) calc(var(--tlr-lcd-scanline-step) - 1px),
-      var(--tlr-lcd-scanline-color) var(--tlr-lcd-scanline-step)
-    );
-    z-index: 0;
-  }
 
   .mat-mdc-dialog-title,
   .mat-mdc-dialog-content,
@@ -993,7 +965,7 @@ $admin-dark-theme: mat.m2-define-dark-theme((
   font-size: 18px !important;
   font-weight: 700 !important;
   letter-spacing: 0.04em;
-  text-shadow: 0 0 8px rgba(57, 255, 20, 0.45);
+  text-shadow: none;
   padding: 18px 22px 8px !important;
 
   &::before { display: none !important; } /* MDC injects an invisible spacer */
@@ -1045,7 +1017,7 @@ $admin-dark-theme: mat.m2-define-dark-theme((
 
   .mat-mdc-checkbox-checked .mdc-checkbox__background,
   .mdc-checkbox--selected .mdc-checkbox__background {
-    border-color: var(--tlr-primary, #39ff14) !important;
+    border-color: var(--tlr-primary) !important;
   }
 }
 
@@ -1081,13 +1053,13 @@ $admin-dark-theme: mat.m2-define-dark-theme((
 
 .tlr-lcd-dialog .tlr-dialog-btn--primary.mat-mdc-button {
   color: var(--tlr-primary) !important;
-  background: rgba(57, 255, 20, 0.08) !important;
-  border: 1px solid rgba(57, 255, 20, 0.55) !important;
-  text-shadow: 0 0 8px rgba(57, 255, 20, 0.55);
+  background: rgba(255, 91, 46, 0.08) !important;
+  border: 1px solid rgba(255, 91, 46, 0.55) !important;
+  text-shadow: none;
 
   &:hover {
-    background: rgba(57, 255, 20, 0.16) !important;
-    box-shadow: 0 0 12px rgba(57, 255, 20, 0.35);
+    background: rgba(255, 91, 46, 0.16) !important;
+    box-shadow: none;
   }
 }
 

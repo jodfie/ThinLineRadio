@@ -124,6 +124,7 @@ export class RdioScannerTranscriptReviewPageComponent implements OnInit, OnDestr
         try {
             const collector = await this.reviewService.getCollectorSettings();
             this.collectorConfigured = !!collector.configured;
+            this.collectorServerName = collector.serverName || '';
             if (this.collectorConfigured) {
                 return;
             }

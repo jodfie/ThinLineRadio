@@ -91,22 +91,37 @@ func (livefeed *Livefeed) IsEnabledForRef(systemRef, talkgroupRef uint) bool {
 }
 
 func (livefeed *Livefeed) IsEnabled(call *Call) bool {
+	return len(livefeed.EnabledMatchingTalkgroupRefs(call)) > 0
+}
+
+// EnabledMatchingTalkgroupRefs returns the client's enabled talkgroup refs that
+// match this call — primary first (if on), then any patch members that are on.
+// Used so a patched call is streamed once as a single talkgroup, not via PATCH
+// fan-in when multiple members are selected.
+func (livefeed *Livefeed) EnabledMatchingTalkgroupRefs(call *Call) []uint {
+	if livefeed == nil || call == nil || call.System == nil || call.Talkgroup == nil {
+		return nil
+	}
+
 	livefeed.mutex.Lock()
 	defer livefeed.mutex.Unlock()
 
-	if call != nil {
-		if livefeed.Matrix[call.System.SystemRef][call.Talkgroup.TalkgroupRef] {
-			return true
-		} else {
-			for _, p := range call.Patches {
-				if livefeed.Matrix[call.System.SystemRef][p] {
-					return true
-				}
-			}
+	sys := call.System.SystemRef
+	primary := call.Talkgroup.TalkgroupRef
+	out := make([]uint, 0, 1+len(call.Patches))
+
+	if livefeed.Matrix[sys][primary] {
+		out = append(out, primary)
+	}
+	for _, p := range call.Patches {
+		if p == 0 || p == primary {
+			continue
+		}
+		if livefeed.Matrix[sys][p] {
+			out = append(out, p)
 		}
 	}
-
-	return false
+	return out
 }
 
 // ScrubToScopedSystems turns off any livefeed entries that are outside the

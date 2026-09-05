@@ -242,7 +242,7 @@ func NewController(config *Config) *Controller {
 	controller.CallNaturesCache = NewCallNaturesCache(controller)
 	controller.IdLookupsCache = NewIdLookupsCache(controller)
 	controller.RecentAlertsCache = NewRecentAlertsCache(controller)
-	controller.DedupCache = NewDedupCache(defaults.options.duplicateDetectionTimeFrame)
+	controller.DedupCache = NewDedupCache(defaults.options.duplicateDetectionTimeFrame, defaults.options.duplicateTimestampWindow)
 	controller.PagerAlertDedup = NewPagerAlertDedup()
 
 	controller.Logs.setDaemon(config.daemon)
@@ -324,30 +324,49 @@ func (controller *Controller) EmitCall(call *Call) {
 	go controller.Clients.EmitCall(controller, call)
 }
 
+// prepareCallEmit applies patch present-as-one-TG and universal cross-talkgroup
+// emit dedupe for this client. Returns nil when the client should not hear it.
+func (controller *Controller) prepareCallEmit(call *Call, client *Client) *Call {
+	if controller == nil || call == nil || client == nil {
+		return nil
+	}
+	presented := controller.presentCallForClient(call, client.Livefeed, client.User)
+	if presented == nil {
+		return nil
+	}
+	if client.EmitDedupe.ShouldSkip(presented) {
+		return nil
+	}
+	return presented
+}
+
 // EmitCallToClient sends a call to a specific client with their individual delay settings
 func (controller *Controller) EmitCallToClient(call *Call, client *Client) {
-	msg := &Message{Command: MessageCommandCall, Payload: call}
+	if client == nil {
+		return
+	}
+	presented := controller.prepareCallEmit(call, client)
+	if presented == nil {
+		return
+	}
 
 	// Prevent infinite recursion - don't check delay for already delayed calls
-	if call.Delayed {
-		// Non-blocking send
+	if call.Delayed || presented.Delayed {
+		msg := &Message{Command: MessageCommandCall, Payload: presented}
 		select {
 		case client.Send <- msg:
 		default:
-			// Skip if channel full
 		}
 		return
 	}
 
-	// Check if this specific client should delay this call
-	if controller.Delayer.CanDelayForClient(call, client) {
-		controller.Delayer.DelayForClient(call, client)
+	if controller.Delayer.CanDelayForClient(presented, client) {
+		controller.Delayer.DelayForClient(presented, client)
 	} else {
-		// Non-blocking send
+		msg := &Message{Command: MessageCommandCall, Payload: presented}
 		select {
 		case client.Send <- msg:
 		default:
-			// Skip if channel full
 		}
 	}
 }
@@ -840,18 +859,20 @@ func (controller *Controller) IngestCall(call *Call) {
 	}
 
 	if !controller.Options.DisableDuplicateDetection && (system == nil || system.DuplicateDetectionEnabled) {
-		// ── Arrival-time duplicate detection ─────────────────────────────────
-		// Two passes using server receivedAt only — no P25 timestamp, no hash.
-		// Catches multi-recorder uploads of the same transmission that arrive
-		// at the server within 1 second of each other.
+		// ── Duplicate detection ──────────────────────────────────────────────
+		// Pass 1–2: server receivedAt (cache + DB), soft RID guard (different
+		// known radio IDs are kept — distinct talkers often upload together).
+		// Pass 3 (last): radio/P25 timestamp within admin window; RID ignored
+		// so same-PTT multi-site copies that disagree on RID still drop.
+		// Feeder / API key are never part of ingest matching.
+
+		windowMs := controller.Options.DuplicateTimestampWindow
+		source := callPrimarySource(call)
 
 		// Pass 1: in-memory cache — catches simultaneous arrivals before either
 		// has been written to the database (closes the race window).
 		if !call.IsDuplicate && controller.DedupCache != nil && call.System != nil && call.Talkgroup != nil {
-			if _, err := controller.getCallDuration(call); err != nil {
-				controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("duplicate check: duration: %v", err))
-			}
-			if controller.DedupCache.CheckAndMarkReceivedAt(call.System.Id, call.Talkgroup.Id, call.Duration) {
+			if controller.DedupCache.CheckAndMarkReceivedAt(call.System.Id, call.Talkgroup.Id, source) {
 				logCall(call, LogLevelWarn, "duplicate (receivedAt cache)")
 				call.IsDuplicate = true
 			}
@@ -860,11 +881,23 @@ func (controller *Controller) IngestCall(call *Call) {
 		// Pass 2: database — catches near-simultaneous arrivals where the first
 		// call was already committed before the second arrived.
 		if !call.IsDuplicate {
-			isDupRA, raErr := controller.Calls.CheckDuplicateByReceivedAt(call, controller.Database)
+			isDupRA, raErr := controller.Calls.CheckDuplicateByReceivedAt(call, controller.Database, windowMs)
 			if raErr != nil {
 				logError(raErr)
 			} else if isDupRA {
 				logCall(call, LogLevelWarn, "duplicate (receivedAt db)")
+				call.IsDuplicate = true
+			}
+		}
+
+		// Pass 3: radio timestamp — last check for delayed multi-site copies.
+		if !call.IsDuplicate {
+			radioWin := controller.Options.DuplicateRadioTimestampWindow
+			isDupTS, tsErr := controller.Calls.CheckDuplicateByTimestamp(call, controller.Database, radioWin)
+			if tsErr != nil {
+				logError(tsErr)
+			} else if isDupTS {
+				logCall(call, LogLevelWarn, "duplicate (radio timestamp)")
 				call.IsDuplicate = true
 			}
 		}
@@ -3179,26 +3212,22 @@ func (controller *Controller) sendAvailableCallsToClient(client *Client) {
 	backlogCalls := controller.Calls.GetCallsBulk(ids)
 
 	for _, call := range backlogCalls {
-
-		if controller.requiresUserAuth() {
-			if client.User == nil || !controller.userHasAccess(client.User, call) {
-				continue
-			}
+		presented := controller.prepareCallEmit(call, client)
+		if presented == nil {
+			continue
 		}
 
 		// For delayed feed catchup: send all calls from the delayed window
 		// The cutoff time was already calculated based on user's delay
 		// So all calls in the query result should be sent (no additional delay checks)
-		if client.Livefeed.IsEnabled(call) {
-			msg := &Message{Command: MessageCommandCall, Payload: call}
-			// Use non-blocking send for safety, with small delay to preserve order
-			select {
-			case client.Send <- msg:
-				// Small delay to ensure chronological order is preserved
-				time.Sleep(1 * time.Millisecond)
-			default:
-				// Channel full or client disconnected, skip to avoid blocking
-			}
+		msg := &Message{Command: MessageCommandCall, Payload: presented}
+		// Use non-blocking send for safety, with small delay to preserve order
+		select {
+		case client.Send <- msg:
+			// Small delay to ensure chronological order is preserved
+			time.Sleep(1 * time.Millisecond)
+		default:
+			// Channel full or client disconnected, skip to avoid blocking
 		}
 	}
 }
@@ -3662,6 +3691,14 @@ func (controller *Controller) ApplyOptionsRuntimeSideEffects(partial map[string]
 		go controller.StartNoAudioMonitoringForAllSystems()
 		go controller.StartNoAudioMonitoringForAllApiKeys()
 	}
+	if controller.DedupCache != nil {
+		if _, ok := partial["duplicateDetectionTimeFrame"]; ok {
+			controller.DedupCache.UpdateTTL(controller.Options.DuplicateDetectionTimeFrame)
+		}
+		if _, ok := partial["duplicateTimestampWindow"]; ok {
+			controller.DedupCache.UpdateMatchWindow(controller.Options.DuplicateTimestampWindow)
+		}
+	}
 }
 
 // readAllData reads all data from the database in a single function for better organization
@@ -3733,6 +3770,12 @@ func (controller *Controller) readAllData() error {
 			controller.ReconnectionMgr.Enabled,
 			controller.Options.ReconnectionGracePeriod,
 			controller.Options.ReconnectionMaxBufferSize)
+	}
+
+	// Align in-memory duplicate cache with persisted arrival-window / retention options.
+	if controller.DedupCache != nil {
+		controller.DedupCache.UpdateTTL(controller.Options.DuplicateDetectionTimeFrame)
+		controller.DedupCache.UpdateMatchWindow(controller.Options.DuplicateTimestampWindow)
 	}
 
 	return nil

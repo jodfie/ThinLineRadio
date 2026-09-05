@@ -1,130 +1,122 @@
 /*
- * ThinLine Radio — Web design tokens
+ * ThinLine Radio — Signal design tokens (web scanner)
  *
- * Mirror of mobile `lib/theme/app_theme.dart` (AppTheme) and
- * `lib/theme/scanner_skin.dart` (ScannerSkin).
- *
- * Web parity rule: any value the mobile app exposes through AppTheme or
- * ScannerSkin should appear here once as a CSS custom property. Component
- * SCSS reads from these variables only — never hard-coded gradients/colors.
+ * Matches www.thinlineradio.com: obsidian base, ember accent, glass panels.
+ * Mobile Flutter keeps its own ScannerSkin. Web no longer mirrors it.
  *
  * Theme is opted in by adding `.thinline-skin` (and optionally
- * `.thinline-skin--light`) to <body> or any subtree. Without that class,
- * existing Material styling stays intact so we can migrate screens
- * incrementally.
+ * `.thinline-skin--light`) to a subtree. Admin stays on `.admin-dark-theme`.
  *
  * Color roles:
- *   --tlr-accent / --tlr-primary  → default UI chrome (tabs, borders, focus)
- *   --tlr-led-green               → LIVE / LINK / latched LEDs only
+ *   --tlr-accent / --tlr-primary  → chrome (tabs, focus, CTAs)
+ *   --tlr-ice                     → LIVE / link status only
+ *   --tlr-led-green / --tlr-led-red → latched scanner LEDs only
  */
 
 :root {
-    /* App Font setting overrides these on <html> at runtime (see app-font.util.ts). */
-    --tlr-font-primary: Roboto, "Helvetica Neue", sans-serif;
-    --tlr-font-numeric: Roboto, "Helvetica Neue", sans-serif;
+    --tlr-font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --tlr-font-primary: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --tlr-font-numeric: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 :root,
 .thinline-skin {
-    /* ── Brand & accents ─────────────────────────────────────────────── */
-    /* Soft cyan — main UI chrome (was neon green; too loud on every page). */
-    --tlr-accent: #7ec8e8;
+    --tlr-obsidian: #06080c;
+    --tlr-obsidian-2: #090c12;
+    --tlr-panel: #0d1118;
+    --tlr-panel-2: #11161f;
+    --tlr-panel-3: #161c27;
+    --tlr-line: rgba(255, 255, 255, 0.08);
+    --tlr-line-strong: rgba(255, 255, 255, 0.14);
+
+    --tlr-ember: #ff5b2e;
+    --tlr-ember-bright: #ff7c4d;
+    --tlr-ember-deep: #d93b13;
+    --tlr-amber: #ffa63d;
+    --tlr-ice: #5fd0ff;
+    --tlr-ice-deep: #1f9ed6;
+    --tlr-mint: #38e0a4;
+    --tlr-rose: #ff4d6d;
+
+    --tlr-accent: var(--tlr-ember);
     --tlr-primary: var(--tlr-accent);
-    /* Legacy Material / older SCSS that still reads --primary-color. */
     --primary-color: var(--tlr-accent);
-    --tlr-error: #ff1744;
-    --tlr-warning: #ffa500;
-    --tlr-info: #1e90ff;
+    --tlr-error: var(--tlr-rose);
+    --tlr-warning: var(--tlr-amber);
+    --tlr-info: var(--tlr-ice);
 
-    /* ── Surfaces & text (dark, default) ─────────────────────────────── */
-    --tlr-bg: #000000;
-    --tlr-surface: #2a2a2a;
-    /* Console tab board + Material tab-body scroll viewport (mat light theme defaults to white). */
-    --tlr-board-surface: #14171b;
-    --tlr-text: #ffffff;
-    --tlr-text-secondary: #888888;
+    --tlr-bg: var(--tlr-obsidian);
+    --tlr-surface: var(--tlr-panel-2);
+    --tlr-board-surface: var(--tlr-panel);
+    --tlr-text: #e9edf4;
+    --tlr-text-secondary: #8590a3;
+    --tlr-text-soft: #b9c2d0;
 
-    /* ── ScannerSkin: chassis (full-screen body behind UI) ───────────── */
-    --tlr-chassis-stop-1: #0c0e12;
-    --tlr-chassis-stop-2: #060708;
-    --tlr-chassis-stop-3: #0a0d11;
-    --tlr-chassis-gradient: linear-gradient(
-        135deg,
-        var(--tlr-chassis-stop-1) 0%,
-        var(--tlr-chassis-stop-2) 45%,
-        var(--tlr-chassis-stop-3) 100%
-    );
+    --tlr-chassis-stop-1: #070a0f;
+    --tlr-chassis-stop-2: #06080c;
+    --tlr-chassis-stop-3: #05070a;
+    --tlr-chassis-gradient:
+        radial-gradient(58% 44% at 12% -6%, rgba(255, 91, 46, 0.16), transparent 62%),
+        radial-gradient(46% 40% at 96% 4%, rgba(95, 208, 255, 0.10), transparent 66%),
+        linear-gradient(180deg, var(--tlr-chassis-stop-1) 0%, var(--tlr-chassis-stop-2) 40%, var(--tlr-chassis-stop-3) 100%);
 
-    /* ── ScannerSkin: LCD face (inside the bezel) ────────────────────── */
-    --tlr-lcd-stop-1: #152028;
-    --tlr-lcd-stop-2: #0c1218;
-    --tlr-lcd-stop-3: #080c10;
-    --tlr-lcd-gradient: linear-gradient(
-        135deg,
-        var(--tlr-lcd-stop-1) 0%,
-        var(--tlr-lcd-stop-2) 50%,
-        var(--tlr-lcd-stop-3) 100%
-    );
-    --tlr-lcd-scanline-color: rgba(255, 255, 255, 0.035);
+    --tlr-lcd-stop-1: var(--tlr-panel-2);
+    --tlr-lcd-stop-2: var(--tlr-panel);
+    --tlr-lcd-stop-3: var(--tlr-obsidian-2);
+    --tlr-lcd-gradient: linear-gradient(180deg, var(--tlr-lcd-stop-1) 0%, var(--tlr-lcd-stop-2) 100%);
+    --tlr-lcd-scanline-color: transparent;
     --tlr-lcd-scanline-step: 3px;
 
-    /* ── ScannerSkin: LCD bezel ──────────────────────────────────────── */
-    --tlr-bezel-border: #2f3d4a;
-    --tlr-bezel-radius: 12px;
+    --tlr-bezel-border: var(--tlr-line);
+    --tlr-bezel-radius: 16px;
     --tlr-bezel-shadow:
-        0 5px 14px rgba(0, 0, 0, 0.5),
-        0 0 16px -4px rgba(126, 200, 232, 0.04);
+        0 1px 0 rgba(255, 255, 255, 0.04) inset,
+        0 24px 60px -30px rgba(0, 0, 0, 0.9);
 
-    /* ── ScannerSkin: divider, neon labels, LEDs ─────────────────────── */
-    --tlr-header-divider: rgba(255, 255, 255, 0.08);
-    --tlr-key-label-neon: #8ed8ff;
-    --tlr-key-label-neon-dim: #5a8fa8;
-    /* Status LEDs only — do not use for page chrome. */
-    --tlr-led-green: #39ff14;
-    --tlr-led-green-dim: #1a3320;
-    --tlr-led-red: #ff3355;
+    --tlr-header-divider: var(--tlr-line);
+    --tlr-key-label-neon: var(--tlr-text-soft);
+    --tlr-key-label-neon-dim: var(--tlr-text-secondary);
+
+    --tlr-led-green: var(--tlr-mint);
+    --tlr-led-green-dim: #163528;
+    --tlr-led-red: var(--tlr-rose);
     --tlr-led-red-dim: #331018;
 
-    /* ── Bottom nav (LcdBottomNavBar parity) ─────────────────────────── */
     --tlr-nav-active: var(--tlr-accent);
-    --tlr-nav-inactive: #9bb0bf;
-    --tlr-nav-active-glow: 0 0 6px rgba(126, 200, 232, 0.35);
+    --tlr-nav-inactive: var(--tlr-text-secondary);
+    --tlr-nav-active-glow: 0 0 0 1px rgba(255, 91, 46, 0.35);
 
-    /* ── Glow utilities for hero/meta text ───────────────────────────── */
-    --tlr-meta-glow: 0 0 8px rgba(126, 200, 232, 0.28);
-    --tlr-hero-glow: 0 0 12px rgba(126, 200, 232, 0.45),
-        0 0 20px rgba(126, 200, 232, 0.22);
+    --tlr-meta-glow: none;
+    --tlr-hero-glow: none;
+
+    --tlr-glow-ember: 0 0 0 1px rgba(255, 91, 46, 0.35), 0 12px 40px -12px rgba(255, 91, 46, 0.45);
+    --tlr-radius: 16px;
+    --tlr-radius-sm: 10px;
+    --tlr-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* ── Light variant — mirrors AppTheme.lightXxx + ScannerSkin light branch */
 .thinline-skin--light {
-    --tlr-bg: #c0c0c0;
-    --tlr-surface: #b0b0b0;
-    --tlr-board-surface: #d9e0e6;
-    --tlr-text: #2c2c2c;
-    --tlr-text-secondary: #666666;
+    --tlr-bg: #f3f5f8;
+    --tlr-surface: #ffffff;
+    --tlr-board-surface: #eef1f6;
+    --tlr-text: #1a2030;
+    --tlr-text-secondary: #5a6478;
+    --tlr-text-soft: #3a4458;
+    --tlr-line: rgba(10, 16, 28, 0.10);
+    --tlr-line-strong: rgba(10, 16, 28, 0.18);
 
-    --tlr-chassis-stop-1: #b0b0b0;
-    --tlr-chassis-stop-2: #c0c0c0;
-    --tlr-chassis-stop-3: rgba(154, 154, 154, 0.9);
-    --tlr-chassis-gradient: linear-gradient(
-        180deg,
-        var(--tlr-chassis-stop-1) 0%,
-        var(--tlr-chassis-stop-2) 50%,
-        var(--tlr-chassis-stop-3) 100%
-    );
+    --tlr-chassis-stop-1: #e8ecf2;
+    --tlr-chassis-stop-2: #f3f5f8;
+    --tlr-chassis-stop-3: #e4e8ef;
+    --tlr-chassis-gradient: linear-gradient(180deg, var(--tlr-chassis-stop-1), var(--tlr-chassis-stop-2));
 
-    --tlr-lcd-stop-1: #eef2f5;
-    --tlr-lcd-stop-2: #d9e0e6;
-    --tlr-lcd-stop-3: #ced6de;
-    --tlr-lcd-scanline-color: rgba(0, 0, 0, 0.04);
+    --tlr-lcd-stop-1: #ffffff;
+    --tlr-lcd-stop-2: #f4f6fa;
+    --tlr-lcd-stop-3: #eef1f6;
+    --tlr-lcd-scanline-color: transparent;
 
-    --tlr-bezel-border: #6e7780;
-    --tlr-bezel-shadow:
-        0 5px 14px rgba(0, 0, 0, 0.14),
-        0 0 16px -4px rgba(126, 200, 232, 0.04);
-
-    --tlr-header-divider: rgba(0, 0, 0, 0.12);
-
-    --tlr-nav-inactive: #3a4a55;
+    --tlr-bezel-border: var(--tlr-line);
+    --tlr-bezel-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 16px 40px -24px rgba(20, 28, 40, 0.25);
+    --tlr-header-divider: var(--tlr-line);
+    --tlr-nav-inactive: #5a6478;
 }

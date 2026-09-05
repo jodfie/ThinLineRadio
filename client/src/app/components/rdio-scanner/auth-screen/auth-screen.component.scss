@@ -1,15 +1,15 @@
-// ─── Design tokens ────────────────────────────────────────────────────────────
-$red:           #cc0000;
-$red-hover:     #e53935;
-$bg-screen:     #0f0f0f;
-$bg-card:       #1a1a1a;
-$bg-inner:      #242424;
-$bg-input:      #2a2a2a;
-$border:        #333;
-$border-focus:  #cc0000;
-$text:          #f0f0f0;
-$text-muted:    #999;
-$text-hint:     #777;
+// Signal tokens
+$red:           #ff5b2e;
+$red-hover:     #ff7c4d;
+$bg-screen:     #06080c;
+$bg-card:       #0d1118;
+$bg-inner:      #11161f;
+$bg-input:      #161c27;
+$border:        rgba(255, 255, 255, 0.08);
+$border-focus:  #ff5b2e;
+$text:          #e9edf4;
+$text-muted:    #8590a3;
+$text-hint:     #61697a;
 // ──────────────────────────────────────────────────────────────────────────────
 
 :host {
@@ -42,9 +42,9 @@ $text-hint:     #777;
 
 .auth-container {
   background: $bg-card;
-  border-radius: 8px;
+  border-radius: 16px;
   padding: 40px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 60px -30px rgba(0, 0, 0, 0.9);
   width: 100%;
   max-width: 480px;
   box-sizing: border-box;
@@ -87,8 +87,10 @@ $text-hint:     #777;
   h1 {
     color: $text;
     margin: 0 0 10px;
+    font-family: "Space Grotesk", ui-sans-serif, sans-serif;
     font-size: 28px;
-    font-weight: 300;
+    font-weight: 600;
+    letter-spacing: -0.02em;
   }
 
   p {
@@ -248,12 +250,26 @@ $text-hint:     #777;
       border-color: $border !important;
     }
 
+    // Notch is only the label gap — its left edge must not paint a hairline
+    // down the inside of the field (Material outline seam).
+    .mdc-notched-outline__leading {
+      border-right: none !important;
+    }
+
+    .mdc-notched-outline__notch {
+      border-left: none !important;
+    }
+
     // Outline border (focused)
     &.mat-focused {
       .mdc-notched-outline__leading,
       .mdc-notched-outline__notch,
       .mdc-notched-outline__trailing {
         border-color: $red !important;
+      }
+
+      .mdc-notched-outline__notch {
+        border-left: none !important;
       }
 
       .mat-mdc-floating-label,
@@ -1380,5 +1396,34 @@ $ap-red: #cc0000;
       opacity: 0.75;
       filter: brightness(1.1);
     }
+  }
+}
+
+.signal-notice {
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  border: 1px solid $border;
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  &--warn {
+    background: rgba(255, 166, 61, 0.10);
+    border-color: rgba(255, 166, 61, 0.35);
+    color: #ffa63d;
+
+    mat-icon, strong { color: #ffa63d; }
+  }
+
+  &--ok {
+    background: rgba(56, 224, 164, 0.10);
+    border-color: rgba(56, 224, 164, 0.35);
+    color: #38e0a4;
+
+    mat-icon, strong { color: #38e0a4; }
   }
 }

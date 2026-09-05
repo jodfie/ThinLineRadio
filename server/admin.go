@@ -168,6 +168,13 @@ func (admin *Admin) requireAdminBasicAuth(next http.HandlerFunc) http.HandlerFun
 // behaviour now also respects AdminAllowedIPs).
 func (admin *Admin) requireLocalhost(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// A valid admin JWT already proved identity (SSO or password login).
+		// Skip the IP allowlist so system admins can manage from the mobile app.
+		if t := admin.GetAuthorization(r); t != "" && admin.ValidateToken(t) {
+			next(w, r)
+			return
+		}
+
 		clientIP := GetClientIP(r)
 
 		if !admin.isAdminIPAllowed(clientIP) {
@@ -3748,13 +3755,8 @@ func (admin *Admin) SSOLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply the same IP restrictions as the normal admin login
 	clientIP := GetClientIP(r)
-	if !admin.isAdminIPAllowed(clientIP) {
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Admin access denied: your IP address is not on the admin allow list"})
-		return
-	}
+	remoteAddr := GetRemoteAddr(r)
 
 	var body struct {
 		Pin string `json:"pin"`
@@ -3762,6 +3764,27 @@ func (admin *Admin) SSOLoginHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Pin == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "pin is required"})
+		return
+	}
+
+	admin.mutex.Lock()
+	attempt := admin.Attempts[remoteAddr]
+	if attempt == nil {
+		admin.Attempts[remoteAddr] = &AdminLoginAttempt{Count: 1, Date: time.Now()}
+		attempt = admin.Attempts[remoteAddr]
+	} else if time.Since(attempt.Date) > admin.AttemptsMaxDelay {
+		attempt.Count = 1
+		attempt.Date = time.Now()
+	} else {
+		attempt.Count++
+		attempt.Date = time.Now()
+	}
+	lockedOut := attempt.Count > admin.AttemptsMax
+	admin.mutex.Unlock()
+	if lockedOut {
+		admin.Controller.Logs.LogEvent(LogLevelWarn, fmt.Sprintf("admin: SSO login locked out from %s", clientIP))
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(map[string]string{"error": "too many attempts, try again later"})
 		return
 	}
 
@@ -3807,6 +3830,7 @@ func (admin *Admin) SSOLoginHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		admin.Tokens = append(admin.Tokens[1:], sToken)
 	}
+	delete(admin.Attempts, remoteAddr)
 	admin.mutex.Unlock()
 
 	admin.Controller.Logs.LogEvent(LogLevelInfo, fmt.Sprintf("admin: SSO login granted for system admin %s from %s", user.Email, clientIP))

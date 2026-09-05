@@ -394,6 +394,9 @@ func main() {
 	http.HandleFunc("/api/admin/systems/save", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.SystemSaveHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/systems/order", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.SystemsOrderHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/systems/delete/", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.SystemDeleteHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/server-management", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.ServerManagementCatalogHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/user-groups/", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.UserGroupMergePatchHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/systems/", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.ServerManagementSystemHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/email-logo", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.EmailLogoUploadHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/email-logo/delete", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.EmailLogoDeleteHandler)).ServeHTTP)
 	http.HandleFunc("/api/admin/favicon", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.FaviconUploadHandler)).ServeHTTP)
@@ -441,7 +444,7 @@ func main() {
 	http.HandleFunc("/api/admin/login-config", wrapHandler(http.HandlerFunc(controller.Admin.LoginConfigHandler)).ServeHTTP)
 
 	// SSO: system admin users exchange their TLR user PIN for an admin JWT (no separate password needed)
-	http.HandleFunc("/api/admin/sso", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.SSOLoginHandler)).ServeHTTP)
+	http.HandleFunc("/api/admin/sso", wrapHandler(http.HandlerFunc(controller.Admin.SSOLoginHandler)).ServeHTTP)
 
 	http.HandleFunc("/api/admin/logout", wrapHandler(controller.Admin.requireLocalhost(controller.Admin.LogoutHandler)).ServeHTTP)
 
@@ -472,6 +475,8 @@ func main() {
 			controller.Admin.UserResetPasswordHandler(w, r)
 		} else if strings.HasSuffix(r.URL.Path, "/suspend") && r.Method == http.MethodPost {
 			controller.Admin.UserSuspendHandler(w, r)
+		} else if r.Method == http.MethodPatch {
+			controller.Admin.UserMergePatchHandler(w, r)
 		} else if r.Method == http.MethodDelete {
 			controller.Admin.UserDeleteHandler(w, r)
 		} else if r.Method == http.MethodPut {

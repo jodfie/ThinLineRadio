@@ -5,8 +5,8 @@
  * form fields stay white unless we override them here. Scoped under
  * `.thinline-skin` so admin views are unaffected.
  *
- * UI chrome uses --tlr-accent (cyan). Neon green is reserved for LEDs
- * (--tlr-led-green), not page chrome.
+ * UI chrome uses --tlr-accent (ember). Ice/mint reserved for LIVE status
+ * and LEDs, not page chrome.
  */
 
 .thinline-skin {
@@ -20,35 +20,35 @@
 
     /* ── LCD tab strip ───────────────────────────────────────────────── */
     .mat-mdc-tab-header {
-        background: linear-gradient(180deg, #1a1f26 0%, #14181e 100%) !important;
+        background: var(--tlr-panel) !important;
         border-bottom: 1px solid var(--tlr-header-divider) !important;
     }
 
     .mat-mdc-tab-labels {
-        gap: 2px;
-        padding: 3px 8px 0 !important;
+        gap: 6px;
+        padding: 8px 10px 0 !important;
     }
 
     .mat-mdc-tab {
         opacity: 1 !important;
-        min-width: 88px !important;
-        height: 40px !important;
-        padding: 0 12px !important;
-        border-radius: 8px 8px 0 0;
-        transition: background 0.15s ease, color 0.15s ease;
+        min-width: 0 !important;
+        height: 36px !important;
+        padding: 0 14px !important;
+        border-radius: 999px !important;
+        transition: background 0.15s var(--tlr-ease, ease), color 0.15s ease;
     }
 
     .mat-mdc-tab .mdc-tab__text-label {
         color: var(--tlr-nav-inactive) !important;
         font-family: var(--tlr-font-primary) !important;
-        font-size: 11px !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.1em !important;
-        text-transform: uppercase !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.02em !important;
+        text-transform: none !important;
     }
 
     .mat-mdc-tab.mdc-tab--active {
-        background: rgba(126, 200, 232, 0.08) !important;
+        background: rgba(255, 91, 46, 0.12) !important;
     }
 
     .mat-mdc-tab.mdc-tab--active .mdc-tab__text-label {
@@ -70,15 +70,15 @@
     .mat-mdc-raised-button.mat-primary,
     .mat-mdc-unelevated-button.mat-primary {
         --mdc-protected-button-container-color: var(--tlr-accent);
-        --mdc-protected-button-label-text-color: #0a1014;
+        --mdc-protected-button-label-text-color: #1a0a08;
         --mdc-filled-button-container-color: var(--tlr-accent);
-        --mdc-filled-button-label-text-color: #0a1014;
+        --mdc-filled-button-label-text-color: #1a0a08;
         font-weight: 700;
         letter-spacing: 0.04em;
     }
 
     .mat-mdc-outlined-button {
-        --mdc-outlined-button-outline-color: rgba(126, 200, 232, 0.4);
+        --mdc-outlined-button-outline-color: rgba(255, 91, 46, 0.4);
         --mdc-outlined-button-label-text-color: var(--tlr-accent);
     }
 
@@ -93,7 +93,7 @@
     .mat-mdc-form-field {
         --mdc-outlined-text-field-container-shape: 8px;
         --mdc-outlined-text-field-outline-color: rgba(255, 255, 255, 0.18);
-        --mdc-outlined-text-field-hover-outline-color: rgba(126, 200, 232, 0.45);
+        --mdc-outlined-text-field-hover-outline-color: rgba(255, 91, 46, 0.45);
         --mdc-outlined-text-field-focus-outline-color: var(--tlr-accent);
         --mdc-outlined-text-field-label-text-color: var(--tlr-text-secondary);
         --mdc-outlined-text-field-input-text-color: var(--tlr-text);
@@ -104,6 +104,10 @@
 
     .mat-mdc-form-field .mat-mdc-text-field-wrapper {
         background: rgba(0, 0, 0, 0.28);
+    }
+
+    .mdc-notched-outline__notch {
+        border-left: none !important;
     }
 
     .mat-mdc-select-value,
@@ -156,12 +160,12 @@
     }
 
     .mat-mdc-row:hover {
-        background: rgba(126, 200, 232, 0.06) !important;
+        background: rgba(255, 91, 46, 0.06) !important;
     }
 
     /* ── Checkbox / slide-toggle accents ─────────────────────────────── */
     .mat-mdc-checkbox.mat-primary {
-        --mdc-checkbox-selected-checkmark-color: #0a1014;
+        --mdc-checkbox-selected-checkmark-color: #1a0a08;
         --mdc-checkbox-selected-focus-icon-color: var(--tlr-accent);
         --mdc-checkbox-selected-hover-icon-color: var(--tlr-accent);
         --mdc-checkbox-selected-icon-color: var(--tlr-accent);
@@ -169,7 +173,7 @@
     }
 
     .mat-mdc-slide-toggle.mat-primary {
-        --mdc-switch-selected-track-color: rgba(126, 200, 232, 0.45);
+        --mdc-switch-selected-track-color: rgba(255, 91, 46, 0.45);
         --mdc-switch-selected-handle-color: var(--tlr-accent);
         --mdc-switch-selected-hover-handle-color: var(--tlr-accent);
         --mdc-switch-selected-pressed-handle-color: var(--tlr-accent);
@@ -177,45 +181,60 @@
     }
 }
 
-/* Alerts expansion panels (full tab + board embed) */
+/* Alerts groups — feed rows, not boxed LCD panels */
 .thinline-skin rdio-scanner-alerts {
+    .alerts-content,
+    .alerts-container,
+    .board-embed-content,
+    .transcripts-list,
+    .stats-content {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
     .alerts-list .mat-expansion-panel.alert-group-panel {
-        background: rgba(0, 0, 0, 0.28) !important;
+        background: transparent !important;
         color: var(--tlr-text) !important;
-        border: 1px solid var(--tlr-bezel-border) !important;
-        border-radius: 8px !important;
+        border: none !important;
+        border-bottom: 1px solid var(--tlr-line) !important;
+        border-radius: 0 !important;
         box-shadow: none !important;
 
         &:hover {
-            border-color: rgba(126, 200, 232, 0.28) !important;
+            border-color: transparent !important;
+            border-bottom-color: var(--tlr-line) !important;
             box-shadow: none !important;
         }
 
         .mat-expansion-panel-header {
             background: transparent !important;
             color: var(--tlr-text) !important;
-            min-height: 34px !important;
-            height: 34px !important;
-            padding: 0 8px 0 10px !important;
+            min-height: 52px !important;
+            height: 52px !important;
+            padding: 0 2px 0 0 !important;
 
             &:hover,
             &:focus {
-                background: rgba(126, 200, 232, 0.05) !important;
+                background: rgba(255, 255, 255, 0.03) !important;
             }
         }
 
         &.mat-expanded > .mat-expansion-panel-header {
-            background: rgba(126, 200, 232, 0.04) !important;
+            background: transparent !important;
         }
 
         .mat-expansion-panel-body {
             background: transparent !important;
-            border-top: 1px solid var(--tlr-header-divider);
-            padding: 6px 8px 8px;
+            border-top: none;
+            padding: 0 0 10px 4px;
         }
 
         .mat-expansion-indicator::after {
-            color: var(--tlr-accent) !important;
+            color: var(--tlr-text-secondary) !important;
         }
 
         .mat-expansion-panel-header-title,
@@ -226,27 +245,22 @@
         .mat-panel-title {
             color: var(--tlr-text) !important;
 
-            .group-type-chip.tone {
-                background: rgba(255, 193, 7, 0.12);
-                border-color: rgba(255, 193, 7, 0.4);
-                box-shadow: none;
-            }
-
+            .group-type-chip.tone,
             .group-type-chip.channel {
-                background: rgba(126, 200, 232, 0.1);
-                border-color: rgba(126, 200, 232, 0.35);
+                background: transparent;
+                border: none;
                 box-shadow: none;
             }
 
             .group-icon {
-                color: var(--tlr-accent) !important;
+                color: var(--tlr-text-secondary) !important;
             }
 
             .group-name {
-                color: var(--tlr-accent) !important;
-                font-family: var(--tlr-font-primary);
-                font-size: 11px !important;
-                font-weight: 600;
+                color: var(--tlr-text) !important;
+                font-family: var(--tlr-font-display);
+                font-size: 14px !important;
+                font-weight: 500;
                 text-shadow: none;
             }
         }
@@ -255,10 +269,10 @@
             color: var(--tlr-text-secondary) !important;
 
             .group-count-badge {
-                color: var(--tlr-accent) !important;
+                color: var(--tlr-text-secondary) !important;
                 font-family: var(--tlr-font-numeric);
-                background: rgba(126, 200, 232, 0.12);
-                border-color: rgba(126, 200, 232, 0.25);
+                background: transparent !important;
+                border: none !important;
                 text-shadow: none;
             }
 
@@ -269,11 +283,8 @@
         }
     }
 
-    .alerts-list .mat-expansion-panel.alert-group-panel.tone-alert-group {
-        border-left: 2px solid var(--tlr-warning) !important;
-    }
-
+    .alerts-list .mat-expansion-panel.alert-group-panel.tone-alert-group,
     .alerts-list .mat-expansion-panel.alert-group-panel.channel-alert-group {
-        border-left: 2px solid var(--tlr-accent) !important;
+        border-left: none !important;
     }
 }

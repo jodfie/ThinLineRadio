@@ -407,27 +407,6 @@ func NewCalls(controller *Controller) *Calls {
 	}
 }
 
-// timestampDurationRatioMin is the minimum ratio (shorter/longer) between the
-// incoming call's duration and a candidate's stored duration for the timestamp
-// fallback check. More lenient than the former energy ratio (0.85) because an
-// identical P25 timestamp is already strong evidence of the same grant — the
-// guard exists only to reject wildly different calls (e.g. 0.26s vs 2.6s) that
-// share a wall-clock second due to SDR Trunk not embedding true P25 timestamps.
-const timestampDurationRatioMin = 0.50
-
-// audioFingerprintWindow is the ±time window used when searching the DB for
-// duplicate candidates via audio fingerprinting (energy profiles and Chromaprint).
-// ±120s covers the worst observed delayed-upload scenario: an uploader whose
-// reported P25 timestamp is up to ~90s behind the actual wall clock. False
-// positives are prevented by the energy similarity (≥80%) and duration ratio
-// (≥85%) guards — a genuinely different call will not score above those
-// thresholds regardless of how close in time it is.
-const audioFingerprintWindow = 120 * time.Second
-
-// defaultTimestampFallbackWindow is the default ±window for timestamp-based
-// duplicate detection when the admin has not configured DuplicateTimestampWindow.
-const defaultTimestampFallbackWindow = 800 * time.Millisecond
-
 // CheckDuplicateByHash queries the DB for any call on the same system+talkgroup
 // whose PCM content hash matches this call's hash. A hash match means the decoded
 // audio samples are bit-identical — a guaranteed duplicate regardless of how far
@@ -454,106 +433,101 @@ func (calls *Calls) CheckDuplicateByHash(call *Call, db *Database) (bool, error)
 	return count > 0, nil
 }
 
-// CheckDuplicateByTimestamp is the last-resort fallback after audio fingerprinting
-// has already cleared the call. It queries the DB for any call on the same
-// system+talkgroup whose P25 timestamp is within ±timestampFallbackWindow.
-// A duration ratio guard (same as the energy path) is applied: if the candidate's
-// stored duration differs by more than 15% from this call's duration, it is skipped.
-// This prevents false positives when two genuinely different calls land at the same
-// wall-clock second (e.g. SDR Trunk uploaders that don't embed true P25 timestamps).
-func (calls *Calls) CheckDuplicateByTimestamp(call *Call, db *Database, windowMs int64) (bool, error) {
-	if call.System == nil || call.Talkgroup == nil {
+// CheckDuplicateByTimestamp is the last-pass duplicate check after arrival-time
+// matching. It looks for a prior call on the same system+talkgroup whose radio
+// (P25) timestamp is within ±windowMs. Radio/unit ID is not part of the match
+// (multi-site uploads often report different RIDs for the same PTT). Feeder and
+// API key are never considered. windowMs 0 disables this pass.
+func (calls *Calls) CheckDuplicateByTimestamp(call *Call, db *Database, windowMs uint) (bool, error) {
+	if call.System == nil || call.Talkgroup == nil || windowMs == 0 {
+		return false, nil
+	}
+	ts := call.Timestamp.UnixMilli()
+	if ts == 0 {
 		return false, nil
 	}
 
 	formatError := errorFormatter("calls", "checkduplicatebytimestamp")
 
-	from := call.Timestamp.UnixMilli() - windowMs
-	to := call.Timestamp.UnixMilli() + windowMs
+	from := ts - int64(windowMs)
+	to := ts + int64(windowMs)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	query := fmt.Sprintf(
-		`SELECT "audioDuration" FROM "calls" WHERE "timestamp" BETWEEN %d AND %d AND "systemId" = %d AND "talkgroupId" = %d`,
+		`SELECT EXISTS (
+			SELECT 1 FROM "calls" c
+			WHERE c."timestamp" BETWEEN %d AND %d
+			  AND c."systemId" = %d AND c."talkgroupId" = %d
+		)`,
 		from, to, call.System.Id, call.Talkgroup.Id,
 	)
 
-	rows, err := db.Sql.QueryContext(ctx, query)
-	if err != nil {
+	var exists bool
+	if err := db.Sql.QueryRowContext(ctx, query).Scan(&exists); err != nil {
 		return false, formatError(err, query)
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var candidateDuration float64
-		if err := rows.Scan(&candidateDuration); err != nil {
-			continue
-		}
-		// If either duration is unknown, trust the timestamp match.
-		if call.Duration <= 0 || candidateDuration <= 0 {
-			return true, nil
-		}
-		lo, hi := call.Duration, candidateDuration
-		if hi < lo {
-			lo, hi = hi, lo
-		}
-		if lo/hi >= timestampDurationRatioMin {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return exists, nil
 }
 
-// receivedAtDuplicateWindow is the maximum gap between this call's server-arrival
-// time and a prior call's server-arrival time on the same system+talkgroup for the
-// receivedAt duplicate pass to fire. 1 second covers the common multi-recorder case
-// where two recorders upload the same transmission within a fraction of a second of
-// each other even when their P25 clocks are skewed.
-const receivedAtDuplicateWindow = 1000 * time.Millisecond
+// receivedAtDuplicateWindowFromMs converts the admin "arrival match window"
+// option into a duration. Zero / unset falls back to the historical 1s default
+// used when this path was hardcoded (before the option was wired through).
+func receivedAtDuplicateWindowFromMs(ms uint) time.Duration {
+	if ms == 0 {
+		return time.Second
+	}
+	if ms < 100 {
+		ms = 100
+	}
+	if ms > 30000 {
+		ms = 30000
+	}
+	return time.Duration(ms) * time.Millisecond
+}
 
-// audioDurationsSimilarForReceivedAtDup returns true when two audio durations are
-// close enough to be considered the same transmission. We use a generous tolerance
-// because the same transmission captured by two different SDRs can differ by a
-// fraction of a second in decode length.
-func audioDurationsSimilarForReceivedAtDup(a, b float64) bool {
-	if a <= 0 || b <= 0 {
-		return false
+// callPrimarySource returns the first positive upload `source` (unit/radio ID) on
+// the call, or 0 when unknown. Parsers map form/JSON `source` / `sources` into
+// call.Units[].UnitRef (and Meta.UnitRefs); there is no separate Call.Source field.
+func callPrimarySource(call *Call) uint {
+	if call == nil {
+		return 0
 	}
-	diff := a - b
-	if diff < 0 {
-		diff = -diff
+	for _, unit := range call.Units {
+		if unit.UnitRef > 0 {
+			return unit.UnitRef
+		}
 	}
-	// Absolute tolerance: within 0.4 s
-	if diff <= 0.4 {
-		return true
+	for _, ref := range call.Meta.UnitRefs {
+		if ref > 0 {
+			return ref
+		}
 	}
-	// Relative tolerance: within 15% of the longer duration
-	longer := a
-	if b > a {
-		longer = b
-	}
-	return diff/longer <= 0.15
+	return 0
+}
+
+// sourcesDisproveReceivedAtDuplicate is a soft trunking guard for arrival-time
+// matching only: when both sides have a known source (radio ID) and they differ,
+// arrival-time matching alone should not drop the later call (distinct talkers
+// often finish uploading together). If either source is missing/zero, return
+// false so normal arrival-time duplicate detection still applies. The
+// radio-timestamp last pass does not use this guard.
+func sourcesDisproveReceivedAtDuplicate(a, b uint) bool {
+	return a > 0 && b > 0 && a != b
 }
 
 // CheckDuplicateByReceivedAt looks for a prior call on the same system+talkgroup
-// whose server-arrival time (receivedAt) is within receivedAtDuplicateWindow of
-// this call's arrival time AND whose audio duration is similar. This catches
-// multi-recorder near-duplicates where the audio bytes differ (different noise
-// floor or encoding) but the same transmission was received by the server within
-// ~1 second from two different uploaders.
+// whose server-arrival time (receivedAt) is within windowMs of this call's
+// arrival. Soft radio-ID guard: known different unit IDs do not count as
+// duplicates. Missing IDs fall back to arrival-time only. Feeder and API key
+// are never considered.
 //
 // Forwarded calls are excluded from this check — a call that arrived via
 // downstream forwarding will always have a different receivedAt than the original,
 // and we must not flag it as a duplicate of itself.
-func (calls *Calls) CheckDuplicateByReceivedAt(call *Call, db *Database) (bool, error) {
+func (calls *Calls) CheckDuplicateByReceivedAt(call *Call, db *Database, windowMs uint) (bool, error) {
 	if call.System == nil || call.Talkgroup == nil {
-		return false, nil
-	}
-
-	// We need the duration to guard against false positives.
-	if _, err := calls.controller.getCallDuration(call); err != nil || call.Duration <= 0 {
 		return false, nil
 	}
 
@@ -564,33 +538,45 @@ func (calls *Calls) CheckDuplicateByReceivedAt(call *Call, db *Database) (bool, 
 	if !call.ReceivedAt.IsZero() {
 		arrivedAt = call.ReceivedAt
 	}
-	windowStart := arrivedAt.Add(-receivedAtDuplicateWindow)
+	window := receivedAtDuplicateWindowFromMs(windowMs)
+	windowStart := arrivedAt.Add(-window)
+	incomingSource := callPrimarySource(call)
 
-	// Look for the most recent call on this system+talkgroup that arrived within
-	// the window. The duration guard prevents false positives from genuinely
-	// different calls that happen to land in the same second.
 	query := fmt.Sprintf(
-		`SELECT "audioDuration" FROM "calls" WHERE "systemId" = %d AND "talkgroupId" = %d AND "receivedAt" >= $1 ORDER BY "receivedAt" DESC LIMIT 1`,
+		`SELECT (
+			SELECT cu."unitRef" FROM "callUnits" cu
+			WHERE cu."callId" = c."callId" AND cu."unitRef" > 0
+			ORDER BY cu."offset" ASC LIMIT 1
+		) AS "source"
+		FROM "calls" c
+		WHERE c."systemId" = %d AND c."talkgroupId" = %d
+		  AND c."receivedAt" >= $1 AND c."receivedAt" <= $2`,
 		call.System.Id, call.Talkgroup.Id,
 	)
 
-	var priorDur sql.NullFloat64
-	if err := db.Sql.QueryRowContext(ctx, query, windowStart).Scan(&priorDur); err != nil {
-		if err == sql.ErrNoRows {
-			return false, nil
-		}
+	rows, err := db.Sql.QueryContext(ctx, query, windowStart, arrivedAt)
+	if err != nil {
 		return false, err
 	}
+	defer rows.Close()
 
-	if !priorDur.Valid {
-		return false, nil
+	for rows.Next() {
+		var priorSource sql.NullInt64
+		if err := rows.Scan(&priorSource); err != nil {
+			return false, err
+		}
+		var prior uint
+		if priorSource.Valid && priorSource.Int64 > 0 {
+			prior = uint(priorSource.Int64)
+		}
+		if !sourcesDisproveReceivedAtDuplicate(incomingSource, prior) {
+			return true, nil
+		}
 	}
-
-	if !audioDurationsSimilarForReceivedAtDup(call.Duration, priorDur.Float64) {
-		return false, nil
+	if err := rows.Err(); err != nil {
+		return false, err
 	}
-
-	return true, nil
+	return false, nil
 }
 
 func (calls *Calls) GetCall(id uint64) (*Call, error) {

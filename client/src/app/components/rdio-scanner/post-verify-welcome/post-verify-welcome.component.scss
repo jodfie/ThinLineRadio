@@ -3,17 +3,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5;
+  background: #06080c;
   padding: 20px;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #e9edf4;
 }
 
 .welcome-card {
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: #0d1118;
+  border-radius: 16px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 60px -30px rgba(0, 0, 0, 0.9);
   max-width: 560px;
   width: 100%;
-  border: 1px solid #e0e0e0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 28px 28px 24px;
 }
 
@@ -25,19 +27,21 @@
     font-size: 48px;
     width: 48px;
     height: 48px;
-    color: #424242;
+    color: #ff5b2e;
   }
 
   h1 {
     margin: 12px 0 8px;
+    font-family: "Space Grotesk", ui-sans-serif, sans-serif;
     font-size: 1.6rem;
-    font-weight: 500;
-    color: #333;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: #e9edf4;
   }
 
   .subtitle {
     margin: 0;
-    color: #666;
+    color: #8590a3;
     font-size: 0.95rem;
     line-height: 1.5;
   }
@@ -48,16 +52,17 @@
 
   h2 {
     margin: 0 0 12px;
+    font-family: "Space Grotesk", ui-sans-serif, sans-serif;
     font-size: 1.1rem;
-    font-weight: 500;
-    color: #333;
+    font-weight: 600;
+    color: #e9edf4;
   }
 }
 
 .steps {
   margin: 0;
   padding-left: 1.25rem;
-  color: #444;
+  color: #b9c2d0;
   line-height: 1.55;
 
   li {
@@ -66,7 +71,7 @@
 }
 
 .mono {
-  font-family: ui-monospace, monospace;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 0.9em;
 }
 
@@ -80,5 +85,5 @@
   margin-top: 20px;
   text-align: center;
   padding-top: 16px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }

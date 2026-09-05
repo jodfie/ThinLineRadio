@@ -77,53 +77,53 @@
               [class.tone]="alert.alertType === 'tone'"
               [class.keyword]="alert.alertType === 'keyword'"
               [class.tone-keyword]="alert.alertType === 'tone+keyword'"
-              [class.transcript]="alert.alertType === 'transcript'">
+              [class.transcript]="alert.alertType === 'transcript'"
+              [style.--tag-accent]="alertTagColor(alert) || null">
               <div class="alert-header alert-header-embed">
-                <div class="alert-header-main">
-                  <div class="alert-header-left">
-                    <span class="alert-type-badge">{{ getAlertTypeLabel(alert) }}</span>
-                    @if (alert.toneDetected) {
-                      <span class="tone-indicator">🔔</span>
+                <div class="alert-header-left">
+                  @if (alert.toneDetected) {
+                    <mat-icon class="tone-indicator" title="Tone detected">notifications_active</mat-icon>
+                  }
+                  @if (getKeywordsMatched(alert).length > 0) {
+                    <div class="embed-keywords">
+                      @for (keyword of getKeywordsMatched(alert); track keyword) {
+                        <span class="embed-keyword" [ngClass]="keywordToneClass(keyword)">{{ keyword }}</span>
+                      }
+                    </div>
+                  }
+                  <div class="alert-channel embed-channel">
+                    @if (alert.systemLabel) {
+                      <span>{{ alert.systemLabel }}</span>
                     }
-                  </div>
-                  <div class="alert-header-actions">
-                    @if (hasIncidentLocation(alert)) {
-                      <mat-icon class="incident-map-pin" matTooltip="Incident location available">place</mat-icon>
+                    @if (!alert.systemLabel) {
+                      <span>System {{ alert.systemId }}</span>
                     }
-                    <button type="button" class="btn-play btn-play--compact" (click)="playCall(alert.callId)">Play</button>
+                    <span> · </span>
+                    @if (alert.talkgroupLabel) {
+                      <span>{{ alert.talkgroupLabel }}</span>
+                    }
+                    @if (!alert.talkgroupLabel && alert.talkgroupName) {
+                      <span>{{ alert.talkgroupName }}</span>
+                    }
+                    @if (!alert.talkgroupLabel && !alert.talkgroupName) {
+                      <span>TG {{ alert.talkgroupId }}</span>
+                    }
                   </div>
                 </div>
-                <div class="alert-timestamp alert-timestamp--embed">
-                  <span class="alert-timestamp-date">{{ formatAlertDate(alert.createdAt) }}</span>
-                  <span class="alert-timestamp-time">{{ formatAlertTime(alert.createdAt) }}</span>
+                <div class="alert-header-actions">
+                  <div class="alert-timestamp alert-timestamp--embed">
+                    <span class="alert-timestamp-date">{{ formatAlertDate(alert.createdAt) }}</span>
+                    <span class="alert-timestamp-time">{{ formatAlertTime(alert.createdAt) }}</span>
+                  </div>
+                  @if (hasIncidentLocation(alert)) {
+                    <mat-icon class="incident-map-pin" matTooltip="Incident location available">place</mat-icon>
+                  }
+                  <button type="button" class="btn-play btn-play--compact" (click)="playCall(alert.callId)" title="Play" aria-label="Play">
+                    <mat-icon>play_arrow</mat-icon>
+                  </button>
                 </div>
               </div>
               <div class="alert-body">
-                @if (getKeywordsMatched(alert).length > 0) {
-                  <div class="embed-keywords">
-                    @for (keyword of getKeywordsMatched(alert); track keyword) {
-                      <span class="embed-keyword">{{ keyword }}</span>
-                    }
-                  </div>
-                }
-                <div class="alert-channel embed-channel">
-                  @if (alert.systemLabel) {
-                    <span>{{ alert.systemLabel }}</span>
-                  }
-                  @if (!alert.systemLabel) {
-                    <span>System {{ alert.systemId }}</span>
-                  }
-                  <span> · </span>
-                  @if (alert.talkgroupLabel) {
-                    <span>{{ alert.talkgroupLabel }}</span>
-                  }
-                  @if (!alert.talkgroupLabel && alert.talkgroupName) {
-                    <span>{{ alert.talkgroupName }}</span>
-                  }
-                  @if (!alert.talkgroupLabel && !alert.talkgroupName) {
-                    <span>TG {{ alert.talkgroupId }}</span>
-                  }
-                </div>
                 @if (alert.alertSummary) {
                   <div class="alert-summary">
                     <p class="summary-text">{{ alert.alertSummary }}</p>
@@ -222,132 +222,83 @@
           <p>Loading alerts...</p>
         </div>
       }
-      @if (showMyAlertsSection && alertsViewMode === 'all') {
-        <h4 class="alerts-section-label">My alerts</h4>
-      }
       @if (showMyAlertsSection && filteredAlertGroups.length > 0) {
-        <div class="alerts-list">
-          <!-- All Alerts - Sorted by Most Recent -->
-          @for (group of filteredAlertGroups; track trackByGroupKey($index, group)) {
-            <mat-expansion-panel
-              class="alert-group-panel"
-              [class.tone-alert-group]="group.groupType === 'tone'"
-              [class.channel-alert-group]="group.groupType === 'channel'">
-              <mat-expansion-panel-header collapsedHeight="34px" expandedHeight="34px" class="group-panel-header">
-                <mat-panel-title class="group-panel-title">
-                  <span class="group-type-chip" [class.tone]="group.groupType === 'tone'" [class.channel]="group.groupType === 'channel'">
-                    <mat-icon class="group-icon">{{ group.groupType === 'tone' ? 'notifications_active' : 'podcasts' }}</mat-icon>
-                  </span>
-                  <span class="group-name">{{ group.key }}</span>
-                </mat-panel-title>
-                <mat-panel-description class="group-panel-meta">
-                  <span class="group-meta-item">
-                    <span class="group-meta-label">Alerts</span>
-                    <span class="group-count-badge">{{ group.alerts.length }}</span>
-                  </span>
-                  <span class="group-meta-sep" aria-hidden="true">·</span>
-                  <span class="group-meta-item">
-                    <span class="group-meta-label">Latest</span>
-                    <span class="group-time">{{ formatAlertDateTime(group.latestTimestamp) }}</span>
-                  </span>
-                </mat-panel-description>
-              </mat-expansion-panel-header>
-              <div class="alert-group-items">
-                @for (alert of group.alerts; track trackByAlertId($index, alert)) {
-                  <div
-                    class="alert-item"
-                    [class.tone]="alert.alertType === 'tone'"
-                    [class.keyword]="alert.alertType === 'keyword'"
-                    [class.tone-keyword]="alert.alertType === 'tone+keyword'"
-                    [class.transcript]="alert.alertType === 'transcript'">
-                    <div class="alert-header">
-                      <div class="alert-header-left">
-                        <span class="alert-type-badge">{{ getAlertTypeLabel(alert) }}</span>
-                        @if (alert.toneDetected) {
-                          <span class="tone-indicator">🔔</span>
-                        }
-                        @if (getKeywordsMatched(alert).length > 0) {
-                          <span class="keyword-tags keyword-tags--inline">
-                            @for (keyword of getKeywordsMatched(alert); track keyword) {
-                              <span class="keyword-tag">{{ keyword }}</span>
-                            }
-                          </span>
-                        }
-                      </div>
-                      <div class="alert-header-right">
-                        @if (hasIncidentLocation(alert)) {
-                          <mat-icon class="incident-map-pin" matTooltip="Incident location available">place</mat-icon>
-                        }
-                        <span class="alert-timestamp">{{ formatTimestamp(alert.createdAt) }}</span>
-                        <button type="button" class="btn-play btn-play--compact" (click)="playCall(alert.callId)">Play</button>
-                      </div>
+        <div class="alerts-desk">
+          <nav class="channel-rail" aria-label="Alert channels">
+            <button type="button" class="channel-row" [class.active]="!selectedChannelKey" (click)="selectChannel(null)">
+              <span class="channel-row-name">All activity</span>
+              <span class="channel-row-count">{{ totalAlertCount }}</span>
+            </button>
+            @for (group of filteredAlertGroups; track trackByGroupKey($index, group)) {
+              <button
+                type="button"
+                class="channel-row"
+                [class.active]="selectedChannelKey === group.key"
+                [class.tone]="group.groupType === 'tone'"
+                [style.--tag-accent]="alertTagColor(group.alerts[0]) || null"
+                (click)="selectChannel(group.key)">
+                <span class="channel-row-name">{{ group.key }}</span>
+                <span class="channel-row-meta">
+                  <span class="channel-row-count">{{ group.alerts.length }}</span>
+                  <span class="channel-row-time">{{ formatAlertTime(group.latestTimestamp) }}</span>
+                </span>
+              </button>
+            }
+          </nav>
+          <section class="dispatch-feed" aria-label="Dispatch feed">
+            <header class="dispatch-feed-head">
+              <div>
+                <h2>{{ selectedAlertGroup?.key || 'All activity' }}</h2>
+                <p>{{ feedAlerts.length }} {{ feedAlerts.length === 1 ? 'hit' : 'hits' }}</p>
+              </div>
+            </header>
+            <div class="dispatch-feed-list">
+              @for (alert of feedAlerts; track trackByAlertId($index, alert)) {
+                <article class="dispatch-card" [style.--tag-accent]="alertTagColor(alert) || null">
+                  <div class="dispatch-card-top">
+                    <div class="dispatch-kws">
+                      @if (alert.toneDetected) {
+                        <mat-icon class="tone-indicator" title="Tone detected">notifications_active</mat-icon>
+                      }
+                      @for (keyword of getKeywordsMatched(alert); track keyword) {
+                        <span class="keyword-tag" [ngClass]="keywordToneClass(keyword)">{{ keyword }}</span>
+                      }
+                      @if (!selectedChannelKey) {
+                        <div class="dispatch-channel">{{ channelLabel(alert) }}</div>
+                      }
                     </div>
-                    <div class="alert-body">
-                      <div class="alert-info">
-                        @if (group.groupType !== 'channel') {
-                          <div class="alert-channel">
-                            <strong>Channel:</strong>
-                            <span>
-                              @if (alert.systemLabel) {
-                                <span>{{ alert.systemLabel }}</span>
-                              }
-                              @if (!alert.systemLabel) {
-                                <span>System {{ alert.systemId }}</span>
-                              }
-                              <span> / </span>
-                              @if (alert.talkgroupLabel) {
-                                <span>{{ alert.talkgroupLabel }}</span>
-                              }
-                              @if (!alert.talkgroupLabel && alert.talkgroupName) {
-                                <span>{{ alert.talkgroupName }}</span>
-                              }
-                              @if (!alert.talkgroupLabel && !alert.talkgroupName) {
-                                <span>Talkgroup {{ alert.talkgroupId }}</span>
-                              }
-                            </span>
-                          </div>
-                        }
-                        @if (alert.toneDetected && (alert.matchedToneSetNames?.length || alert.matchedToneSetName)) {
-                          <div class="alert-tone-set">
-                            <strong>Tone{{ (alert.matchedToneSetNames?.length || 0) > 1 ? 's' : '' }}:</strong>
-                            @if (alert.matchedToneSetNames && alert.matchedToneSetNames.length > 0) {
-                              <span class="tone-set-names">
-                                @for (name of alert.matchedToneSetNames; track name; let last = $last) {
-                                  <span class="tone-set-name">
-                                    {{ name }}@if (!last) {
-                                    <span>, </span>
-                                  }
-                                </span>
-                              }
-                            </span>
-                          }
-                          @if (!alert.matchedToneSetNames || alert.matchedToneSetNames.length === 0) {
-                            <span class="tone-set-name">
-                              {{ alert.matchedToneSetName }}
-                            </span>
-                          }
-                        </div>
+                    <div class="dispatch-card-actions">
+                      @if (hasIncidentLocation(alert)) {
+                        <mat-icon class="incident-map-pin" matTooltip="Incident location available">place</mat-icon>
                       }
-                      @if (alert.alertSummary) {
-                        <div class="alert-summary">
-                          <p class="summary-text">{{ alert.alertSummary }}</p>
-                        </div>
-                      }
-                      @if (alert.transcript || alert.transcriptSnippet) {
-                        <div class="alert-transcript">
-                          <p class="transcript-text"
-                          [innerHTML]="renderTranscript(alert.transcript || alert.transcriptSnippet || '', alert.transcriptAnnotations, alertSearch)"></p>
-                        </div>
-                      }
+                      <time class="dispatch-time">{{ formatAlertDateTime(alert.createdAt) }}</time>
+                      <button type="button" class="btn-play btn-play--compact" (click)="playCall(alert.callId)" title="Play" aria-label="Play">
+                        <mat-icon>play_arrow</mat-icon>
+                      </button>
                     </div>
                   </div>
-                </div>
+                  @if (alert.toneDetected && (alert.matchedToneSetNames?.length || alert.matchedToneSetName)) {
+                    <div class="dispatch-tone">
+                      @if (alert.matchedToneSetNames?.length) {
+                        {{ alert.matchedToneSetNames.join(', ') }}
+                      } @else {
+                        {{ alert.matchedToneSetName }}
+                      }
+                    </div>
+                  }
+                  @if (alert.alertSummary) {
+                    <p class="dispatch-summary">{{ alert.alertSummary }}</p>
+                  }
+                  @if (alert.transcript || alert.transcriptSnippet) {
+                    <p class="dispatch-copy"
+                      [innerHTML]="renderTranscript(alert.transcript || alert.transcriptSnippet || '', alert.transcriptAnnotations, alertSearch)"></p>
+                  }
+                </article>
               }
             </div>
-          </mat-expansion-panel>
-        }
-      </div>
-    }
+          </section>
+        </div>
+      }
     @if (showSystemAlertsSection && alertsViewMode === 'all') {
       <h4 class="alerts-section-label">System alerts</h4>
     }
@@ -378,81 +329,48 @@
 
 @if (!boardEmbed && panelMode === 'transcripts') {
   <div class="transcripts-content">
-    @if (globalTrainingProgress || globalTrainingLoading) {
-      <div class="global-training-goal">
-        <div class="global-training-header">
-          <mat-icon>groups</mat-icon>
-          <span>Community Whisper training goal</span>
+    <div class="transcripts-collector-bar">
+      @if (globalTrainingLoading && !globalTrainingProgress) {
+        <span class="collector-bar-muted">Loading training progress…</span>
+      }
+      @if (globalTrainingProgress) {
+        <span class="collector-bar-label">Training</span>
+        <span class="collector-bar-hours">{{ globalTrainingProgress.hoursDecimal | number:'1.1-1' }} / {{ globalTrainingProgress.goalHours | number }}h</span>
+        <div class="global-training-bar collector-bar-meter" role="progressbar"
+          [attr.aria-valuenow]="globalTrainingProgress.percentOfGoal"
+          aria-valuemin="0" aria-valuemax="100">
+          <div class="global-training-bar-fill" [style.width.%]="globalTrainingProgress.percentOfGoal"></div>
         </div>
-        @if (globalTrainingLoading && !globalTrainingProgress) {
-          <div class="global-training-loading">Loading progress…</div>
-        }
-        @if (globalTrainingProgress) {
-          <div class="global-training-stats">
-            <span class="global-training-primary">{{ globalTrainingProgress.hoursDecimal | number:'1.1-1' }} / {{ globalTrainingProgress.goalHours | number }} hours</span>
-            <span class="global-training-detail">{{ globalTrainingProgress.hours }}h {{ globalTrainingProgress.minutes }}m {{ globalTrainingProgress.seconds }}s · {{ globalTrainingProgress.percentOfGoal | number:'1.1-1' }}%</span>
-          </div>
-          <div class="global-training-bar" role="progressbar"
-            [attr.aria-valuenow]="globalTrainingProgress.percentOfGoal"
-            aria-valuemin="0" aria-valuemax="100">
-            <div class="global-training-bar-fill" [style.width.%]="globalTrainingProgress.percentOfGoal"></div>
-          </div>
-          <div class="global-training-meta muted">
-            {{ globalTrainingProgress.submissions }} reviewed submissions across {{ globalTrainingProgress.serverAccounts }} TLR servers
-          </div>
-        }
-      </div>
-    }
-    @if (adminAuthenticated) {
-      <div class="transcripts-admin-bar">
+        <span class="collector-bar-muted">{{ globalTrainingProgress.percentOfGoal | number:'1.0-1' }}% · {{ globalTrainingProgress.submissions }} across {{ globalTrainingProgress.serverAccounts }} servers</span>
+      }
+      @if (adminAuthenticated && collectorStats) {
+        <span class="collector-bar-muted">This server {{ collectorStats.submissions }} · {{ collectorStats.formatted }}</span>
+      }
+      @if (adminAuthenticated && collectorLoading && !collectorStats) {
+        <span class="collector-bar-muted">Collector…</span>
+      }
+      @if (adminAuthenticated && !collectorLoading && (!collectorHasApiKey || !collectorConnected)) {
+        <span class="collector-status collector-status--warn">Not connected</span>
+        <button type="button" class="btn-collector-connect"
+          (click)="requestCollectorKey()"
+          [disabled]="collectorConnecting">
+          {{ collectorConnecting ? 'Requesting…' : 'Request API key' }}
+        </button>
+      }
+      <a class="collector-download" [href]="trainingDataDownloadUrl" target="_blank" rel="noopener noreferrer">
+        <mat-icon>download</mat-icon>
+        Download training data
+      </a>
+      @if (adminAuthenticated) {
         <button type="button" class="btn-training-tips" (click)="showTrainingTips = !showTrainingTips">
           <mat-icon>{{ showTrainingTips ? 'expand_less' : 'help_outline' }}</mat-icon>
-          {{ showTrainingTips ? 'Hide training tips' : 'Show training tips' }}
+          {{ showTrainingTips ? 'Hide tips' : 'Tips' }}
         </button>
-      </div>
-    }
+      }
+    </div>
     @if (adminAuthenticated && showTrainingTips) {
       <rdio-scanner-transcript-training-tips></rdio-scanner-transcript-training-tips>
     }
-    @if (adminAuthenticated) {
-      <div class="collector-setup">
-        <div class="collector-setup-header">
-          <mat-icon>cloud_upload</mat-icon>
-          <span>Transcript Collector</span>
-          @if (collectorHasApiKey && collectorConnected && !collectorLoading) {
-            <span class="collector-status collector-status--ok">
-              Connected@if (collectorServerName) {
-              <span> · {{ collectorServerName }}</span>
-            }
-          </span>
-        }
-        @if ((!collectorHasApiKey || !collectorConnected) && !collectorLoading) {
-          <span class="collector-status collector-status--warn">Not connected</span>
-        }
-        @if (collectorLoading) {
-          <span class="collector-status">Checking…</span>
-        }
-      </div>
-      @if (!collectorHasApiKey || !collectorConnected) {
-        <div class="collector-setup-actions">
-          <button type="button" class="btn-collector-connect"
-            (click)="requestCollectorKey()"
-            [disabled]="collectorConnecting">
-            {{ collectorConnecting ? 'Requesting…' : 'Request API Key' }}
-          </button>
-        </div>
-      }
-      @if (collectorStats) {
-        <div class="collector-contribution">
-          <span class="contrib-label">Training data contributed@if (collectorServerName) {
-            <span> · {{ collectorServerName }}</span>
-          }</span>
-          <span class="contrib-value">{{ collectorStats.submissions }} submissions · {{ collectorStats.formatted }}</span>
-          <span class="contrib-detail">{{ collectorStats.hours }}h {{ collectorStats.minutes }}m {{ collectorStats.seconds }}s</span>
-        </div>
-      }
-    </div>
-  }
   @if (transcriptsStale) {
     <div class="transcripts-stale-banner">
       <span>New transcripts are available.</span>
@@ -510,68 +428,48 @@
   @if (transcripts.length > 0) {
     <div class="transcripts-list">
       @for (transcript of transcripts; track trackByTranscriptId($index, transcript)) {
-        <div class="transcript-item">
+        <div class="transcript-item" [style.--tag-accent]="alertTagColor(transcript) || null">
           <div class="transcript-header">
-            <div class="transcript-channel">
-              <strong>Channel:</strong>
-              <span>
-                @if (transcript.systemLabel) {
-                  <span>{{ transcript.systemLabel }}</span>
-                }
-                @if (!transcript.systemLabel) {
-                  <span>System {{ transcript.systemId }}</span>
-                }
-                <span> / </span>
-                @if (transcript.talkgroupLabel) {
-                  <span>{{ transcript.talkgroupLabel }}</span>
-                }
-                @if (!transcript.talkgroupLabel && transcript.talkgroupName) {
-                  <span>{{ transcript.talkgroupName }}</span>
-                }
-                @if (!transcript.talkgroupLabel && !transcript.talkgroupName) {
-                  <span>Talkgroup {{ transcript.talkgroupId }}</span>
-                }
-              </span>
+            <div class="transcript-channel">{{ channelLabel(transcript) }}</div>
+            <div class="transcript-header-actions">
+              <time class="transcript-time">{{ transcript.timestamp ? formatAlertDateTime(transcript.timestamp) : '' }}</time>
+              <button type="button" class="btn-play btn-play--compact" (click)="playCall(transcript.callId)" title="Play" aria-label="Play">
+                <mat-icon>play_arrow</mat-icon>
+              </button>
             </div>
           </div>
           <div class="transcript-body">
             @if (transcript.alertSummary) {
-              <div class="alert-summary">
-                <strong>Summary:</strong>
-                <p class="summary-text">{{ transcript.alertSummary }}</p>
-              </div>
+              <p class="transcript-summary">{{ transcript.alertSummary }}</p>
             }
-            <p [innerHTML]="renderTranscript(transcript.transcript, transcript.transcriptAnnotations, filterSearch)"></p>
+            <p class="transcript-copy"
+              [innerHTML]="renderTranscript(transcript.transcript, transcript.transcriptAnnotations, filterSearch)"></p>
           </div>
-          <div class="transcript-footer">
-            <span>{{ transcript.timestamp ? formatTimestamp(transcript.timestamp) : '' }}</span>
-            <div class="footer-actions">
-              <button class="btn-play" (click)="playCall(transcript.callId)">
-                Play Call
-              </button>
-              @if (adminAuthenticated && !isTrainingSubmitted(transcript)) {
-                <button class="btn-edit-training"
-                  [class.btn-edit-training--active]="editingCallId === transcript.callId"
-                  (click)="toggleEdit(transcript)">
-                  @if (editingCallId !== transcript.callId) {
-                    <span>
-                      ✎ Edit for Training@if (hasTrainingDraft(transcript)) {
-                      <span class="draft-hint"> (draft)</span>
+          @if (adminAuthenticated) {
+            <div class="transcript-footer">
+              <div class="footer-actions">
+                @if (!isTrainingSubmitted(transcript)) {
+                  <button class="btn-edit-training"
+                    [class.btn-edit-training--active]="editingCallId === transcript.callId"
+                    (click)="toggleEdit(transcript)">
+                    @if (editingCallId !== transcript.callId) {
+                      <span>
+                        Edit for training@if (hasTrainingDraft(transcript)) {
+                        <span class="draft-hint"> (draft)</span>
+                      }
+                    </span>
                     }
-                  </span>
+                    @if (editingCallId === transcript.callId) {
+                      <span>Cancel</span>
+                    }
+                  </button>
                 }
-                @if (editingCallId === transcript.callId) {
-                  <span>✕ Cancel</span>
+                @if (isTrainingSubmitted(transcript)) {
+                  <span class="training-submitted-badge">Submitted for training</span>
                 }
-              </button>
-            }
-            @if (adminAuthenticated && isTrainingSubmitted(transcript)) {
-              <span class="training-submitted-badge">
-                ✓ Submitted for training
-              </span>
-            }
-          </div>
-        </div>
+              </div>
+            </div>
+          }
         @if (editingCallId === transcript.callId) {
           <div class="training-edit-panel">
             <div class="training-edit-audio">

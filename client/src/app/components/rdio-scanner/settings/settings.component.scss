@@ -44,14 +44,14 @@
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 
     &:hover {
-      background: rgba(126, 200, 232, 0.08);
+      background: rgba(255, 91, 46, 0.08);
       color: rgba(255, 255, 255, 0.92);
     }
 
     &.active {
-      background: rgba(126, 200, 232, 0.12);
-      border-color: rgba(126, 200, 232, 0.55);
-      color: #7ec8e8;
+      background: rgba(255, 91, 46, 0.12);
+      border-color: rgba(255, 91, 46, 0.55);
+      color: #ff5b2e;
     }
   }
 
@@ -222,7 +222,7 @@
           .mdc-text-field--focused .mdc-notched-outline__leading,
           .mdc-text-field--focused .mdc-notched-outline__notch,
           .mdc-text-field--focused .mdc-notched-outline__trailing {
-            border-color: var(--primary-color, #7ec8e8) !important;
+            border-color: var(--primary-color, #ff5b2e) !important;
           }
         }
       }
@@ -250,7 +250,7 @@
 
         ::ng-deep {
           .mat-mdc-slide-toggle {
-            color: var(--primary-color, #7ec8e8) !important;
+            color: var(--primary-color, #ff5b2e) !important;
 
             .mdc-switch__track {
               background-color: rgba(255, 255, 255, 0.3);
@@ -258,8 +258,8 @@
             }
 
             .mdc-switch--selected .mdc-switch__track {
-              background-color: var(--primary-color, #7ec8e8);
-              border-color: var(--primary-color, #7ec8e8);
+              background-color: var(--primary-color, #ff5b2e);
+              border-color: var(--primary-color, #ff5b2e);
             }
 
             .mdc-switch__handle {
@@ -272,7 +272,7 @@
             label,
             .mat-mdc-slide-toggle-label,
             span {
-              color: var(--primary-color, #7ec8e8) !important;
+              color: var(--primary-color, #ff5b2e) !important;
               font-size: 13px;
               font-weight: 600 !important;
             }
@@ -314,12 +314,12 @@
         }
 
         &.active {
-          background: rgba(126, 200, 232, 0.1);
-          border-color: var(--primary-color, #7ec8e8);
-          color: var(--primary-color, #7ec8e8);
+          background: rgba(255, 91, 46, 0.1);
+          border-color: var(--primary-color, #ff5b2e);
+          color: var(--primary-color, #ff5b2e);
 
           .info-icon {
-            color: var(--primary-color, #7ec8e8);
+            color: var(--primary-color, #ff5b2e);
           }
         }
       }
@@ -443,7 +443,7 @@
           font-size: 15px;
           width: 15px;
           height: 15px;
-          color: var(--primary-color, #7ec8e8);
+          color: var(--primary-color, #ff5b2e);
           flex-shrink: 0;
         }
 
@@ -576,7 +576,7 @@
         ::ng-deep .mdc-text-field--focused .mdc-notched-outline__leading,
         ::ng-deep .mdc-text-field--focused .mdc-notched-outline__notch,
         ::ng-deep .mdc-text-field--focused .mdc-notched-outline__trailing {
-          border-color: var(--primary-color, #7ec8e8) !important;
+          border-color: var(--primary-color, #ff5b2e) !important;
         }
       }
     }
@@ -650,8 +650,8 @@
             }
 
             .mdc-switch--selected .mdc-switch__track {
-              background-color: var(--primary-color, #7ec8e8);
-              border-color: var(--primary-color, #7ec8e8);
+              background-color: var(--primary-color, #ff5b2e);
+              border-color: var(--primary-color, #ff5b2e);
             }
           }
         }
@@ -743,7 +743,7 @@
             }
 
             .mdc-floating-label--float-above {
-              color: var(--primary-color, #7ec8e8) !important;
+              color: var(--primary-color, #ff5b2e) !important;
               font-weight: 600;
             }
 
@@ -765,7 +765,7 @@
             .mdc-text-field--focused .mdc-notched-outline__leading,
             .mdc-text-field--focused .mdc-notched-outline__notch,
             .mdc-text-field--focused .mdc-notched-outline__trailing {
-              border-color: var(--primary-color, #7ec8e8) !important;
+              border-color: var(--primary-color, #ff5b2e) !important;
             }
 
             .mat-mdc-form-field-hint {
@@ -799,7 +799,7 @@
     }
 
     .mat-mdc-option.mdc-list-item--selected {
-      background: rgba(126, 200, 232, 0.12);
+      background: rgba(255, 91, 46, 0.12);
     }
 
     .mat-mdc-option:hover:not(.mdc-list-item--disabled) {
@@ -886,8 +886,8 @@
       transition: all 0.2s ease;
 
       &:hover {
-        border-color: var(--primary-color, #7ec8e8);
-        background: rgba(126, 200, 232, 0.05);
+        border-color: var(--primary-color, #ff5b2e);
+        background: rgba(255, 91, 46, 0.05);
       }
 
       .tag-info {
@@ -909,8 +909,8 @@
           height: 28px;
 
           &:hover {
-            color: var(--primary-color, #7ec8e8);
-            background: rgba(126, 200, 232, 0.1);
+            color: var(--primary-color, #ff5b2e);
+            background: rgba(255, 91, 46, 0.1);
           }
 
           mat-icon {
@@ -978,7 +978,7 @@
             .mdc-text-field--focused .mdc-notched-outline__leading,
             .mdc-text-field--focused .mdc-notched-outline__notch,
             .mdc-text-field--focused .mdc-notched-outline__trailing {
-              border-color: var(--primary-color, #7ec8e8) !important;
+              border-color: var(--primary-color, #ff5b2e) !important;
             }
           }
         }
@@ -1097,15 +1097,15 @@
         align-items: center;
         gap: 6px;
         padding: 8px 10px;
-        background: rgba(126, 200, 232, 0.1);
-        border: 1px solid var(--primary-color, #7ec8e8);
+        background: rgba(255, 91, 46, 0.1);
+        border: 1px solid var(--primary-color, #ff5b2e);
         border-radius: 4px;
         margin-bottom: 10px;
-        color: var(--primary-color, #7ec8e8);
+        color: var(--primary-color, #ff5b2e);
         font-size: 12px;
 
         mat-icon {
-          color: var(--primary-color, #7ec8e8);
+          color: var(--primary-color, #ff5b2e);
           width: 16px;
           height: 16px;
           font-size: 16px;
@@ -1151,14 +1151,14 @@
           gap: 8px;
 
           &.status-active {
-            color: var(--primary-color, #7ec8e8);
+            color: var(--primary-color, #ff5b2e);
             font-weight: 600;
           }
 
           .group-admin-badge {
             font-size: 10px;
             padding: 1px 6px;
-            background: var(--primary-color, #7ec8e8);
+            background: var(--primary-color, #ff5b2e);
             color: rgba(0, 0, 0, 0.87);
             border-radius: 12px;
             font-weight: 600;
@@ -1240,7 +1240,7 @@
       .mdc-text-field--focused .mdc-notched-outline__leading,
       .mdc-text-field--focused .mdc-notched-outline__notch,
       .mdc-text-field--focused .mdc-notched-outline__trailing {
-        border-color: var(--primary-color, #7ec8e8) !important;
+        border-color: var(--primary-color, #ff5b2e) !important;
       }
 
       .mat-mdc-form-field-error {
@@ -1324,14 +1324,14 @@
       font-family: var(--tlr-font-primary);
 
       &:hover {
-        background: rgba(126, 200, 232, 0.08);
+        background: rgba(255, 91, 46, 0.08);
         color: var(--tlr-text);
       }
 
       &.active {
-        background: rgba(126, 200, 232, 0.12);
-        border-color: var(--tlr-primary, #7ec8e8);
-        color: var(--tlr-primary, #7ec8e8);
+        background: rgba(255, 91, 46, 0.12);
+        border-color: var(--tlr-primary, #ff5b2e);
+        color: var(--tlr-primary, #ff5b2e);
       }
     }
 
@@ -1403,7 +1403,7 @@
       }
 
       .mdc-switch--selected .mdc-switch__track {
-        background-color: rgba(126, 200, 232, 0.55) !important;
+        background-color: rgba(255, 91, 46, 0.55) !important;
       }
 
       .mdc-switch__handle {
@@ -1412,7 +1412,7 @@
 
       .mdc-switch--selected .mdc-switch__handle {
         background: var(--tlr-primary) !important;
-        box-shadow: 0 0 10px rgba(126, 200, 232, 0.55);
+        box-shadow: 0 0 10px rgba(255, 91, 46, 0.55);
       }
 
       .mdc-label {
@@ -1424,7 +1424,7 @@
       .mat-mdc-flat-button.mat-primary {
         background: var(--tlr-primary) !important;
         color: var(--tlr-bg) !important;
-        box-shadow: 0 0 12px rgba(126, 200, 232, 0.4) !important;
+        box-shadow: 0 0 12px rgba(255, 91, 46, 0.4) !important;
       }
 
       .mat-mdc-stroked-button {
@@ -1433,7 +1433,7 @@
         color: var(--tlr-accent) !important;
 
         &:hover {
-          background: rgba(126, 200, 232, 0.08) !important;
+          background: rgba(255, 91, 46, 0.08) !important;
           border-color: var(--tlr-accent) !important;
         }
       }

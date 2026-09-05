@@ -1,6 +1,39 @@
 # Change log
 
-## Unreleased
+## Version 26.09.05 - Released September 5, 2026
+
+### Fixed
+
+- **Duplicate detection — hybrid RID handling**
+  - **Arrival** passes (cache + DB): soft radio-ID guard — known different unit IDs are kept so distinct talkers that finish uploading together are not collapsed.
+  - **Radio-timestamp** last pass: ignores RID so same-PTT multi-site copies that disagree on radio ID still drop. Feeder and API key are never part of matching.
+  - Admin Audio Settings copy updated.
+
+- **Livefeed — patched calls stream as one talkgroup**
+  - Formal P25 `patches` no longer fan in as a PATCH-style multi-match to the client. The server picks **one** enabled talkgroup from primary ∪ patches (prefer primary), clears `patches` on the outbound payload, and sends a single CALL. Avoid on the primary stops hearing it as that TG; another selected patch member can still receive it once as that member.
+
+- **Livefeed — universal cross-talkgroup emit dedupe**
+  - When the same PTT is uploaded as separate calls on different talkgroups (same system, same `source`, same radio timestamp), each livefeed client is streamed **once** within a short window. Soft when source is missing (analog / unknown unit). Applies to every system — not limited to a specific county or talkgroup set. Calls remain stored for search/history.
+
+- **Duplicate detection — radio timestamp last pass**
+  - After arrival-time cache/DB checks, a final pass drops same system/talkgroup uploads whose **radio (P25) timestamp** falls within `duplicateRadioTimestampWindow` (default **1200 ms**; 0 disables). Admin Audio Settings exposes the new control.
+
+- **Transcript collector — public self-serve key page removed**
+  - Visitors on `transcripts.thinlineds.com` can browse and download training data, but `/register` no longer mints a key. System admins still request a key from the TLR Transcripts UI to send training clips.
+
+### Added
+
+- **Mobile — Server admin (system admins)**
+  - Scanner Management → scanner settings now has a **Server admin** section for system admins. Systems expand to show their talkgroups. Groups edit talkgroup access and delays. Users open a management screen (profile, group, subscription status, PIN expiration, group/system admin, verified, suspend, password, delete). Uses PIN SSO and merge-only APIs so phones are not IP-locked to `/admin` and full system saves are not required.
+
+### Changed
+
+- **Scanner client — Signal UI**
+  - End-user scanner, incident map, auth/onboarding, and group-admin now use the Signal design system (obsidian, ember, Inter / Space Grotesk). The LCD/hardware look is gone. `/admin` is unchanged.
+  - Alerts list uses keyword-colored chips, glass cards, and a filled Play control so matches are easier to scan.
+
+- **Coverage map rebuilds when operators change coverage**
+  - `www.thinlineradio.com/coverage` now serves a live `/data/coverage.json` from the public directory instead of a dated snapshot. Saving coverage (or registering / going private) invalidates the cache so the map updates on the next load.
 
 ---
 

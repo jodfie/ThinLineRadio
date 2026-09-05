@@ -111,7 +111,7 @@ const OPTIONS_PANEL_DEFS: Record<OptionsPanelId, OptionsPanelDef> = {
     security: {
         keys: [
             'audioConversion', 'disableDuplicateDetection', 'duplicateTimestampWindow',
-            'duplicateDetectionTimeFrame', 'audioEncryptionEnabled', 'rateLimitingEnabled',
+            'duplicateRadioTimestampWindow', 'duplicateDetectionTimeFrame', 'audioEncryptionEnabled', 'rateLimitingEnabled',
             'maxDownloadsPerWindow', 'downloadWindowMinutes',
         ],
         systemsDuplicateDetection: true,
@@ -244,7 +244,8 @@ const OPTIONS_FIELD_LABELS: Record<string, string> = {
     noAudioRepeatMinutes: 'No-audio repeat interval',
     audioConversion: 'Audio conversion',
     disableDuplicateDetection: 'Disable duplicate detection',
-    duplicateTimestampWindow: 'Duplicate timestamp window',
+    duplicateTimestampWindow: 'Duplicate arrival match window',
+    duplicateRadioTimestampWindow: 'Duplicate radio timestamp match window',
     duplicateDetectionTimeFrame: 'Duplicate cache retention',
     audioEncryptionEnabled: 'Audio encryption',
     rateLimitingEnabled: 'Download rate limiting',

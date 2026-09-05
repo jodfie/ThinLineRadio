@@ -93,7 +93,6 @@ export class TranscriptReviewService {
     }
 
     async requestCollectorKey(): Promise<{ message: string; serverName?: string; serverUrl?: string }> {
-        // Same-origin via TLR server — avoids CORS and service-worker issues with cross-origin fetch.
         return firstValueFrom(
             this.http.post<{ message: string; serverName?: string; serverUrl?: string }>(
                 `${this.baseUrl()}/collector/request-key`,

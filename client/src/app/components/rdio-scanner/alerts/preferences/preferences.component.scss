@@ -48,17 +48,17 @@
   
   .btn-save {
     padding: 8px 16px;
-    background: rgba(126, 200, 232, 0.1);
-    border: 1.5px solid #7ec8e8;
+    background: rgba(255, 91, 46, 0.1);
+    border: 1.5px solid #ff5b2e;
     border-radius: 8px;
-    color: #7ec8e8;
+    color: #ff5b2e;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
     
     &:hover:not(:disabled) {
-      background: rgba(126, 200, 232, 0.2);
+      background: rgba(255, 91, 46, 0.2);
     }
     
     &:disabled {
@@ -79,7 +79,7 @@
   transition: border-color 0.2s ease;
 
   &.focused {
-    border-color: #7ec8e8;
+    border-color: #ff5b2e;
   }
 
   .search-icon {
@@ -230,7 +230,7 @@
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.04);
-    color: var(--tlr-accent, #7ec8e8);
+    color: var(--tlr-accent, #ff5b2e);
     cursor: pointer;
 
     mat-icon {
@@ -241,9 +241,9 @@
     }
 
     &:hover {
-      border-color: rgba(126, 200, 232, 0.4);
-      color: var(--tlr-accent, #7ec8e8);
-      background: rgba(126, 200, 232, 0.08);
+      border-color: rgba(255, 91, 46, 0.4);
+      color: var(--tlr-accent, #ff5b2e);
+      background: rgba(255, 91, 46, 0.08);
     }
   }
 
@@ -278,7 +278,7 @@
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease;
 
-    &.status-all { border-left-color: rgba(126, 200, 232, 0.65); }
+    &.status-all { border-left-color: rgba(255, 91, 46, 0.65); }
     &.status-some { border-left-color: var(--tlr-warning, #ffa500); }
     &.status-none { border-left-color: rgba(255, 255, 255, 0.12); }
 
@@ -288,11 +288,11 @@
     }
 
     &.active {
-      background: rgba(126, 200, 232, 0.08);
+      background: rgba(255, 91, 46, 0.08);
       border-color: rgba(255, 255, 255, 0.1);
-      border-left-color: var(--tlr-accent, #7ec8e8);
+      border-left-color: var(--tlr-accent, #ff5b2e);
 
-      .sidebar-row-icon { background: rgba(126, 200, 232, 0.16); }
+      .sidebar-row-icon { background: rgba(255, 91, 46, 0.16); }
       .sidebar-row-label { color: rgba(255, 255, 255, 0.96); }
     }
 
@@ -303,7 +303,7 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: rgba(126, 200, 232, 0.1);
+      background: rgba(255, 91, 46, 0.1);
       border-radius: 6px;
 
       mat-icon {
@@ -311,7 +311,7 @@
         height: 14px;
         font-size: 14px;
         line-height: 1;
-        color: var(--tlr-accent, #7ec8e8);
+        color: var(--tlr-accent, #ff5b2e);
       }
     }
 
@@ -384,9 +384,9 @@
   }
 
   &.all {
-    background: rgba(126, 200, 232, 0.14);
-    border-color: rgba(126, 200, 232, 0.55);
-    color: #7ec8e8;
+    background: rgba(255, 91, 46, 0.14);
+    border-color: rgba(255, 91, 46, 0.55);
+    color: #ff5b2e;
   }
 
   &.some {
@@ -456,7 +456,7 @@
     justify-content: center;
     width: 36px;
     height: 36px;
-    background: rgba(126, 200, 232, 0.1);
+    background: rgba(255, 91, 46, 0.1);
     border-radius: 8px;
     flex-shrink: 0;
 
@@ -464,7 +464,7 @@
       width: 20px;
       height: 20px;
       font-size: 20px;
-      color: var(--tlr-accent, #7ec8e8);
+      color: var(--tlr-accent, #ff5b2e);
     }
   }
 
@@ -489,7 +489,7 @@
 
       .enabled-count {
         font-weight: 700;
-        color: var(--tlr-accent, #7ec8e8);
+        color: var(--tlr-accent, #ff5b2e);
       }
     }
   }
@@ -578,8 +578,8 @@
 
   &.active,
   &:has(.keyword-list-toggle-btn.active) {
-    border-color: rgba(126, 200, 232, 0.55);
-    box-shadow: inset 0 0 0 1px rgba(126, 200, 232, 0.15);
+    border-color: rgba(255, 91, 46, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(255, 91, 46, 0.15);
   }
 }
 
@@ -607,8 +607,8 @@
   }
 
   &.active {
-    background: rgba(126, 200, 232, 0.16);
-    color: #7ec8e8;
+    background: rgba(255, 91, 46, 0.16);
+    color: #ff5b2e;
   }
 }
 
@@ -634,8 +634,8 @@
   }
 
   &:hover {
-    background: rgba(126, 200, 232, 0.12);
-    color: #7ec8e8;
+    background: rgba(255, 91, 46, 0.12);
+    color: #ff5b2e;
   }
 }
 
@@ -747,15 +747,15 @@
   }
 
   &.enabled {
-    background: rgba(126, 200, 232, 0.08);
-    border-color: rgba(126, 200, 232, 0.35);
+    background: rgba(255, 91, 46, 0.08);
+    border-color: rgba(255, 91, 46, 0.35);
 
     .row-label {
       color: #fff;
     }
 
     .row-toggle mat-icon {
-      color: var(--tlr-accent, #7ec8e8);
+      color: var(--tlr-accent, #ff5b2e);
     }
   }
 

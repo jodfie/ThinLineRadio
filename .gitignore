@@ -60,6 +60,9 @@ run-server.sh
 .nextcloud-vps-migrate-staging/
 .mail-migrate-staging/
 
+# Local SSH keys + host connection notes (never commit)
+ops-private/
+
 # Local server ops helpers and ad-hoc tools (keep icad_tone_bridge.py tracked)
 server/scripts/*.sh
 server/scripts/launchd/

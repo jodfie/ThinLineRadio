@@ -57,6 +57,10 @@ type Client struct {
 	// client, used for sliding-window rate limiting.
 	DownloadTimestamps []time.Time
 	downloadMu         sync.Mutex
+
+	// EmitDedupe suppresses repeat livefeed streams when the same PTT lands as
+	// separate calls on different talkgroups (universal; any system).
+	EmitDedupe EmitDedupe
 }
 
 // IsDownloadRateLimited returns true if the client has exceeded the configured
@@ -517,25 +521,17 @@ func (clients *Clients) EmitCall(controller *Controller, call *Call) {
 	clients.mutex.Lock()
 	defer clients.mutex.Unlock()
 
-	restricted := controller.requiresUserAuth()
-	msg := &Message{Command: MessageCommandCall, Payload: call}
-
 	for c := range clients.Map {
-		if !c.Livefeed.IsEnabled(call) {
+		presented := controller.prepareCallEmit(call, c)
+		if presented == nil {
 			continue
 		}
 
-		if restricted {
-			// Check user access
-			if c.User == nil || !controller.userHasAccess(c.User, call) {
-				continue
-			}
-		}
-
-		if controller.Delayer.CanDelayForClient(call, c) {
-			controller.Delayer.DelayForClient(call, c)
+		if controller.Delayer.CanDelayForClient(presented, c) {
+			controller.Delayer.DelayForClient(presented, c)
 		} else {
 			// Non-blocking send to prevent deadlock
+			msg := &Message{Command: MessageCommandCall, Payload: presented}
 			select {
 			case c.Send <- msg:
 				// Message sent successfully

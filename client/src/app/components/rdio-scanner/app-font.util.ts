@@ -11,10 +11,11 @@ export interface AppFontOption {
 }
 
 export const APP_FONTS: AppFontOption[] = [
-    { name: 'Roboto', value: 'Roboto, sans-serif', displayName: 'Roboto (Default)' },
-    { name: 'Rajdhani', value: 'Rajdhani, sans-serif', displayName: 'Rajdhani (Modern Technical)' },
-    { name: 'ShareTechMono', value: '"Share Tech Mono", monospace', displayName: 'Share Tech Mono (Terminal)' },
-    { name: 'Audiowide', value: 'Audiowide, cursive', displayName: 'Audiowide (Digital Display)' },
+    { name: 'Inter', value: 'Inter, ui-sans-serif, system-ui, sans-serif', displayName: 'Inter (Default)' },
+    { name: 'SpaceGrotesk', value: '"Space Grotesk", ui-sans-serif, sans-serif', displayName: 'Space Grotesk (Display)' },
+    { name: 'Roboto', value: 'Roboto, sans-serif', displayName: 'Roboto' },
+    { name: 'Rajdhani', value: 'Rajdhani, sans-serif', displayName: 'Rajdhani' },
+    { name: 'JetBrainsMono', value: '"JetBrains Mono", ui-monospace, monospace', displayName: 'JetBrains Mono' },
 ];
 
 const SCANNER_FONT_SELECTOR = '.scanner-shell';
@@ -48,9 +49,6 @@ export function applyAppFont(fontName: string): void {
         el.dataset['appFont'] = font.name;
         syncFontVars(el, font.value);
         el.style.fontFamily = font.value;
-        if (fontName === 'Audiowide') {
-            el.style.fontSize = '14.45px';
-        }
     });
 
     document.documentElement.dataset['appFont'] = font.name;
