@@ -40,10 +40,9 @@ type DedupEntry struct {
 //
 // Arrival matching is by system+talkgroup and server arrival time, with a soft
 // radio-ID guard: when both sides have a known upload `source` and they differ,
-// the later call is kept (distinct talkers finishing upload together). Missing
-// or zero sources fall back to arrival-time matching. Feeder and API key are
-// never considered. Same-PTT multi-site copies that disagree on RID are handled
-// by the radio-timestamp last pass (which ignores RID).
+// the later call is kept. Missing or zero sources fall back to arrival-time
+// matching. Feeder and API key are never considered. The radio-timestamp last
+// pass uses the same soft RID rule.
 //
 // Key prefixes:
 //

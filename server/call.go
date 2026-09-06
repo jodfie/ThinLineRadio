@@ -435,9 +435,9 @@ func (calls *Calls) CheckDuplicateByHash(call *Call, db *Database) (bool, error)
 
 // CheckDuplicateByTimestamp is the last-pass duplicate check after arrival-time
 // matching. It looks for a prior call on the same system+talkgroup whose radio
-// (P25) timestamp is within ±windowMs. Radio/unit ID is not part of the match
-// (multi-site uploads often report different RIDs for the same PTT). Feeder and
-// API key are never considered. windowMs 0 disables this pass.
+// (P25) timestamp is within ±windowMs. Soft radio-ID guard: known different
+// unit IDs do not match; missing sources still allow a timestamp match. Feeder
+// and API key are never considered. windowMs 0 disables this pass.
 func (calls *Calls) CheckDuplicateByTimestamp(call *Call, db *Database, windowMs uint) (bool, error) {
 	if call.System == nil || call.Talkgroup == nil || windowMs == 0 {
 		return false, nil
@@ -451,24 +451,46 @@ func (calls *Calls) CheckDuplicateByTimestamp(call *Call, db *Database, windowMs
 
 	from := ts - int64(windowMs)
 	to := ts + int64(windowMs)
+	incomingSource := callPrimarySource(call)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	query := fmt.Sprintf(
-		`SELECT EXISTS (
-			SELECT 1 FROM "calls" c
-			WHERE c."timestamp" BETWEEN %d AND %d
-			  AND c."systemId" = %d AND c."talkgroupId" = %d
-		)`,
+		`SELECT (
+			SELECT cu."unitRef" FROM "callUnits" cu
+			WHERE cu."callId" = c."callId" AND cu."unitRef" > 0
+			ORDER BY cu."offset" ASC LIMIT 1
+		) AS "source"
+		FROM "calls" c
+		WHERE c."timestamp" BETWEEN %d AND %d
+		  AND c."systemId" = %d AND c."talkgroupId" = %d`,
 		from, to, call.System.Id, call.Talkgroup.Id,
 	)
 
-	var exists bool
-	if err := db.Sql.QueryRowContext(ctx, query).Scan(&exists); err != nil {
+	rows, err := db.Sql.QueryContext(ctx, query)
+	if err != nil {
 		return false, formatError(err, query)
 	}
-	return exists, nil
+	defer rows.Close()
+
+	for rows.Next() {
+		var priorSource sql.NullInt64
+		if err := rows.Scan(&priorSource); err != nil {
+			return false, formatError(err, query)
+		}
+		var prior uint
+		if priorSource.Valid && priorSource.Int64 > 0 {
+			prior = uint(priorSource.Int64)
+		}
+		if !sourcesDisproveReceivedAtDuplicate(incomingSource, prior) {
+			return true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, formatError(err, query)
+	}
+	return false, nil
 }
 
 // receivedAtDuplicateWindowFromMs converts the admin "arrival match window"
@@ -507,12 +529,10 @@ func callPrimarySource(call *Call) uint {
 	return 0
 }
 
-// sourcesDisproveReceivedAtDuplicate is a soft trunking guard for arrival-time
-// matching only: when both sides have a known source (radio ID) and they differ,
-// arrival-time matching alone should not drop the later call (distinct talkers
-// often finish uploading together). If either source is missing/zero, return
-// false so normal arrival-time duplicate detection still applies. The
-// radio-timestamp last pass does not use this guard.
+// sourcesDisproveReceivedAtDuplicate is a soft trunking guard: when both sides
+// have a known source (radio ID) and they differ, time-based matching alone
+// should not drop the later call. If either source is missing/zero, return false
+// so normal duplicate detection still applies (VHF analog / unknown unit).
 func sourcesDisproveReceivedAtDuplicate(a, b uint) bool {
 	return a > 0 && b > 0 && a != b
 }

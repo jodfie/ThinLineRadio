@@ -1,5 +1,12 @@
 # Change log
 
+## Version 26.09.06 - Released September 5, 2026
+
+### Fixed
+
+- **Duplicate detection — soft RID on radio-timestamp pass**
+  - Radio-timestamp last pass again treats known different unit/radio IDs as not duplicates (same rule as arrival matching). Prevents dropping a second talker whose P25 timestamp falls within the window of a prior call on the same talkgroup.
+
 ## Version 26.09.05 - Released September 5, 2026
 
 ### Fixed

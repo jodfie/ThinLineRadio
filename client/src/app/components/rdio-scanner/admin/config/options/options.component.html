@@ -401,7 +401,7 @@
         <div class="row" style="margin-top: 8px;">
           <p>
             <span class="mat-body">Disable Duplicate Detection</span><br>
-            <span class="mat-caption">Turn off duplicate call detection. When off (detection enabled), near-simultaneous same-system/talkgroup uploads are dropped by server arrival time (soft RID: known different unit IDs are kept), then by radio timestamp last pass (RID ignored for same-PTT multi-site copies). Feeder and API key are never checked.</span>
+            <span class="mat-caption">Turn off duplicate call detection. When off (detection enabled), near-simultaneous same-system/talkgroup uploads are dropped by server arrival time, then by radio timestamp (last pass). Soft RID: known different unit IDs are kept on every pass; missing IDs fall back to time matching. Feeder and API key are never checked.</span>
           </p>
           <div>
             <mat-slide-toggle color="primary" formControlName="disableDuplicateDetection"></mat-slide-toggle>
@@ -429,7 +429,7 @@
           <div class="row">
             <p>
               <span class="mat-body">Radio Timestamp Match Window (milliseconds)</span><br>
-              <span class="mat-caption">Last-pass check: after arrival matching, drop a same-system/talkgroup upload whose radio (P25) timestamp is within this many milliseconds of a prior call. Radio/unit ID is ignored here so multi-site copies of the same PTT still drop when RIDs disagree. Default: 1200 ms. Set to 0 to disable.</span>
+              <span class="mat-caption">Last-pass check: after arrival matching, drop a same-system/talkgroup upload whose radio (P25) timestamp is within this many milliseconds of a prior call — unless both have known radio/unit IDs that differ. Default: 1200 ms. Set to 0 to disable. Catches slow multi-feeder copies of the same unit that arrive outside the arrival window.</span>
             </p>
             <mat-form-field>
               <input type="number" min="0" max="30000" step="100" matInput formControlName="duplicateRadioTimestampWindow" placeholder="Milliseconds (default 1200)" autocomplete="off">
@@ -466,7 +466,7 @@
           <div style="margin-top: 24px;">
             <p style="margin-bottom: 8px;">
               <span class="mat-body"><strong>Per-System Duplicate Detection</strong></span><br>
-              <span class="mat-caption">Disable duplicate suppression for individual systems while keeping it enabled globally. Arrival matching uses a soft different-radio-ID exception; radio-timestamp last pass ignores RID.</span>
+              <span class="mat-caption">Disable duplicate suppression for individual systems while keeping it enabled globally. Matching uses soft different-radio-ID exception on arrival and radio-timestamp passes.</span>
             </p>
             <table mat-table [dataSource]="systemsForm.controls" style="width: 100%;">
               <ng-container matColumnDef="label">

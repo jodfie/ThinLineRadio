@@ -860,11 +860,9 @@ func (controller *Controller) IngestCall(call *Call) {
 
 	if !controller.Options.DisableDuplicateDetection && (system == nil || system.DuplicateDetectionEnabled) {
 		// ── Duplicate detection ──────────────────────────────────────────────
-		// Pass 1–2: server receivedAt (cache + DB), soft RID guard (different
-		// known radio IDs are kept — distinct talkers often upload together).
-		// Pass 3 (last): radio/P25 timestamp within admin window; RID ignored
-		// so same-PTT multi-site copies that disagree on RID still drop.
-		// Feeder / API key are never part of ingest matching.
+		// Pass 1–2: server receivedAt (cache + DB). Pass 3: radio/P25 timestamp.
+		// Soft RID on all passes: known different radio IDs are kept. Feeder /
+		// API key are never part of ingest matching.
 
 		windowMs := controller.Options.DuplicateTimestampWindow
 		source := callPrimarySource(call)
